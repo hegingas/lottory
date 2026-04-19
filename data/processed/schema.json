@@ -1,0 +1,60 @@
+{
+  "dlt_draws.csv": {
+    "lottery_type": "dlt",
+    "columns": [
+      "lottery_type",
+      "period_id",
+      "front_1",
+      "front_2",
+      "front_3",
+      "front_4",
+      "front_5",
+      "back_1",
+      "back_2"
+    ],
+    "notes": "不含开奖日期列；由 lottery-draw-dlt-ssq / lottery-draw-sync 或仓库内直接维护写入；manifest.json 记录溯源"
+  },
+  "ssq_draws.csv": {
+    "lottery_type": "ssq",
+    "columns": [
+      "lottery_type",
+      "period_id",
+      "red_1",
+      "red_2",
+      "red_3",
+      "red_4",
+      "red_5",
+      "red_6",
+      "blue"
+    ],
+    "notes": "不含开奖日期列；同源同上"
+  },
+  "kl8_draws.csv": {
+    "lottery_type": "kl8",
+    "columns": [
+      "lottery_type",
+      "period_id",
+      "n01",
+      "n02",
+      "n03",
+      "n04",
+      "n05",
+      "n06",
+      "n07",
+      "n08",
+      "n09",
+      "n10",
+      "n11",
+      "n12",
+      "n13",
+      "n14",
+      "n15",
+      "n16",
+      "n17",
+      "n18",
+      "n19",
+      "n20"
+    ],
+    "notes": "不含开奖日期列；每期 20 个开奖号存为 n01–n20（升序）；由 lottery-draw-sync 或官方同步流程写入；manifest.json 记录溯源"
+  }
+}
