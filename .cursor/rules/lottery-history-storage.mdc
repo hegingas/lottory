@@ -1,0 +1,24 @@
+---
+description: 历史分析结果固定写入 history/ 下三个 Markdown，每次分析后由历史分析 Agent 更新对应文件
+alwaysApply: true
+---
+
+# 历史分析结果落盘（`history/`）
+
+## 固定文件与彩种对应
+
+| 彩种 | 归档文件（相对仓库根） |
+|------|------------------------|
+| 大乐透 | `history/daletou_analysis.md` |
+| 双色球 | `history/shuangseqiu_analysis.md` |
+| 快乐八 | `history/kuaileba_analysis.md` |
+
+## 更新义务
+
+- **`lottery-history-analysis` Agent** 每完成一次该彩种（或含该彩种）的历史数据分析任务，须在**同一轮任务内**用编辑器更新上表中**涉及彩种**对应的 Markdown：**写入本次完整分析结论**（可覆盖整文件），并更新文内「最后更新」「统计窗口 / 期号范围」「所用数据路径」等元信息。
+- **`regenerate-history` 脚本**：`--only all`（且存在 `kl8_draws.csv`）或 `--only kl8` 时，按**相同默认窗口（近 30 期）**自动重写 `history/kuaileba_analysis.md`（机械统计正文）。`regenerate-kl8-prediction` 为兼容别名。Agent 的深度解读、数据质量叙事或与全表对照的补充，可在脚本生成结果之上**增量编辑**，并保证元数据不与脚本口径矛盾。
+- **其他 Agent** 默认**不修改**上述三文件；仅可读取供参考，除非用户明确要求其编辑。
+
+## 文件内容建议结构
+
+每个文件顶部保留简短元数据块，正文为本次分析全文；历史版本若需保留，由用户在 Git 中查看，不强制在本文件内堆叠多版（避免无限增长）；若用户要求保留多版，可在正文末追加带日期的折叠区块。
