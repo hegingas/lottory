@@ -16,6 +16,8 @@ alwaysApply: true
 ## 更新义务
 
 - **`lottery-prediction` Agent** 每完成一次该彩种（或含该彩种）的统计型预测参考任务，须在**同一轮任务内**更新上表中**涉及彩种**对应 Markdown：**写入本次完整输出**（可覆盖整文件），并更新文内「最后更新」「统计窗口（如近 N 期）」「期号范围」「所用数据路径」「是否引用分析归档路径」等元信息。
+- **最新开奖重算强制**：每次预测任务前，必须先按 `data/processed/*.csv` 的最新 `period_id` 重新计算；输出前需保证预测文件内 `期号范围` 的末期等于对应 CSV 的最新期号（如 `dlt_draws.csv`、`ssq_draws.csv`、`kl8_draws.csv`），否则视为未完成本次任务。
+- **analysis 同步刷新强制**：每次预测任务在输出前，必须同步更新对应彩种的 `history/*_analysis.md`（至少更新 `最后更新`、`统计窗口/期号范围` 并与最新 `period_id` 一致）。若 analysis 未刷新到同批次时间戳或最新期号，则预测任务视为未完成。
 - **其他 Agent** 默认**不修改**上述三文件；仅可读取供参考，除非用户明确要求其编辑。
 
 ## 与历史分析归档的关系
@@ -29,8 +31,9 @@ alwaysApply: true
 1. **口径说明**  
 2. **结果摘要**（热冷、结构等统计叙述）  
 3. **明确号码输出（强制）**：可复现规则下给出的**完整可见号码**——大乐透、双色球各 **5 注单式**（大乐透每注前 5 + 后 2；双色球每注红 6 + 蓝 1），且须写 **预测生成时间** 与 **每一号码的选择原因**（脚本生成见 `regenerate_history_archives.py` 中 `PREDICTION_SINGLE_LINES`、`_dlt_collect_five_unique_tickets` / `_ssq_collect_five_unique_tickets`、`_build_*_five_numbers_md`）；快乐八须含 **参考开奖 20 码（升序）** 与 **选十参考 11 码（升序）**。三彩种机械参考均为 **多因子 min-max 归一** 后对 **当前遗漏、区间热度、频次** 加权合成（**遗漏 > 区间热度 > 频次**），实现见 `PATTERN_W_*`、`PATTERN_RECENT_K`、各 `_scores` 与 `*_ZONES_CAP` / `*_MAX_PER_ZONE`（大乐透前区/双色球红球：**每 5 码一小区至多 2 个**；大乐透后区/双色球蓝球：**每 4 码一小区至多 2 个**）；**同分随机**；**快乐八** 20 码按 **8 个十码段每段至多 5 个** 取满 20，11 码在 20 码中 **无放回随机** 且仍满足**每十码段至多 5 个**；并声明「统计参考、非必中、非 combo 预算单」。  
-4. **使用说明 / 随机性声明**  
-5. **附录：预算与投注推荐（脚本固写）**：`regenerate-history` 在 `history/daletou_prediction.md`、`history/shuangseqiu_prediction.md` 文末写入 **10～30 元（含）** 金额带规则，并说明正文 **5 注单式** 合计 **10 元**（无倍投）；在 `history/kuaileba_prediction.md` 文末为 **选十 11 码复式 ≈22 元**。常量 `DEFAULT_COMBO_BUDGET_MIN_YUAN` / `DEFAULT_COMBO_BUDGET_MAX_YUAN`。更复杂方案仍由 **`lottery-combo-optimize`** 在金额带内优化并写校验与投注原因。
+4. **单式优选（新增强制）**：在“明确号码输出”之后，必须额外给出 **1 注分数最高的单式**，其定义固定为：按同一评分口径对号码降序排序后，**直接取各球区前 N 个**组成一注（大乐透：前区前 5 + 后区前 2；双色球：红球前 6 + 蓝球前 1；快乐八选十参考：从候选集中取前 11 个用于 11 码复式）。若边界同分，使用固定 tie-break（如号码升序优先）或声明随机种子。并展示：`号码`、`总分`、`关键因子贡献`、`生成时间`。  
+5. **使用说明 / 随机性声明**  
+6. **附录：预算与投注推荐（脚本固写）**：`regenerate-history` 在 `history/daletou_prediction.md`、`history/shuangseqiu_prediction.md` 文末写入 **10～30 元（含）** 金额带规则，并说明正文 **5 注单式** 合计 **10 元**（无倍投）；在 `history/kuaileba_prediction.md` 文末为 **选十 11 码复式 ≈22 元**。常量 `DEFAULT_COMBO_BUDGET_MIN_YUAN` / `DEFAULT_COMBO_BUDGET_MAX_YUAN`。更复杂方案仍由 **`lottery-combo-optimize`** 在金额带内优化并写校验与投注原因。
 
 历史版本以 Git 为准；若用户要求多版保留，可在正文末追加日期分节。`python src/scripts/lottery.py regenerate-history`（`--only all` 且含 kl8，或 `--only kl8`）生成的大乐透/双色球正文已内嵌第 3 节 **5 注单式**、逐号原因与预测生成时间；快乐八第 3 节 **11 码**由同一命令写入预测正文。快乐八预算说明见 `kuaileba_prediction.md` 文末提示与 `lottery-combo-optimize` 技能。
 
