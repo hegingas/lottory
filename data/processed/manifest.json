@@ -7,22 +7,23 @@
       "lottery_type": "dlt",
       "output": "data/processed/dlt_draws.csv",
       "source": "maintained_processed_csv",
-      "rows_out": 2860,
+      "rows_out": 2861,
       "rows_in": 2855,
       "excluded": [],
       "period_id_min": 7001,
-      "period_id_max": 26042,
+      "period_id_max": 26043,
       "supplement": {
         "recent_append": {
-          "rows_added": 5,
+          "rows_added": 6,
           "period_ids": [
             "26038",
             "26039",
             "26040",
             "26041",
-            "26042"
+            "26042",
+            "26043"
           ],
-          "source_note": "user_screenshot_table_2026-04-18;26041_user_provided_numbers_2026-04-18;26042_user_provided_numbers_2026-04-21",
+          "source_note": "user_screenshot_table_2026-04-18;26041_user_provided_numbers_2026-04-18;26042_user_provided_numbers_2026-04-21;26043_user_provided_numbers_2026-04-21",
           "official_verify": "\u5efa\u8bae\u4e0e\u4f53\u5f69\u5b98\u65b9\u516c\u544a\u6838\u5bf9"
         },
         "gap_fill": [
@@ -61,9 +62,9 @@
       "lottery_type": "kl8",
       "output": "data/processed/kl8_draws.csv",
       "source": "user_screenshots_917500.cn_batch_2026-04-18",
-      "rows_out": 122,
+      "rows_out": 123,
       "period_id_min": 2025331,
-      "period_id_max": 2026101,
+      "period_id_max": 2026102,
       "generated_at": "2026-04-18T22:00:00+00:00",
       "note": "\u7b2c\u4e09\u65b9\u9875\u9762\u622a\u56fe\u5f55\u5165\uff0c\u5efa\u8bae\u4e0e\u798f\u5f69\u5b98\u65b9\u516c\u544a\u62bd\u6837\u6838\u5bf9",
       "supplement": {
@@ -72,9 +73,10 @@
             "2026098",
             "2026099",
             "2026100",
-            "2026101"
+            "2026101",
+            "2026102"
           ],
-          "source_note": "user_provided_numbers_2026-04-18;2026099_user_provided_numbers_2026-04-19;2026100_user_provided_numbers_2026-04-21;2026101_user_provided_numbers_2026-04-21",
+          "source_note": "user_provided_numbers_2026-04-18;2026099_user_provided_numbers_2026-04-19;2026100_user_provided_numbers_2026-04-21;2026101_user_provided_numbers_2026-04-21;2026102_user_provided_numbers_2026-04-21",
           "official_verify": "\u5efa\u8bae\u4e0e\u798f\u5f69\u5b98\u65b9\u516c\u544a\u6838\u5bf9"
         }
       }
