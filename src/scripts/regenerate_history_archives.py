@@ -30,13 +30,17 @@ MANIFEST = PROC / "manifest.json"
 # 用户或 Agent 若需其他 N，应手写归档或改此常量后重跑脚本。
 DEFAULT_STATS_WINDOW = 30
 
-# 多因子「规律线」：各因子先 **min-max 归一到 [0,1]**；**当前遗漏、区间热度、频次** 加权提高且 **遗漏 > 区间热度 > 频次**，其余因子共享 `PATTERN_W_OTHER_POOL` 后取平均再混入（大乐透前/后区、双色球红/蓝、快乐八 01–80 同构）。
+# 多因子「规律线」：各因子先 **min-max 归一到 [0,1]**，再按独立权重加权合成综合分（大乐透前/后区、双色球红/蓝、快乐八 01–80 同构）。
 PATTERN_RECENT_K = 5  # 近 K 期密度因子所用期数（不超过当前窗口长度）
 KL8_PATTERN_RECENT_K = PATTERN_RECENT_K  # 兼容旧名
-PATTERN_W_MISS = 0.38  # 当前遗漏（归一后）
-PATTERN_W_ZONE = 0.26  # 区间热度 / 区段密度（归一后）
-PATTERN_W_FREQ = 0.14  # 窗口频次（归一后）
-PATTERN_W_OTHER_POOL = 1.0 - PATTERN_W_MISS - PATTERN_W_ZONE - PATTERN_W_FREQ  # 其余因子均分此池后再取均值项
+# 7 项因子独立权重（合计 1.0）
+PATTERN_W_MISS    = 0.25  # 当前遗漏：遗漏越久分越高，提供覆盖多样性
+PATTERN_W_FREQ    = 0.18  # 窗口频次：全窗口出现次数，基础冷热指标
+PATTERN_W_ZONE    = 0.17  # 区间热度：区段落球密度
+PATTERN_W_RECENCY = 0.15  # 近 K 期密度：近期走势比远期更有参考价值
+PATTERN_W_PARITY  = 0.10  # 奇偶对齐：防止全奇/全偶
+PATTERN_W_SIZE    = 0.10  # 大小/半区对齐：防止号码全部扎堆在半区
+PATTERN_W_SUM     = 0.05  # 和值带对齐：和值是号码选择的结果而非原因，仅微调
 
 # 快乐八取 20/11：**8 个十码段**，每段至多 **KL8_MAX_PER_PICK_ZONE**（8×5≥20，用户可改上限）。
 KL8_MAX_PER_PICK_ZONE = 5
@@ -215,32 +219,34 @@ def _minmax01_ball(raw: np.ndarray, n_ball: int) -> np.ndarray:
     return out
 
 
-def _weighted_miss_zone_freq_composite(
-    freq_raw: np.ndarray,
+def _weighted_composite(
     miss_raw: np.ndarray,
+    freq_raw: np.ndarray,
     zone_raw: np.ndarray,
-    other_raws: list[np.ndarray],
+    recency_raw: np.ndarray,
+    parity_raw: np.ndarray,
+    size_raw: np.ndarray,
+    sum_raw: np.ndarray,
     n_ball: int,
 ) -> np.ndarray:
-    """遗漏 / 区间热度 / 频次 加权（权重递减），其余因子 min-max 后取算术平均再乘以 OTHER_POOL 混入。"""
-    nf = _minmax01_ball(freq_raw, n_ball)
+    """7 项因子独立权重加权合成综合分（每项先 min-max 归一到 [0,1]）。"""
     nm = _minmax01_ball(miss_raw, n_ball)
+    nf = _minmax01_ball(freq_raw, n_ball)
     nz = _minmax01_ball(zone_raw, n_ball)
-    if other_raws:
-        normed_o = [_minmax01_ball(o, n_ball) for o in other_raws]
-        no = np.zeros(n_ball + 1, dtype=float)
-        for i in range(1, n_ball + 1):
-            no[i] = sum(o[i] for o in normed_o) / len(normed_o)
-    else:
-        no = np.zeros(n_ball + 1, dtype=float)
-        no[1:] = 0.5
+    nr = _minmax01_ball(recency_raw, n_ball)
+    np_ = _minmax01_ball(parity_raw, n_ball)
+    ns = _minmax01_ball(size_raw, n_ball)
+    nsum = _minmax01_ball(sum_raw, n_ball)
     out = np.zeros(n_ball + 1, dtype=float)
     for i in range(1, n_ball + 1):
         out[i] = (
-            PATTERN_W_MISS * nm[i]
-            + PATTERN_W_ZONE * nz[i]
-            + PATTERN_W_FREQ * nf[i]
-            + PATTERN_W_OTHER_POOL * no[i]
+            PATTERN_W_MISS    * nm[i]
+            + PATTERN_W_FREQ  * nf[i]
+            + PATTERN_W_ZONE  * nz[i]
+            + PATTERN_W_RECENCY * nr[i]
+            + PATTERN_W_PARITY  * np_[i]
+            + PATTERN_W_SIZE    * ns[i]
+            + PATTERN_W_SUM     * nsum[i]
         )
     return out
 
@@ -248,8 +254,9 @@ def _weighted_miss_zone_freq_composite(
 def _pattern_weight_md_line() -> str:
     """口径说明里一行人类可读权重（不含外层 Markdown，便于包在加粗内）。"""
     return (
-        f"{PATTERN_W_MISS:.0%}×当前遗漏 + {PATTERN_W_ZONE:.0%}×区间热度 + {PATTERN_W_FREQ:.0%}×频次 + "
-        f"{PATTERN_W_OTHER_POOL:.0%}×（近 {PATTERN_RECENT_K} 期密度、奇偶/大小或半区、和值带等其它因子归一后均值）"
+        f"{PATTERN_W_MISS:.0%}×当前遗漏 + {PATTERN_W_FREQ:.0%}×频次 + {PATTERN_W_ZONE:.0%}×区间热度 + "
+        f"{PATTERN_W_RECENCY:.0%}×近{PATTERN_RECENT_K}期密度 + {PATTERN_W_PARITY:.0%}×奇偶对齐 + "
+        f"{PATTERN_W_SIZE:.0%}×大小/半区对齐 + {PATTERN_W_SUM:.0%}×和值带对齐"
     )
 
 
@@ -393,8 +400,8 @@ def _kl8_half_alignment_raw(draws: list[list[int]], n_ball: int) -> np.ndarray:
 def _kl8_twenty_scores(freq: np.ndarray, cur_miss: np.ndarray, draws: list[list[int]]) -> np.ndarray:
     """快乐八 01–80 多因子加权综合分（越大越优先）。"""
     n_ball = 80
-    f_freq = np.array([float(freq[i]) for i in range(n_ball + 1)], dtype=float)
     f_miss = np.array([float(cur_miss[i]) for i in range(n_ball + 1)], dtype=float)
+    f_freq = np.array([float(freq[i]) for i in range(n_ball + 1)], dtype=float)
     f_rec = np.array([float(_recency_counts(draws, PATTERN_RECENT_K, n_ball)[i]) for i in range(n_ball + 1)], dtype=float)
     odds_per = [sum(1 for x in d if int(x) % 2 == 1) for d in draws]
     mean_odd = float(np.mean(odds_per)) if odds_per else 10.0
@@ -403,14 +410,13 @@ def _kl8_twenty_scores(freq: np.ndarray, cur_miss: np.ndarray, draws: list[list[
     f_sum = _sum_alignment_scores(draws, n_ball)
     zones = [(1, 20), (21, 40), (41, 60), (61, 80)]
     f_zone = _zone_density_raw(draws, n_ball, zones)
-    others = [f_rec, f_odd, f_half, f_sum]
-    return _weighted_miss_zone_freq_composite(f_freq, f_miss, f_zone, others, n_ball)
+    return _weighted_composite(f_miss, f_freq, f_zone, f_rec, f_odd, f_half, f_sum, n_ball)
 
 
 def _dlt_front_scores(f_draws: list[list[int]], fq: np.ndarray, fcur: np.ndarray) -> np.ndarray:
     n_ball = 35
-    f_freq = np.array([float(fq[i]) for i in range(n_ball + 1)], dtype=float)
     f_miss = np.array([float(fcur[i]) for i in range(n_ball + 1)], dtype=float)
+    f_freq = np.array([float(fq[i]) for i in range(n_ball + 1)], dtype=float)
     f_rec = np.array([float(_recency_counts(f_draws, PATTERN_RECENT_K, n_ball)[i]) for i in range(n_ball + 1)], dtype=float)
     slots = 5
     mean_odd = float(np.mean([sum(1 for x in row if int(x) % 2 == 1) for row in f_draws])) if f_draws else 2.5
@@ -419,14 +425,13 @@ def _dlt_front_scores(f_draws: list[list[int]], fq: np.ndarray, fcur: np.ndarray
     f_big = _size_alignment_raw(n_ball, mean_big, slots, lambda i: i >= 18)
     f_sum = _sum_alignment_scores(f_draws, n_ball)
     f_zone = _zone_density_raw(f_draws, n_ball, DLT_FRONT_ZONES_CAP)
-    others = [f_rec, f_odd, f_big, f_sum]
-    return _weighted_miss_zone_freq_composite(f_freq, f_miss, f_zone, others, n_ball)
+    return _weighted_composite(f_miss, f_freq, f_zone, f_rec, f_odd, f_big, f_sum, n_ball)
 
 
 def _dlt_back_scores(b_draws: list[list[int]], bq: np.ndarray, bcur: np.ndarray) -> np.ndarray:
     n_ball = 12
-    f_freq = np.array([float(bq[i]) for i in range(n_ball + 1)], dtype=float)
     f_miss = np.array([float(bcur[i]) for i in range(n_ball + 1)], dtype=float)
+    f_freq = np.array([float(bq[i]) for i in range(n_ball + 1)], dtype=float)
     f_rec = np.array([float(_recency_counts(b_draws, PATTERN_RECENT_K, n_ball)[i]) for i in range(n_ball + 1)], dtype=float)
     slots = 2
     mean_odd = float(np.mean([sum(1 for x in row if int(x) % 2 == 1) for row in b_draws])) if b_draws else 1.0
@@ -435,14 +440,13 @@ def _dlt_back_scores(b_draws: list[list[int]], bq: np.ndarray, bcur: np.ndarray)
     f_zone = _zone_density_raw(b_draws, n_ball, DLT_BACK_ZONES_CAP)
     mean_hi = float(np.mean([sum(1 for x in row if int(x) >= 7) for row in b_draws])) if b_draws else 1.0
     f_hi = _size_alignment_raw(n_ball, mean_hi, slots, lambda i: i >= 7)
-    others = [f_rec, f_odd, f_sum, f_hi]
-    return _weighted_miss_zone_freq_composite(f_freq, f_miss, f_zone, others, n_ball)
+    return _weighted_composite(f_miss, f_freq, f_zone, f_rec, f_odd, f_hi, f_sum, n_ball)
 
 
 def _ssq_red_scores(r_draws: list[list[int]], rq: np.ndarray, rcur: np.ndarray) -> np.ndarray:
     n_ball = 33
-    f_freq = np.array([float(rq[i]) for i in range(n_ball + 1)], dtype=float)
     f_miss = np.array([float(rcur[i]) for i in range(n_ball + 1)], dtype=float)
+    f_freq = np.array([float(rq[i]) for i in range(n_ball + 1)], dtype=float)
     f_rec = np.array([float(_recency_counts(r_draws, PATTERN_RECENT_K, n_ball)[i]) for i in range(n_ball + 1)], dtype=float)
     slots = 6
     mean_odd = float(np.mean([sum(1 for x in row if int(x) % 2 == 1) for row in r_draws])) if r_draws else 3.0
@@ -451,8 +455,7 @@ def _ssq_red_scores(r_draws: list[list[int]], rq: np.ndarray, rcur: np.ndarray) 
     f_big = _size_alignment_raw(n_ball, mean_big, slots, lambda i: i >= 17)
     f_sum = _sum_alignment_scores(r_draws, n_ball)
     f_zone = _zone_density_raw(r_draws, n_ball, SSQ_RED_ZONES_CAP)
-    others = [f_rec, f_odd, f_big, f_sum]
-    return _weighted_miss_zone_freq_composite(f_freq, f_miss, f_zone, others, n_ball)
+    return _weighted_composite(f_miss, f_freq, f_zone, f_rec, f_odd, f_big, f_sum, n_ball)
 
 
 def _ssq_blue_scores(blues: list[int], bq: np.ndarray, bcur: np.ndarray) -> np.ndarray:
@@ -461,8 +464,8 @@ def _ssq_blue_scores(blues: list[int], bq: np.ndarray, bcur: np.ndarray) -> np.n
     b_draws = [[int(x)] for x in blues]
     if not blues:
         return np.full(n_ball + 1, 0.5, dtype=float)
-    f_freq = np.array([float(bq[i]) for i in range(n_ball + 1)], dtype=float)
     f_miss = np.array([float(bcur[i]) for i in range(n_ball + 1)], dtype=float)
+    f_freq = np.array([float(bq[i]) for i in range(n_ball + 1)], dtype=float)
     f_rec = np.array([float(_recency_counts(b_draws, PATTERN_RECENT_K, n_ball)[i]) for i in range(n_ball + 1)], dtype=float)
     odd_rate = float(np.mean([1 if int(x) % 2 == 1 else 0 for x in blues])) if blues else 0.5
     f_odd = _parity_alignment_raw(n_ball, odd_rate * 1.0, 1)
@@ -474,8 +477,7 @@ def _ssq_blue_scores(blues: list[int], bq: np.ndarray, bcur: np.ndarray) -> np.n
         f_med[i] = 1.0 - min(1.0, abs(float(i) - med) / max(scale, 1e-6))
     mean_hi = float(np.mean([1 if int(x) >= 9 else 0 for x in blues])) if blues else 0.5
     f_hi = _size_alignment_raw(n_ball, mean_hi, 1, lambda i: i >= 9)
-    others = [f_rec, f_odd, f_med, f_hi]
-    return _weighted_miss_zone_freq_composite(f_freq, f_miss, f_zone, others, n_ball)
+    return _weighted_composite(f_miss, f_freq, f_zone, f_rec, f_odd, f_hi, f_med, n_ball)
 
 
 def _reason_dlt_front_line(ball: int, n_win: int, fq: np.ndarray, fcur: np.ndarray, fs: np.ndarray) -> str:
