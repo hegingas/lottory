@@ -5,7 +5,61 @@
       "Bash(npm view:*)",
       "Bash(npm install:*)",
       "Bash(python *)",
-      "Bash(git add *)"
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git push *)",
+      "Bash(npx --version)",
+      "Bash(gh auth *)",
+      "Read(//mnt/c/Study/**)",
+      "Bash(tail -3 data/processed/dlt_draws.csv data/processed/ssq_draws.csv data/processed/kl8_draws.csv)",
+      "WebFetch(domain:www.lottery.gov.cn)",
+      "WebFetch(domain:www.cwl.gov.cn)",
+      "WebFetch(domain:datachart.500.com)",
+      "WebSearch",
+      "WebFetch(domain:k.sina.com.cn)",
+      "WebFetch(domain:www.my399.com)",
+      "WebFetch(domain:news.qq.com)",
+      "Bash(curl -s --max-time 10 \"https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry?gameNo=85&provinceId=0&pageSize=3&isVerity=1&pageNo=1\")",
+      "Bash(curl -s --max-time 10 \"https://www.cwl.gov.cn/cwl_admin/front/cwlkj/search/kjxx/findDrawNotice?name=ssq&issueCount=3\")",
+      "Bash(curl -sL --max-time 10 \"https://www.cwl.gov.cn/cwl_admin/front/cwlkj/search/kjxx/findDrawNotice?name=ssq&issueCount=3\")",
+      "Bash(curl -sL --max-time 10 \"https://www.cwl.gov.cn/cwl_admin/front/cwlkj/search/kjxx/findDrawNotice?name=kl8&issueCount=3\")",
+      "Bash(curl -sL --max-time 10 -H \"User-Agent: Mozilla/5.0 \\(Windows NT 10.0; Win64; x64\\) AppleWebKit/537.36 \\(KHTML, like Gecko\\) Chrome/120.0.0.0 Safari/537.36\" \"https://www.cwl.gov.cn/ygkj/wqkjgg/ssq/\")",
+      "Bash(curl -s --max-time 10 \"https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry?gameNo=85&provinceId=0&pageSize=1&isVerity=1&pageNo=1\")",
+      "Bash(python3 -c \"import sys,json; data=json.load\\(sys.stdin\\); latest=data['value']['list'][0]; print\\(f\\\\\"大乐透 {latest['lotteryDrawNum']}: {latest['lotteryDrawResult']} \\({latest['lotteryDrawTime']}\\)\\\\\"\\)\")",
+      "Bash(curl -s --max-time 10 \"https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry?gameNo=85&provinceId=0&pageSize=1&pageNo=1\")",
+      "Bash(python3 -m json.tool)",
+      "Bash(curl -s --max-time 10 \"https://api.6niu.com/lottery/history?code=ssq&count=3\")",
+      "Bash(curl -s --max-time 10 \"https://www.lottery.gov.cn/api/lottery_kj_detail_new.jspx?_ltype=dlt&_term=2026043\")",
+      "Bash(curl -s --max-time 10 -H \"User-Agent: Mozilla/5.0\" \"https://gbviewer.caiqr.com/gbview/v1/homepage/getChaseData?lottery_id=ssq&page_size=1\")",
+      "Bash(curl -s --max-time 10 \"https://cn.apihz.cn/api/caipiao/kuaile8.php?id=1&key=1\")",
+      "Bash(curl -s --max-time 10 \"https://www.jumdata.com/api/lottery/query?type=ssq&num=3\")",
+      "Bash(curl -s --max-time 10 \"https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry?gameNo=86&provinceId=0&pageSize=1&pageNo=1\")",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(json.dumps\\({'game':d['value']['list'][0]['lotteryGameName'],'period':d['value']['list'][0]['lotteryDrawNum'],'result':d['value']['list'][0]['lotteryDrawResult']},ensure_ascii=False\\)\\)\")",
+      "Bash(curl -s --max-time 8 'https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry?gameNo=__TRACKED_VAR__&provinceId=0&pageSize=1&pageNo=1')",
+      "Bash(python3 *)"
     ]
+  },
+  "mcpServers": {
+    "github": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@anthropic/mcp-server-github"
+      ]
+    },
+    "puppeteer": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@anthropic/mcp-server-puppeteer"
+      ]
+    },
+    "playwright": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@anthropic/mcp-server-playwright"
+      ]
+    }
   }
 }
