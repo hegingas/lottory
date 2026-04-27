@@ -2,7 +2,7 @@
 """
 基于 data/processed/*.csv 重算并写入 history 下归档（N 默认见 `DEFAULT_STATS_WINDOW`，当前为 30）：
 - **大乐透 / 双色球**：各 `*_analysis.md`、`*_prediction.md`（必写）；预测正文为 **5 注单式**，每注逐号**选择原因**，并写**预测生成时间**；文末附 **10～30 元** 金额带与 **5×2=10 元** 单式说明（`DEFAULT_COMBO_BUDGET_MIN_YUAN` / `DEFAULT_COMBO_BUDGET_MAX_YUAN`）；快乐八预测含 **11 码复式**机械示例。
-- **快乐八**：在存在 `kl8_draws.csv` 时与大乐透/双色球**同一套规则**（期末尾连续 N 期）同步写 `kuaileba_analysis.md` 与 `kuaileba_prediction.md`。预测正文：**参考开奖 20 码** = 同上加权综合分后，按 **8 个十码段（01–10,…,71–80）每段至多 5 个**（`KL8_MAX_PER_PICK_ZONE`）贪心取满 20（**同分随机**）；**选十 11 码** = 在该 20 码中**无放回随机**抽取 11，且满足**同一十码段每段至多 5 个**。大乐透/双色球正文为 **5 注单式**（同一加权 + 同分随机；前区/红球 **每 5 码一小区至多 2 个**，后区/蓝球 **每 4 码一小区至多 2 个**），各注带**已选惩罚**以拉开互异组合；见 `PREDICTION_SINGLE_LINES` 与各 `*_ZONES_CAP` / `*_MAX_PER_ZONE`。
+- **快乐八**：在存在 `kl8_draws.csv` 时与大乐透/双色球**同一套规则**（期末尾连续 N 期）同步写 `kuaileba_analysis.md` 与 `kuaileba_prediction.md`。预测正文：**参考开奖 20 码** = 同上加权综合分后，按 **8 个十码段（01–10,…,71–80）每段至少 {KL8_MIN_PER_PICK_ZONE} 个且至多 5 个**（`KL8_MIN_PER_PICK_ZONE` / `KL8_MAX_PER_PICK_ZONE`）贪心取满 20（**同分随机**）；**选十 11 码** = 在该 20 码中**无放回随机**抽取 11，且满足**同一十码段每段至少 1 个且至多 5 个**。大乐透/双色球正文为 **5 注单式**（同一加权 + 同分随机；前区/红球 **每 5 码一小区至多 2 个**，后区/蓝球 **每 4 码一小区至多 2 个**），各注带**已选惩罚**以拉开互异组合；见 `PREDICTION_SINGLE_LINES` 与各 `*_ZONES_CAP` / `*_MAX_PER_ZONE`。
 
 运行（在仓库根，**统一入口**）：
   python src/scripts/lottery.py regenerate-history [--only all|kl8|dlt-ssq]
@@ -42,7 +42,9 @@ PATTERN_W_PARITY  = 0.10  # 奇偶对齐：防止全奇/全偶
 PATTERN_W_SIZE    = 0.10  # 大小/半区对齐：防止号码全部扎堆在半区
 PATTERN_W_SUM     = 0.05  # 和值带对齐：和值是号码选择的结果而非原因，仅微调
 
-# 快乐八取 20/11：**8 个十码段**，每段至多 **KL8_MAX_PER_PICK_ZONE**（8×5≥20，用户可改上限）。
+# 快乐八取 20/11：**8 个十码段**，每段至少 **KL8_MIN_PER_PICK_ZONE** 且至多 **KL8_MAX_PER_PICK_ZONE**。
+# 在默认参数下（min=1, max=5），20 码与 11 码都能满足每段覆盖。
+KL8_MIN_PER_PICK_ZONE = 1
 KL8_MAX_PER_PICK_ZONE = 5
 KL8_PICK_ZONES_CAP = [(1, 10), (11, 20), (21, 30), (31, 40), (41, 50), (51, 60), (61, 70), (71, 80)]
 # 大乐透前区：**每 5 个号** 一区间（7 段）；每段至多 **DLT_FRONT_MAX_PER_ZONE** 个。
@@ -297,6 +299,80 @@ def _pick_top_indices_zone_capped(
     if len(out) < k:
         raise ValueError(
             f"在「每区至多 {max_per_zone} 个」下无法从 [{i_lo},{i_hi}] 取满 {k} 个号（已取 {len(out)}，zones={zones}）"
+        )
+    return out
+
+
+def _pick_top_indices_zone_bounded(
+    scores: np.ndarray,
+    i_lo: int,
+    i_hi: int,
+    k: int,
+    zones: list[tuple[int, int]],
+    min_per_zone: int,
+    max_per_zone: int,
+    rng: random.Random | None = None,
+) -> list[int]:
+    """按分降序贪心选取；满足每个分区 [min_per_zone, max_per_zone] 双边约束。"""
+    if min_per_zone < 0 or max_per_zone < 0 or min_per_zone > max_per_zone:
+        raise ValueError(
+            f"非法分区边界：min_per_zone={min_per_zone}, max_per_zone={max_per_zone}"
+        )
+    n_zone = len(zones)
+    if min_per_zone * n_zone > k:
+        raise ValueError(
+            f"分区下限不可行：{n_zone} 个分区 × 至少 {min_per_zone} 个 > 目标 {k} 个"
+        )
+    if max_per_zone * n_zone < k:
+        raise ValueError(
+            f"分区上限不可行：{n_zone} 个分区 × 至多 {max_per_zone} 个 < 目标 {k} 个"
+        )
+
+    rnd = rng if rng is not None else random
+    ix = list(range(i_lo, i_hi + 1))
+    rnd.shuffle(ix)
+    ix.sort(key=lambda i: -scores[i])
+
+    zone_to_idx: list[list[int]] = [[] for _ in range(n_zone)]
+    for i in ix:
+        zi = _zone_index_for_ball(i, zones)
+        zone_to_idx[zi].append(i)
+
+    out: list[int] = []
+    zc = [0] * n_zone
+    picked: set[int] = set()
+
+    # 先满足每区下限
+    if min_per_zone > 0:
+        for zi in range(n_zone):
+            need = min_per_zone
+            if len(zone_to_idx[zi]) < need:
+                raise ValueError(
+                    f"分区 {zi + 1} 可选号码不足：需要至少 {need} 个，实际 {len(zone_to_idx[zi])} 个"
+                )
+            for i in zone_to_idx[zi]:
+                if zc[zi] >= need:
+                    break
+                out.append(i)
+                picked.add(i)
+                zc[zi] += 1
+
+    # 再按综合分补齐到 k，同时不突破每区上限
+    for i in ix:
+        if len(out) >= k:
+            break
+        if i in picked:
+            continue
+        zi = _zone_index_for_ball(i, zones)
+        if zc[zi] >= max_per_zone:
+            continue
+        out.append(i)
+        picked.add(i)
+        zc[zi] += 1
+
+    if len(out) < k:
+        raise ValueError(
+            f"在每区至少 {min_per_zone} 且至多 {max_per_zone} 约束下无法取满 {k} 个（已取 {len(out)}，zones={zones}）"
         )
     return out
 
@@ -1177,37 +1253,46 @@ def _kl8_recency_counts(draws: list[list[int]], k: int) -> np.ndarray:
 
 
 def _kl8_twenty_from_patterns(freq: np.ndarray, cur_miss: np.ndarray, draws: list[list[int]]) -> list[int]:
-    """多因子加权综合分取前 20 个互异号码；同分随机；**每十码段至多 5 个**（见 `KL8_MAX_PER_PICK_ZONE`），升序展示。"""
+    """多因子加权综合分取前 20 个互异号码；同分随机；每十码段 **至少1个且至多5个**。"""
     scores = _kl8_twenty_scores(freq, cur_miss, draws)
-    ranked = _pick_top_indices_zone_capped(
-        scores, 1, 80, 20, KL8_PICK_ZONES_CAP, KL8_MAX_PER_PICK_ZONE
+    ranked = _pick_top_indices_zone_bounded(
+        scores,
+        1,
+        80,
+        20,
+        KL8_PICK_ZONES_CAP,
+        KL8_MIN_PER_PICK_ZONE,
+        KL8_MAX_PER_PICK_ZONE,
     )
     return sorted(ranked)
 
 
 def _kl8_eleven_zone_capped_from_twenty(twenty: list[int]) -> list[int]:
-    """从 20 码中取 11 个；**每十码段至多 5 个**；随机尝试失败则贪心补足。"""
+    """从 20 码中取 11 个；每十码段 **至少1个且至多5个**；随机尝试失败则贪心补足。"""
     if len(twenty) != 20 or len(set(twenty)) != 20:
         raise ValueError("twenty 须为 20 个互异号码")
     zones = KL8_PICK_ZONES_CAP
     for _ in range(8000):
         s = random.sample(twenty, 11)
-        if all(c <= KL8_MAX_PER_PICK_ZONE for c in _counts_per_zone_for_balls(s, zones)):
+        zc_try = _counts_per_zone_for_balls(s, zones)
+        if all(KL8_MIN_PER_PICK_ZONE <= c <= KL8_MAX_PER_PICK_ZONE for c in zc_try):
             return sorted(s)
-    pool = twenty[:]
-    random.shuffle(pool)
-    out: list[int] = []
-    zc = [0] * len(zones)
-    for x in pool:
-        if len(out) >= 11:
-            break
-        zi = _zone_index_for_ball(x, zones)
-        if zc[zi] < KL8_MAX_PER_PICK_ZONE:
-            out.append(x)
-            zc[zi] += 1
+    # 回退：使用二次评分 + 分区双边约束（至少1且至多5）构造 11 码
+    aux_scores = np.zeros(81, dtype=float)
+    for rank, x in enumerate(sorted(twenty)):
+        aux_scores[int(x)] = float(len(twenty) - rank)
+    out = _pick_top_indices_zone_bounded(
+        aux_scores,
+        1,
+        80,
+        11,
+        zones,
+        KL8_MIN_PER_PICK_ZONE,
+        KL8_MAX_PER_PICK_ZONE,
+    )
     if len(out) < 11:
         raise ValueError(
-            f"20 码在十码段每区≤{KL8_MAX_PER_PICK_ZONE} 约束下无法凑满 11 码"
+            f"20 码在十码段每区[{KL8_MIN_PER_PICK_ZONE},{KL8_MAX_PER_PICK_ZONE}]约束下无法凑满11码"
         )
     return sorted(out)
 
@@ -1215,6 +1300,21 @@ def _kl8_eleven_zone_capped_from_twenty(twenty: list[int]) -> list[int]:
 def _kl8_eleven_random_from_twenty(twenty: list[int]) -> list[int]:
     """在给定的 20 个号码中抽 11 个（**每十码段至多 5 个**），升序；每次运行可不同。"""
     return _kl8_eleven_zone_capped_from_twenty(twenty)
+
+
+def _assert_kl8_zone_bounds(nums: list[int], label: str) -> list[int]:
+    """快乐八分区强校验：每个十码段至少 KL8_MIN_PER_PICK_ZONE 且至多 KL8_MAX_PER_PICK_ZONE。"""
+    zc = _counts_per_zone_for_balls(nums, KL8_PICK_ZONES_CAP)
+    bad = []
+    for zi, c in enumerate(zc, 1):
+        if c < KL8_MIN_PER_PICK_ZONE or c > KL8_MAX_PER_PICK_ZONE:
+            lo, hi = KL8_PICK_ZONES_CAP[zi - 1]
+            bad.append(f"zone{zi}({_fmt2(lo)}-{_fmt2(hi)}):{c}")
+    if bad:
+        raise ValueError(
+            f"{label} 分区校验失败：要求每小区[{KL8_MIN_PER_PICK_ZONE},{KL8_MAX_PER_PICK_ZONE}]，实际 {', '.join(bad)}；全量计数={zc}"
+        )
+    return zc
 
 
 def build_kl8_analysis(df: pd.DataFrame, analysis_window: int = DEFAULT_STATS_WINDOW) -> str:
@@ -1366,8 +1466,10 @@ def prediction_block_kl8(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW) -
     low5 = topk(fq, 5, high=False)
     top_miss = sorted([(i, int(fcur[i])) for i in range(1, 81)], key=lambda t: -t[1])[:5]
     twenty = _kl8_twenty_from_patterns(fq, fcur, draws)
+    twenty_zone_counts = _assert_kl8_zone_bounds(twenty, "参考开奖20码")
     twenty_fmt = ",".join(_fmt2(x) for x in twenty)
     eleven = _kl8_eleven_random_from_twenty(twenty)
+    eleven_zone_counts = _assert_kl8_zone_bounds(eleven, "选十参考11码")
     eleven_fmt = ",".join(_fmt2(x) for x in eleven)
 
     hot_line = "；".join([f"`{a}`（**{b}** 次）" for a, b in hot5])
@@ -1406,7 +1508,7 @@ def prediction_block_kl8(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW) -
   - **出现次数（频次）**：在上述 **{n}** 期窗口内，该号码出现在每期 `n01`–`n20` 中的总次数（每期最多计 1 次）。  
   - **当前遗漏（期）**：自该号码**最近一次**出现之后，至**最后一期 `{last_pid}`** 为止所经过的期数；若最后一期开出该号，则遗漏为 **0**。  
 - **数据来源**：`data/processed/kl8_draws.csv`；溯源见 `manifest.json` 中 `kl8` 条目。  
-- **「规律线」参考 20 码（脚本）**：对 01–80 各号计算 **7** 项原始分（全窗口频次、当前遗漏、近 **{PATTERN_RECENT_K}** 期出现密度、与窗口内「每期 20 码奇数个数均值」的奇偶对齐、**01–40 / 41–80** 半区占比对齐、**20 码和值**相对中位带的条件对齐、**四区** 01–20 / 21–40 / 41–60 / 61–80 区段热度）；**每项先 min-max 归一到 [0,1]**，再按权重 **{wline}** 合成，分高者优先（**同分随机**）；取号时按 **8 个十码段（01–10,…,71–80）每段至多 {KL8_MAX_PER_PICK_ZONE} 个** 贪心取满 **20** 个互异号码后升序展示。**不是**从「最后一期已开出的 20 个号」里抽样，也**不是**单纯频次 Top20；仍属历史统计投影，**非**科学预测。
+- **「规律线」参考 20 码（脚本）**：对 01–80 各号计算 **7** 项原始分（全窗口频次、当前遗漏、近 **{PATTERN_RECENT_K}** 期出现密度、与窗口内「每期 20 码奇数个数均值」的奇偶对齐、**01–40 / 41–80** 半区占比对齐、**20 码和值**相对中位带的条件对齐、**四区** 01–20 / 21–40 / 41–60 / 61–80 区段热度）；**每项先 min-max 归一到 [0,1]**，再按权重 **{wline}** 合成，分高者优先（**同分随机**）；取号时按 **8 个十码段（01–10,…,71–80）每段至少 {KL8_MIN_PER_PICK_ZONE} 个且至多 {KL8_MAX_PER_PICK_ZONE} 个** 贪心取满 **20** 个互异号码后升序展示。**不是**从「最后一期已开出的 20 个号」里抽样，也**不是**单纯频次 Top20；仍属历史统计投影，**非**科学预测。
 
 ---
 
@@ -1428,17 +1530,19 @@ def prediction_block_kl8(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW) -
 
 ## 参考开奖 20 码（规律线 → 模拟一期 20 个开奖号）
 
-> 基于**当前 {n} 期窗口**的统计规律（**非**从最后一期已开 20 码中随机）：对每号 **7** 项因子 min-max 归一后按权重 **{wline}** 合成综合分，在 **8 个十码段每段至多 {KL8_MAX_PER_PICK_ZONE} 个** 约束下贪心取满 **20** 个互异号码（**同分随机**，每次运行可不同），升序排列，作为「下一期可参考的一注 20 码开奖形态」的**机械候选**；**非**官方开奖预告、**非**必中依据。
+> 基于**当前 {n} 期窗口**的统计规律（**非**从最后一期已开 20 码中随机）：对每号 **7** 项因子 min-max 归一后按权重 **{wline}** 合成综合分，在 **8 个十码段每段至少 {KL8_MIN_PER_PICK_ZONE} 个且至多 {KL8_MAX_PER_PICK_ZONE} 个** 约束下贪心取满 **20** 个互异号码（**同分随机**，每次运行可不同），升序排列，作为「下一期可参考的一注 20 码开奖形态」的**机械候选**；**非**官方开奖预告、**非**必中依据。
 
 - **参考开奖 20 码（升序）**：**{twenty_fmt}**
+- **分区计数校验（01-10..71-80）**：`{twenty_zone_counts}`（每区至少 {KL8_MIN_PER_PICK_ZONE}、至多 {KL8_MAX_PER_PICK_ZONE}）
 
 ---
 
 ## 明确号码输出（强制，选十视角统计参考）
 
-> 在上一节由**规律线综合分**得到的 **20 个参考开奖号码**中，**无放回随机抽取 11 个**，且满足 **8 个十码段每段至多 {KL8_MAX_PER_PICK_ZONE} 个**（与 20 码同一分段），升序排列，供选十 **11 码复式**或裁剪为 10 码参考。**每次重新运行**生成脚本，**11 码可能与上次不同**（**20 码**在相同数据与常量下不变，但同分边界仍受随机影响时可变）；仍属娱乐向统计参考，**非**必中依据。
+> 在上一节由**规律线综合分**得到的 **20 个参考开奖号码**中，**无放回随机抽取 11 个**，且满足 **8 个十码段每段至少 {KL8_MIN_PER_PICK_ZONE} 个且至多 {KL8_MAX_PER_PICK_ZONE} 个**（与 20 码同一分段），升序排列，供选十 **11 码复式**或裁剪为 10 码参考。**每次重新运行**生成脚本，**11 码可能与上次不同**（**20 码**在相同数据与常量下不变，但同分边界仍受随机影响时可变）；仍属娱乐向统计参考，**非**必中依据。
 
 - **选十参考 11 码（升序）**：**{eleven_fmt}**
+- **分区计数校验（01-10..71-80）**：`{eleven_zone_counts}`（每区至少 {KL8_MIN_PER_PICK_ZONE}、至多 {KL8_MAX_PER_PICK_ZONE}）
 
 ## 使用说明
 
