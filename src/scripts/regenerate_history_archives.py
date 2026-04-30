@@ -25,6 +25,8 @@ REPO = Path(__file__).resolve().parents[2]
 PROC = REPO / "data" / "processed"
 HIST = REPO / "history"
 MANIFEST = PROC / "manifest.json"
+DEFAULT_RANDOM_SEED = 20260430
+_ACTIVE_RANDOM_SEED = DEFAULT_RANDOM_SEED
 
 # 大乐透 / 双色球 / 快乐八：一键重算与书面归档的**默认统计窗口**（期末尾连续 N 期）。
 # 用户或 Agent 若需其他 N，应手写归档或改此常量后重跑脚本。
@@ -33,14 +35,15 @@ DEFAULT_STATS_WINDOW = 30
 # 多因子「规律线」：各因子先 **min-max 归一到 [0,1]**，再按独立权重加权合成综合分（大乐透前/后区、双色球红/蓝、快乐八 01–80 同构）。
 PATTERN_RECENT_K = 5  # 近 K 期密度因子所用期数（不超过当前窗口长度）
 KL8_PATTERN_RECENT_K = PATTERN_RECENT_K  # 兼容旧名
-# 7 项因子独立权重（合计 1.0）
-PATTERN_W_MISS    = 0.25  # 当前遗漏：遗漏越久分越高，提供覆盖多样性
-PATTERN_W_FREQ    = 0.18  # 窗口频次：全窗口出现次数，基础冷热指标
-PATTERN_W_ZONE    = 0.17  # 区间热度：区段落球密度
-PATTERN_W_RECENCY = 0.15  # 近 K 期密度：近期走势比远期更有参考价值
-PATTERN_W_PARITY  = 0.10  # 奇偶对齐：防止全奇/全偶
-PATTERN_W_SIZE    = 0.10  # 大小/半区对齐：防止号码全部扎堆在半区
-PATTERN_W_SUM     = 0.05  # 和值带对齐：和值是号码选择的结果而非原因，仅微调
+# 8 项因子独立权重（合计 1.0，含马尔可夫链因子）
+PATTERN_W_MISS    = 0.22  # 当前遗漏：遗漏越久分越高，提供覆盖多样性
+PATTERN_W_FREQ    = 0.16  # 窗口频次：全窗口出现次数，基础冷热指标
+PATTERN_W_ZONE    = 0.15  # 区间热度：区段落球密度
+PATTERN_W_RECENCY = 0.13  # 近 K 期密度：近期走势比远期更有参考价值
+PATTERN_W_PARITY  = 0.09  # 奇偶对齐：防止全奇/全偶
+PATTERN_W_SIZE    = 0.09  # 大小/半区对齐：防止号码全部扎堆在半区
+PATTERN_W_SUM     = 0.04  # 和值带对齐：和值是号码选择的结果而非原因，仅微调
+PATTERN_W_MARKOV  = 0.12  # 马尔可夫：基于全历史转移矩阵+最新一期状态的下一期出现概率
 
 # 快乐八取 20/11：**8 个十码段**，每段至少 **KL8_MIN_PER_PICK_ZONE** 且至多 **KL8_MAX_PER_PICK_ZONE**。
 # 在默认参数下（min=1, max=5），20 码与 11 码都能满足每段覆盖。
@@ -148,6 +151,16 @@ def now_cn_iso() -> str:
     return (datetime.now(timezone(timedelta(hours=8)))).replace(microsecond=0).isoformat()
 
 
+def _set_random_seed(seed: int | None) -> int:
+    """设置随机种子，保证预测可复现。"""
+    global _ACTIVE_RANDOM_SEED
+    s = DEFAULT_RANDOM_SEED if seed is None else int(seed)
+    random.seed(s)
+    np.random.seed(s % (2**32 - 1))
+    _ACTIVE_RANDOM_SEED = s
+    return s
+
+
 def ac_value(nums: list[int]) -> int:
     nums = sorted(nums)
     n = len(nums)
@@ -229,9 +242,10 @@ def _weighted_composite(
     parity_raw: np.ndarray,
     size_raw: np.ndarray,
     sum_raw: np.ndarray,
+    markov_raw: np.ndarray,
     n_ball: int,
 ) -> np.ndarray:
-    """7 项因子独立权重加权合成综合分（每项先 min-max 归一到 [0,1]）。"""
+    """8 项因子独立权重加权合成综合分（每项先 min-max 归一到 [0,1]）。"""
     nm = _minmax01_ball(miss_raw, n_ball)
     nf = _minmax01_ball(freq_raw, n_ball)
     nz = _minmax01_ball(zone_raw, n_ball)
@@ -239,6 +253,7 @@ def _weighted_composite(
     np_ = _minmax01_ball(parity_raw, n_ball)
     ns = _minmax01_ball(size_raw, n_ball)
     nsum = _minmax01_ball(sum_raw, n_ball)
+    nmk = _minmax01_ball(markov_raw, n_ball)
     out = np.zeros(n_ball + 1, dtype=float)
     for i in range(1, n_ball + 1):
         out[i] = (
@@ -249,6 +264,7 @@ def _weighted_composite(
             + PATTERN_W_PARITY  * np_[i]
             + PATTERN_W_SIZE    * ns[i]
             + PATTERN_W_SUM     * nsum[i]
+            + PATTERN_W_MARKOV  * nmk[i]
         )
     return out
 
@@ -258,8 +274,52 @@ def _pattern_weight_md_line() -> str:
     return (
         f"{PATTERN_W_MISS:.0%}×当前遗漏 + {PATTERN_W_FREQ:.0%}×频次 + {PATTERN_W_ZONE:.0%}×区间热度 + "
         f"{PATTERN_W_RECENCY:.0%}×近{PATTERN_RECENT_K}期密度 + {PATTERN_W_PARITY:.0%}×奇偶对齐 + "
-        f"{PATTERN_W_SIZE:.0%}×大小/半区对齐 + {PATTERN_W_SUM:.0%}×和值带对齐"
+        f"{PATTERN_W_SIZE:.0%}×大小/半区对齐 + {PATTERN_W_SUM:.0%}×和值带对齐 + "
+        f"{PATTERN_W_MARKOV:.0%}×马尔可夫转移"
     )
+
+
+def _markov_next_probabilities(
+    draws: list[list[int]],
+    n_ball: int,
+    *,
+    laplace_alpha: float = 1.0,
+) -> np.ndarray:
+    """用全历史二状态马尔可夫链计算下一期各号出现概率（按最新一期状态取条件概率）。
+
+    状态定义：每个号码在每期是否出现（0/1）。
+    转移矩阵：P(X_t=next | X_{t-1}=prev)，按全历史相邻期统计并做拉普拉斯平滑。
+    返回：索引 1..n_ball 的概率向量，默认不足样本时返回 0.5。
+    """
+    out = np.full(n_ball + 1, 0.5, dtype=float)
+    if not draws:
+        return out
+
+    pres = np.zeros((len(draws), n_ball + 1), dtype=np.int8)
+    for t, d in enumerate(draws):
+        for x in d:
+            xi = int(x)
+            if 1 <= xi <= n_ball:
+                pres[t, xi] = 1
+
+    if len(draws) < 2:
+        return out
+
+    trans = np.zeros((n_ball + 1, 2, 2), dtype=np.float64)
+    for t in range(1, len(draws)):
+        prev_row = pres[t - 1]
+        cur_row = pres[t]
+        for i in range(1, n_ball + 1):
+            trans[i, int(prev_row[i]), int(cur_row[i])] += 1.0
+
+    latest = pres[-1]
+    a = float(laplace_alpha)
+    for i in range(1, n_ball + 1):
+        s = int(latest[i])
+        c0 = trans[i, s, 0]
+        c1 = trans[i, s, 1]
+        out[i] = (c1 + a) / (c0 + c1 + 2.0 * a)
+    return out
 
 
 def _pick_top_scored_pairs_random_tie(
@@ -473,7 +533,12 @@ def _kl8_half_alignment_raw(draws: list[list[int]], n_ball: int) -> np.ndarray:
     return out
 
 
-def _kl8_twenty_scores(freq: np.ndarray, cur_miss: np.ndarray, draws: list[list[int]]) -> np.ndarray:
+def _kl8_twenty_scores(
+    freq: np.ndarray,
+    cur_miss: np.ndarray,
+    draws: list[list[int]],
+    markov_raw: np.ndarray,
+) -> np.ndarray:
     """快乐八 01–80 多因子加权综合分（越大越优先）。"""
     n_ball = 80
     f_miss = np.array([float(cur_miss[i]) for i in range(n_ball + 1)], dtype=float)
@@ -486,10 +551,15 @@ def _kl8_twenty_scores(freq: np.ndarray, cur_miss: np.ndarray, draws: list[list[
     f_sum = _sum_alignment_scores(draws, n_ball)
     zones = [(1, 20), (21, 40), (41, 60), (61, 80)]
     f_zone = _zone_density_raw(draws, n_ball, zones)
-    return _weighted_composite(f_miss, f_freq, f_zone, f_rec, f_odd, f_half, f_sum, n_ball)
+    return _weighted_composite(f_miss, f_freq, f_zone, f_rec, f_odd, f_half, f_sum, markov_raw, n_ball)
 
 
-def _dlt_front_scores(f_draws: list[list[int]], fq: np.ndarray, fcur: np.ndarray) -> np.ndarray:
+def _dlt_front_scores(
+    f_draws: list[list[int]],
+    fq: np.ndarray,
+    fcur: np.ndarray,
+    markov_raw: np.ndarray,
+) -> np.ndarray:
     n_ball = 35
     f_miss = np.array([float(fcur[i]) for i in range(n_ball + 1)], dtype=float)
     f_freq = np.array([float(fq[i]) for i in range(n_ball + 1)], dtype=float)
@@ -501,10 +571,15 @@ def _dlt_front_scores(f_draws: list[list[int]], fq: np.ndarray, fcur: np.ndarray
     f_big = _size_alignment_raw(n_ball, mean_big, slots, lambda i: i >= 18)
     f_sum = _sum_alignment_scores(f_draws, n_ball)
     f_zone = _zone_density_raw(f_draws, n_ball, DLT_FRONT_ZONES_CAP)
-    return _weighted_composite(f_miss, f_freq, f_zone, f_rec, f_odd, f_big, f_sum, n_ball)
+    return _weighted_composite(f_miss, f_freq, f_zone, f_rec, f_odd, f_big, f_sum, markov_raw, n_ball)
 
 
-def _dlt_back_scores(b_draws: list[list[int]], bq: np.ndarray, bcur: np.ndarray) -> np.ndarray:
+def _dlt_back_scores(
+    b_draws: list[list[int]],
+    bq: np.ndarray,
+    bcur: np.ndarray,
+    markov_raw: np.ndarray,
+) -> np.ndarray:
     n_ball = 12
     f_miss = np.array([float(bcur[i]) for i in range(n_ball + 1)], dtype=float)
     f_freq = np.array([float(bq[i]) for i in range(n_ball + 1)], dtype=float)
@@ -516,10 +591,15 @@ def _dlt_back_scores(b_draws: list[list[int]], bq: np.ndarray, bcur: np.ndarray)
     f_zone = _zone_density_raw(b_draws, n_ball, DLT_BACK_ZONES_CAP)
     mean_hi = float(np.mean([sum(1 for x in row if int(x) >= 7) for row in b_draws])) if b_draws else 1.0
     f_hi = _size_alignment_raw(n_ball, mean_hi, slots, lambda i: i >= 7)
-    return _weighted_composite(f_miss, f_freq, f_zone, f_rec, f_odd, f_hi, f_sum, n_ball)
+    return _weighted_composite(f_miss, f_freq, f_zone, f_rec, f_odd, f_hi, f_sum, markov_raw, n_ball)
 
 
-def _ssq_red_scores(r_draws: list[list[int]], rq: np.ndarray, rcur: np.ndarray) -> np.ndarray:
+def _ssq_red_scores(
+    r_draws: list[list[int]],
+    rq: np.ndarray,
+    rcur: np.ndarray,
+    markov_raw: np.ndarray,
+) -> np.ndarray:
     n_ball = 33
     f_miss = np.array([float(rcur[i]) for i in range(n_ball + 1)], dtype=float)
     f_freq = np.array([float(rq[i]) for i in range(n_ball + 1)], dtype=float)
@@ -531,10 +611,15 @@ def _ssq_red_scores(r_draws: list[list[int]], rq: np.ndarray, rcur: np.ndarray) 
     f_big = _size_alignment_raw(n_ball, mean_big, slots, lambda i: i >= 17)
     f_sum = _sum_alignment_scores(r_draws, n_ball)
     f_zone = _zone_density_raw(r_draws, n_ball, SSQ_RED_ZONES_CAP)
-    return _weighted_composite(f_miss, f_freq, f_zone, f_rec, f_odd, f_big, f_sum, n_ball)
+    return _weighted_composite(f_miss, f_freq, f_zone, f_rec, f_odd, f_big, f_sum, markov_raw, n_ball)
 
 
-def _ssq_blue_scores(blues: list[int], bq: np.ndarray, bcur: np.ndarray) -> np.ndarray:
+def _ssq_blue_scores(
+    blues: list[int],
+    bq: np.ndarray,
+    bcur: np.ndarray,
+    markov_raw: np.ndarray,
+) -> np.ndarray:
     """blues 按期序的各期蓝球号码（单号）。"""
     n_ball = 16
     b_draws = [[int(x)] for x in blues]
@@ -553,53 +638,105 @@ def _ssq_blue_scores(blues: list[int], bq: np.ndarray, bcur: np.ndarray) -> np.n
         f_med[i] = 1.0 - min(1.0, abs(float(i) - med) / max(scale, 1e-6))
     mean_hi = float(np.mean([1 if int(x) >= 9 else 0 for x in blues])) if blues else 0.5
     f_hi = _size_alignment_raw(n_ball, mean_hi, 1, lambda i: i >= 9)
-    return _weighted_composite(f_miss, f_freq, f_zone, f_rec, f_odd, f_hi, f_med, n_ball)
+    return _weighted_composite(f_miss, f_freq, f_zone, f_rec, f_odd, f_hi, f_med, markov_raw, n_ball)
 
 
-def _reason_dlt_front_line(ball: int, n_win: int, fq: np.ndarray, fcur: np.ndarray, fs: np.ndarray) -> str:
+def _reason_dlt_front_line(
+    ball: int,
+    n_win: int,
+    fq: np.ndarray,
+    fcur: np.ndarray,
+    fs: np.ndarray,
+    mk_raw: np.ndarray,
+    mk_norm: np.ndarray,
+) -> str:
     ct = int(fq[ball])
     ms = int(fcur[ball])
     sc = float(fs[ball])
     z = _zone_label_for_ball(ball, DLT_FRONT_ZONES_CAP, "前区")
+    mkp = float(mk_raw[ball])
+    mkn = float(mk_norm[ball])
+    mkc = PATTERN_W_MARKOV * mkn
     return (
         f"**`{_fmt2(ball)}`**（{z}）：近 **{n_win}** 期出现 **{ct}** 次，当前遗漏 **{ms}** 期；"
         f"加权综合分 **{sc:.3f}**（权重见**口径说明**）；"
+        f"马尔可夫 `P(下一期出现|最新状态)`≈**{mkp:.4f}**，归一值 **{mkn:.3f}**，"
+        f"权重贡献约 **{mkc:.3f}**；"
         f"本注按「每 **5** 个连续号为一小区，每小区至多 **{DLT_FRONT_MAX_PER_ZONE}** 个」由前区综合分序列贪心入选。"
     )
 
 
-def _reason_dlt_back_line(ball: int, n_win: int, bq: np.ndarray, bcur: np.ndarray, bs: np.ndarray) -> str:
+def _reason_dlt_back_line(
+    ball: int,
+    n_win: int,
+    bq: np.ndarray,
+    bcur: np.ndarray,
+    bs: np.ndarray,
+    mk_raw: np.ndarray,
+    mk_norm: np.ndarray,
+) -> str:
     ct = int(bq[ball])
     ms = int(bcur[ball])
     sc = float(bs[ball])
     z = _zone_label_for_ball(ball, DLT_BACK_ZONES_CAP, "后区")
+    mkp = float(mk_raw[ball])
+    mkn = float(mk_norm[ball])
+    mkc = PATTERN_W_MARKOV * mkn
     return (
         f"**`{_fmt2(ball)}`**（{z}）：近 **{n_win}** 期出现 **{ct}** 次，当前遗漏 **{ms}** 期；"
         f"加权综合分 **{sc:.3f}**（权重见**口径说明**）；"
+        f"马尔可夫 `P(下一期出现|最新状态)`≈**{mkp:.4f}**，归一值 **{mkn:.3f}**，"
+        f"权重贡献约 **{mkc:.3f}**；"
         f"本注按「每 **4** 个号一小区、每小区至多 **{DLT_BACK_MAX_PER_ZONE}** 个」由后区综合分贪心入选。"
     )
 
 
-def _reason_ssq_red_line(ball: int, n_win: int, rq: np.ndarray, rcur: np.ndarray, rs: np.ndarray) -> str:
+def _reason_ssq_red_line(
+    ball: int,
+    n_win: int,
+    rq: np.ndarray,
+    rcur: np.ndarray,
+    rs: np.ndarray,
+    mk_raw: np.ndarray,
+    mk_norm: np.ndarray,
+) -> str:
     ct = int(rq[ball])
     ms = int(rcur[ball])
     sc = float(rs[ball])
     z = _zone_label_for_ball(ball, SSQ_RED_ZONES_CAP, "红球")
+    mkp = float(mk_raw[ball])
+    mkn = float(mk_norm[ball])
+    mkc = PATTERN_W_MARKOV * mkn
     return (
         f"**`{_fmt2(ball)}`**（{z}）：近 **{n_win}** 期出现 **{ct}** 次，当前遗漏 **{ms}** 期；"
         f"加权综合分 **{sc:.3f}**（权重见**口径说明**）；"
+        f"马尔可夫 `P(下一期出现|最新状态)`≈**{mkp:.4f}**，归一值 **{mkn:.3f}**，"
+        f"权重贡献约 **{mkc:.3f}**；"
         f"本注按「每 **5** 个连续号为一小区，每小区至多 **{SSQ_RED_MAX_PER_ZONE}** 个」由红球综合分序列贪心入选。"
     )
 
 
-def _reason_ssq_blue_line(ball: int, n_win: int, bq: np.ndarray, bcur: np.ndarray, bs: np.ndarray) -> str:
+def _reason_ssq_blue_line(
+    ball: int,
+    n_win: int,
+    bq: np.ndarray,
+    bcur: np.ndarray,
+    bs: np.ndarray,
+    mk_raw: np.ndarray,
+    mk_norm: np.ndarray,
+) -> str:
     ct = int(bq[ball])
     ms = int(bcur[ball])
     sc = float(bs[ball])
     z = _zone_label_for_ball(ball, SSQ_BLUE_ZONES_CAP, "蓝球")
+    mkp = float(mk_raw[ball])
+    mkn = float(mk_norm[ball])
+    mkc = PATTERN_W_MARKOV * mkn
     return (
         f"**`{_fmt2(ball)}`**（{z}）：近 **{n_win}** 期出现 **{ct}** 次，当前遗漏 **{ms}** 期；"
-        f"加权综合分 **{sc:.3f}**（权重见**口径说明**）；本注为蓝球单码优选（四码段每段至多 **{SSQ_BLUE_MAX_PER_ZONE}** 个，取 1 个蓝球时自然满足）。"
+        f"加权综合分 **{sc:.3f}**（权重见**口径说明**）；"
+        f"马尔可夫 `P(下一期出现|最新状态)`≈**{mkp:.4f}**，归一值 **{mkn:.3f}**，"
+        f"权重贡献约 **{mkc:.3f}**；本注为蓝球单码优选（四码段每段至多 **{SSQ_BLUE_MAX_PER_ZONE}** 个，取 1 个蓝球时自然满足）。"
     )
 
 
@@ -745,11 +882,16 @@ def _build_dlt_five_numbers_md(
     fcur: np.ndarray,
     bq: np.ndarray,
     bcur: np.ndarray,
+    fmk_raw: np.ndarray,
+    fmk_norm: np.ndarray,
+    bmk_raw: np.ndarray,
+    bmk_norm: np.ndarray,
     n_win: int,
     pred_ts: str,
 ) -> str:
     parts: list[str] = [
         f"> **预测生成时间**：`{pred_ts}`（北京时间，ISO-8601）。\n",
+        f"> **随机种子**：`{_ACTIVE_RANDOM_SEED}`（同数据同种子可复现）。\n",
         f"> 共 **{PREDICTION_SINGLE_LINES}** 注单式，每注 **2** 元；下列「选择原因」均为窗口内统计指标说明，**非**开奖承诺。\n\n",
     ]
     for i, (f, b) in enumerate(five, 1):
@@ -759,9 +901,13 @@ def _build_dlt_five_numbers_md(
         parts.append(f"- **号码**：前区 **{ff}**；后区 **{bb}**\n\n")
         parts.append("- **各号选择原因**：\n\n")
         for x in f:
-            parts.append(f"  - {_reason_dlt_front_line(int(x), n_win, fq, fcur, fs)}\n\n")
+            parts.append(
+                f"  - {_reason_dlt_front_line(int(x), n_win, fq, fcur, fs, fmk_raw, fmk_norm)}\n\n"
+            )
         for x in b:
-            parts.append(f"  - {_reason_dlt_back_line(int(x), n_win, bq, bcur, bs)}\n\n")
+            parts.append(
+                f"  - {_reason_dlt_back_line(int(x), n_win, bq, bcur, bs, bmk_raw, bmk_norm)}\n\n"
+            )
     return "".join(parts).rstrip() + "\n"
 
 
@@ -773,11 +919,16 @@ def _build_ssq_five_numbers_md(
     rcur: np.ndarray,
     bq: np.ndarray,
     bcur: np.ndarray,
+    rmk_raw: np.ndarray,
+    rmk_norm: np.ndarray,
+    bmk_raw: np.ndarray,
+    bmk_norm: np.ndarray,
     n_win: int,
     pred_ts: str,
 ) -> str:
     parts: list[str] = [
         f"> **预测生成时间**：`{pred_ts}`（北京时间，ISO-8601）。\n",
+        f"> **随机种子**：`{_ACTIVE_RANDOM_SEED}`（同数据同种子可复现）。\n",
         f"> 共 **{PREDICTION_SINGLE_LINES}** 注单式，每注 **2** 元；下列「选择原因」均为窗口内统计指标说明，**非**开奖承诺。\n\n",
     ]
     for i, (r, bl) in enumerate(five, 1):
@@ -786,8 +937,12 @@ def _build_ssq_five_numbers_md(
         parts.append(f"- **号码**：红球 **{rs_s}**；蓝球 **`{_fmt2(bl)}`**\n\n")
         parts.append("- **各号选择原因**：\n\n")
         for x in r:
-            parts.append(f"  - {_reason_ssq_red_line(int(x), n_win, rq, rcur, rs)}\n\n")
-        parts.append(f"  - {_reason_ssq_blue_line(bl, n_win, bq, bcur, bs)}\n\n")
+            parts.append(
+                f"  - {_reason_ssq_red_line(int(x), n_win, rq, rcur, rs, rmk_raw, rmk_norm)}\n\n"
+            )
+        parts.append(
+            f"  - {_reason_ssq_blue_line(bl, n_win, bq, bcur, bs, bmk_raw, bmk_norm)}\n\n"
+        )
     return "".join(parts).rstrip() + "\n"
 
 
@@ -800,8 +955,10 @@ def dlt_explicit_from_patterns(
     bcur: np.ndarray,
 ) -> tuple[str, str]:
     """兼容：返回 **5 注方案中第 1 注** 的前区、后区 CSV 串（与正文首注一致）。"""
-    fs = _dlt_front_scores(f_draws, fq, fcur)
-    bs = _dlt_back_scores(b_draws, bq, bcur)
+    f_mk = _markov_next_probabilities(f_draws, 35)
+    b_mk = _markov_next_probabilities(b_draws, 12)
+    fs = _dlt_front_scores(f_draws, fq, fcur, f_mk)
+    bs = _dlt_back_scores(b_draws, bq, bcur, b_mk)
     f0, b0 = _dlt_collect_five_unique_tickets(fs, bs)[0]
     return ",".join(_fmt2(x) for x in f0), ",".join(_fmt2(x) for x in b0)
 
@@ -815,8 +972,10 @@ def ssq_explicit_from_patterns(
     bcur: np.ndarray,
 ) -> tuple[str, str]:
     """兼容：返回 **5 注方案中第 1 注** 的红球、蓝球（与正文首注一致）。"""
-    rs = _ssq_red_scores(r_draws, rq, rcur)
-    bs = _ssq_blue_scores(blues, bq, bcur)
+    r_mk = _markov_next_probabilities(r_draws, 33)
+    b_mk = _markov_next_probabilities([[int(x)] for x in blues], 16)
+    rs = _ssq_red_scores(r_draws, rq, rcur, r_mk)
+    bs = _ssq_blue_scores(blues, bq, bcur, b_mk)
     r0, b0 = _ssq_collect_five_unique_tickets(rs, bs)[0]
     return ",".join(_fmt2(x) for x in r0), _fmt2(b0)
 
@@ -1072,12 +1231,15 @@ def build_ssq_analysis(df: pd.DataFrame, analysis_window: int = DEFAULT_STATS_WI
 def prediction_block_dlt(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW) -> str:
     df = df.copy()
     df["period_id"] = pd.to_numeric(df["period_id"], errors="coerce")
-    tail = df.sort_values("period_id").tail(n_last)
+    full = df.sort_values("period_id").reset_index(drop=True)
+    tail = full.tail(n_last)
     pmin, pmax = int(tail["period_id"].min()), int(tail["period_id"].max())
     fronts = tail[["front_1", "front_2", "front_3", "front_4", "front_5"]].astype(int).values.tolist()
     backs = tail[["back_1", "back_2"]].astype(int).values.tolist()
     f_draws = [list(map(int, r)) for r in fronts]
     b_draws = [list(map(int, r)) for r in backs]
+    f_draws_all = full[["front_1", "front_2", "front_3", "front_4", "front_5"]].astype(int).values.tolist()
+    b_draws_all = full[["back_1", "back_2"]].astype(int).values.tolist()
     fq, fcur, _ = freq_miss_from_draws(f_draws, [], 35)
     bq, bcur, _ = freq_miss_from_draws(b_draws, [], 12)
     hotf = topk(fq, 5, high=True)
@@ -1106,10 +1268,28 @@ def prediction_block_dlt(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW) -
     qsp = np.percentile(sp, [25, 50, 75])
     pred_ts = now_cn_iso()
     n_win = len(tail)
-    fs = _dlt_front_scores(f_draws, fq, fcur)
-    bs = _dlt_back_scores(b_draws, bq, bcur)
+    f_mk = _markov_next_probabilities([list(map(int, r)) for r in f_draws_all], 35)
+    b_mk = _markov_next_probabilities([list(map(int, r)) for r in b_draws_all], 12)
+    f_mk_n = _minmax01_ball(f_mk, 35)
+    b_mk_n = _minmax01_ball(b_mk, 12)
+    fs = _dlt_front_scores(f_draws, fq, fcur, f_mk)
+    bs = _dlt_back_scores(b_draws, bq, bcur, b_mk)
     five = _dlt_collect_five_unique_tickets(fs, bs)
-    numbers_md = _build_dlt_five_numbers_md(five, fs, bs, fq, fcur, bq, bcur, n_win, pred_ts)
+    numbers_md = _build_dlt_five_numbers_md(
+        five,
+        fs,
+        bs,
+        fq,
+        fcur,
+        bq,
+        bcur,
+        f_mk,
+        f_mk_n,
+        b_mk,
+        b_mk_n,
+        n_win,
+        pred_ts,
+    )
 
     return f"""# 大乐透 — 统计型预测参考归档
 
@@ -1126,7 +1306,7 @@ def prediction_block_dlt(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW) -
 - 彩种：大乐透  
 - 窗口：近 **{n_win}** 期（至多 **{n_last}** 期）  
 - 指标：热/冷号 = 窗口内出现次数；前区奇偶比、大小比（18–35 为大）；前区 5 码和值与跨度  
-- **{PREDICTION_SINGLE_LINES} 注单式（机械）**：每注前区 5 + 后区 2；各号多因子原始分 **min-max 归一** 后按权重合成综合分，再按下述小区上限贪心取号（**同分随机**）。**前区**：**7** 段、每段连续 **5** 个号（**01–05 / 06–10 / 11–15 / 16–20 / 21–25 / 26–30 / 31–35**），每段至多 **{DLT_FRONT_MAX_PER_ZONE}** 个；**后区**：**3** 段、每段连续 **4** 个号（**01–04 / 05–08 / 09–12**），每段至多 **{DLT_BACK_MAX_PER_ZONE}** 个。**{PREDICTION_SINGLE_LINES} 注**之间对**已出现过的号码**在下一轮综合分上施加**递减惩罚**，以拉开互异组合；仍不足则换随机种子补全互异注。**权重**：**{_pattern_weight_md_line()}**；因子还含 **近 {PATTERN_RECENT_K} 期密度、奇偶结构、大小（前≥18 / 后≥7）、和值带、区段划分**（区间热度与取号分区一致）。
+- **{PREDICTION_SINGLE_LINES} 注单式（机械）**：每注前区 5 + 后区 2；各号多因子原始分 **min-max 归一** 后按权重合成综合分，再按下述小区上限贪心取号（**同分随机**）。**前区**：**7** 段、每段连续 **5** 个号（**01–05 / 06–10 / 11–15 / 16–20 / 21–25 / 26–30 / 31–35**），每段至多 **{DLT_FRONT_MAX_PER_ZONE}** 个；**后区**：**3** 段、每段连续 **4** 个号（**01–04 / 05–08 / 09–12**），每段至多 **{DLT_BACK_MAX_PER_ZONE}** 个。**{PREDICTION_SINGLE_LINES} 注**之间对**已出现过的号码**在下一轮综合分上施加**递减惩罚**，以拉开互异组合；仍不足则换随机种子补全互异注。**权重**：**{_pattern_weight_md_line()}**；因子含 **近 {PATTERN_RECENT_K} 期密度、奇偶结构、大小（前≥18 / 后≥7）、和值带、区段划分**（区间热度与取号分区一致），并新增 **马尔可夫链转移因子**：基于**全历史**（非仅窗口）按相邻期重算二状态转移矩阵，取**最新一期状态**对应的下一期出现条件概率。
 
 ## 结果摘要
 
@@ -1153,12 +1333,15 @@ def prediction_block_dlt(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW) -
 def prediction_block_ssq(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW) -> str:
     df = df.copy()
     df["period_id"] = pd.to_numeric(df["period_id"], errors="coerce")
-    tail = df.sort_values("period_id").tail(n_last)
+    full = df.sort_values("period_id").reset_index(drop=True)
+    tail = full.tail(n_last)
     pmin, pmax = int(tail["period_id"].min()), int(tail["period_id"].max())
     reds = tail[[f"red_{i}" for i in range(1, 7)]].astype(int).values.tolist()
     blues = tail["blue"].astype(int).tolist()
     r_draws = [list(map(int, r)) for r in reds]
     blues_list = [int(b) for b in blues]
+    reds_all = full[[f"red_{i}" for i in range(1, 7)]].astype(int).values.tolist()
+    blues_all = full["blue"].astype(int).tolist()
     rq, rcur, _ = freq_miss_from_draws(r_draws, [], 33)
     bq, bcur, _ = freq_miss_from_draws([[b] for b in blues_list], [], 16)
     hotr = topk(rq, 5, high=True)
@@ -1186,10 +1369,28 @@ def prediction_block_ssq(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW) -
     qsp = np.percentile(sp, [25, 50, 75])
     pred_ts = now_cn_iso()
     n_win = len(tail)
-    rs = _ssq_red_scores(r_draws, rq, rcur)
-    bs_sc = _ssq_blue_scores(blues_list, bq, bcur)
+    r_mk = _markov_next_probabilities([list(map(int, r)) for r in reds_all], 33)
+    b_mk = _markov_next_probabilities([[int(x)] for x in blues_all], 16)
+    r_mk_n = _minmax01_ball(r_mk, 33)
+    b_mk_n = _minmax01_ball(b_mk, 16)
+    rs = _ssq_red_scores(r_draws, rq, rcur, r_mk)
+    bs_sc = _ssq_blue_scores(blues_list, bq, bcur, b_mk)
     five = _ssq_collect_five_unique_tickets(rs, bs_sc)
-    numbers_md = _build_ssq_five_numbers_md(five, rs, bs_sc, rq, rcur, bq, bcur, n_win, pred_ts)
+    numbers_md = _build_ssq_five_numbers_md(
+        five,
+        rs,
+        bs_sc,
+        rq,
+        rcur,
+        bq,
+        bcur,
+        r_mk,
+        r_mk_n,
+        b_mk,
+        b_mk_n,
+        n_win,
+        pred_ts,
+    )
 
     return f"""# 双色球 — 统计型预测参考归档
 
@@ -1206,7 +1407,7 @@ def prediction_block_ssq(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW) -
 - 彩种：双色球  
 - 窗口：近 **{n_win}** 期（至多 **{n_last}** 期）  
 - 指标：红球热/冷、蓝球热/冷；红球奇偶比；大小比（17–33 为大）；红球和值与跨度  
-- **{PREDICTION_SINGLE_LINES} 注单式（机械）**：每注红球 6 + 蓝球 1；多因子 **min-max 归一** 后加权合成，再按下述小区上限贪心取号（**同分随机**）。**红球**：**7** 段、每段连续 **5** 个号（末段 **31–33** 仅 3 个号：**01–05 / 06–10 / 11–15 / 16–20 / 21–25 / 26–30 / 31–33**），每段至多 **{SSQ_RED_MAX_PER_ZONE}** 个；**蓝球**：**4** 段、每段连续 **4** 个号（**01–04 / 05–08 / 09–12 / 13–16**），每段至多 **{SSQ_BLUE_MAX_PER_ZONE}** 个（单码取蓝时自然满足）。**{PREDICTION_SINGLE_LINES} 注**间对**已出现过的号码**在下一轮综合分上施加**递减惩罚**以拉开互异组合；仍不足则换随机种子补全。**权重**：**{_pattern_weight_md_line()}**；红球另有 **近 {PATTERN_RECENT_K} 期密度、奇偶/大小（≥17）、和值带、五码段划分**；蓝球另有 **近 {PATTERN_RECENT_K} 期密度、奇偶、中位蓝贴近、大号占比（≥9）**。
+- **{PREDICTION_SINGLE_LINES} 注单式（机械）**：每注红球 6 + 蓝球 1；多因子 **min-max 归一** 后加权合成，再按下述小区上限贪心取号（**同分随机**）。**红球**：**7** 段、每段连续 **5** 个号（末段 **31–33** 仅 3 个号：**01–05 / 06–10 / 11–15 / 16–20 / 21–25 / 26–30 / 31–33**），每段至多 **{SSQ_RED_MAX_PER_ZONE}** 个；**蓝球**：**4** 段、每段连续 **4** 个号（**01–04 / 05–08 / 09–12 / 13–16**），每段至多 **{SSQ_BLUE_MAX_PER_ZONE}** 个（单码取蓝时自然满足）。**{PREDICTION_SINGLE_LINES} 注**间对**已出现过的号码**在下一轮综合分上施加**递减惩罚**以拉开互异组合；仍不足则换随机种子补全。**权重**：**{_pattern_weight_md_line()}**；红球另有 **近 {PATTERN_RECENT_K} 期密度、奇偶/大小（≥17）、和值带、五码段划分**；蓝球另有 **近 {PATTERN_RECENT_K} 期密度、奇偶、中位蓝贴近、大号占比（≥9）**，并新增 **马尔可夫链转移因子**：每次预测都基于**全历史**重算转移矩阵，按**最新一期状态**取下一期条件概率入权重。
 
 ## 结果摘要
 
@@ -1252,9 +1453,14 @@ def _kl8_recency_counts(draws: list[list[int]], k: int) -> np.ndarray:
     return _recency_counts(draws, k, 80)
 
 
-def _kl8_twenty_from_patterns(freq: np.ndarray, cur_miss: np.ndarray, draws: list[list[int]]) -> list[int]:
+def _kl8_twenty_from_patterns(
+    freq: np.ndarray,
+    cur_miss: np.ndarray,
+    draws: list[list[int]],
+    markov_raw: np.ndarray,
+) -> list[int]:
     """多因子加权综合分取前 20 个互异号码；同分随机；每十码段 **至少1个且至多5个**。"""
-    scores = _kl8_twenty_scores(freq, cur_miss, draws)
+    scores = _kl8_twenty_scores(freq, cur_miss, draws, markov_raw)
     ranked = _pick_top_indices_zone_bounded(
         scores,
         1,
@@ -1465,12 +1671,26 @@ def prediction_block_kl8(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW) -
     hot5 = topk(fq, 5, high=True)
     low5 = topk(fq, 5, high=False)
     top_miss = sorted([(i, int(fcur[i])) for i in range(1, 81)], key=lambda t: -t[1])[:5]
-    twenty = _kl8_twenty_from_patterns(fq, fcur, draws)
+    markov_raw = _markov_next_probabilities(draws_all, 80)
+    markov_norm = _minmax01_ball(markov_raw, 80)
+    twenty = _kl8_twenty_from_patterns(fq, fcur, draws, markov_raw)
     twenty_zone_counts = _assert_kl8_zone_bounds(twenty, "参考开奖20码")
     twenty_fmt = ",".join(_fmt2(x) for x in twenty)
     eleven = _kl8_eleven_random_from_twenty(twenty)
     eleven_zone_counts = _assert_kl8_zone_bounds(eleven, "选十参考11码")
     eleven_fmt = ",".join(_fmt2(x) for x in eleven)
+    twenty_markov_detail = "；".join(
+        [
+            f"{_fmt2(x)}:P={float(markov_raw[x]):.4f},N={float(markov_norm[x]):.3f},C≈{PATTERN_W_MARKOV * float(markov_norm[x]):.3f}"
+            for x in twenty
+        ]
+    )
+    eleven_markov_detail = "；".join(
+        [
+            f"{_fmt2(x)}:P={float(markov_raw[x]):.4f},N={float(markov_norm[x]):.3f},C≈{PATTERN_W_MARKOV * float(markov_norm[x]):.3f}"
+            for x in eleven
+        ]
+    )
 
     hot_line = "；".join([f"`{a}`（**{b}** 次）" for a, b in hot5])
     low_line = "；".join([f"`{a}`（**{b}** 次）" for a, b in low5])
@@ -1481,6 +1701,7 @@ def prediction_block_kl8(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW) -
 
 > **最后更新**：{now_cn_iso()}  
 > **统计窗口（默认）**：近 **{n}** 期，期号 **`{pid_min}`–`{pid_max}`**（期末尾连续段，至多 **{n_last}** 期）。  
+> **随机种子**：`{_ACTIVE_RANDOM_SEED}`（同数据同种子可复现）。  
 > **全表收录**：`kl8_draws.csv` 共 **{full_n}** 行，期号 **`{pid_full_min}`–`{pid_full_max}`**（见 `data/processed/manifest.json` 中 `lottery_type` 为 `kl8` 的条目）  
 > **所用数据路径**：`data/processed/kl8_draws.csv`  
 > **manifest 路径**：`data/processed/manifest.json`（`outputs` 中 `lottery_type: "kl8"`；第三方批次等以 manifest 为准，建议与福彩官方公告抽样核对）  
@@ -1508,7 +1729,7 @@ def prediction_block_kl8(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW) -
   - **出现次数（频次）**：在上述 **{n}** 期窗口内，该号码出现在每期 `n01`–`n20` 中的总次数（每期最多计 1 次）。  
   - **当前遗漏（期）**：自该号码**最近一次**出现之后，至**最后一期 `{last_pid}`** 为止所经过的期数；若最后一期开出该号，则遗漏为 **0**。  
 - **数据来源**：`data/processed/kl8_draws.csv`；溯源见 `manifest.json` 中 `kl8` 条目。  
-- **「规律线」参考 20 码（脚本）**：对 01–80 各号计算 **7** 项原始分（全窗口频次、当前遗漏、近 **{PATTERN_RECENT_K}** 期出现密度、与窗口内「每期 20 码奇数个数均值」的奇偶对齐、**01–40 / 41–80** 半区占比对齐、**20 码和值**相对中位带的条件对齐、**四区** 01–20 / 21–40 / 41–60 / 61–80 区段热度）；**每项先 min-max 归一到 [0,1]**，再按权重 **{wline}** 合成，分高者优先（**同分随机**）；取号时按 **8 个十码段（01–10,…,71–80）每段至少 {KL8_MIN_PER_PICK_ZONE} 个且至多 {KL8_MAX_PER_PICK_ZONE} 个** 贪心取满 **20** 个互异号码后升序展示。**不是**从「最后一期已开出的 20 个号」里抽样，也**不是**单纯频次 Top20；仍属历史统计投影，**非**科学预测。
+- **「规律线」参考 20 码（脚本）**：对 01–80 各号计算 **8** 项原始分（全窗口频次、当前遗漏、近 **{PATTERN_RECENT_K}** 期出现密度、与窗口内「每期 20 码奇数个数均值」的奇偶对齐、**01–40 / 41–80** 半区占比对齐、**20 码和值**相对中位带的条件对齐、**四区** 01–20 / 21–40 / 41–60 / 61–80 区段热度、**马尔可夫链转移概率**）；其中马尔可夫项按**全历史开奖**每次重算转移矩阵，并基于**最新一期状态**计算下一期出现条件概率。**每项先 min-max 归一到 [0,1]**，再按权重 **{wline}** 合成，分高者优先（**同分随机**）；取号时按 **8 个十码段（01–10,…,71–80）每段至少 {KL8_MIN_PER_PICK_ZONE} 个且至多 {KL8_MAX_PER_PICK_ZONE} 个** 贪心取满 **20** 个互异号码后升序展示。**不是**从「最后一期已开出的 20 个号」里抽样，也**不是**单纯频次 Top20；仍属历史统计投影，**非**科学预测。
 
 ---
 
@@ -1530,10 +1751,11 @@ def prediction_block_kl8(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW) -
 
 ## 参考开奖 20 码（规律线 → 模拟一期 20 个开奖号）
 
-> 基于**当前 {n} 期窗口**的统计规律（**非**从最后一期已开 20 码中随机）：对每号 **7** 项因子 min-max 归一后按权重 **{wline}** 合成综合分，在 **8 个十码段每段至少 {KL8_MIN_PER_PICK_ZONE} 个且至多 {KL8_MAX_PER_PICK_ZONE} 个** 约束下贪心取满 **20** 个互异号码（**同分随机**，每次运行可不同），升序排列，作为「下一期可参考的一注 20 码开奖形态」的**机械候选**；**非**官方开奖预告、**非**必中依据。
+> 基于**当前 {n} 期窗口**的统计规律（**非**从最后一期已开 20 码中随机）：对每号 **8** 项因子 min-max 归一后按权重 **{wline}** 合成综合分，在 **8 个十码段每段至少 {KL8_MIN_PER_PICK_ZONE} 个且至多 {KL8_MAX_PER_PICK_ZONE} 个** 约束下贪心取满 **20** 个互异号码（**同分随机**，每次运行可不同），升序排列，作为「下一期可参考的一注 20 码开奖形态」的**机械候选**；**非**官方开奖预告、**非**必中依据。
 
 - **参考开奖 20 码（升序）**：**{twenty_fmt}**
 - **分区计数校验（01-10..71-80）**：`{twenty_zone_counts}`（每区至少 {KL8_MIN_PER_PICK_ZONE}、至多 {KL8_MAX_PER_PICK_ZONE}）
+- **马尔可夫因子明细（P=原始概率, N=归一值, C=权重贡献）**：{twenty_markov_detail}
 
 ---
 
@@ -1543,6 +1765,7 @@ def prediction_block_kl8(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW) -
 
 - **选十参考 11 码（升序）**：**{eleven_fmt}**
 - **分区计数校验（01-10..71-80）**：`{eleven_zone_counts}`（每区至少 {KL8_MIN_PER_PICK_ZONE}、至多 {KL8_MAX_PER_PICK_ZONE}）
+- **马尔可夫因子明细（P=原始概率, N=归一值, C=权重贡献）**：{eleven_markov_detail}
 
 ## 使用说明
 
@@ -1567,7 +1790,7 @@ def _normalize_only(only: str) -> str:
     return o
 
 
-def main(only: str = "all") -> int:
+def main(only: str = "all", seed: int | None = DEFAULT_RANDOM_SEED) -> int:
     """按 `only` 刷新 `history/` 下书面归档（默认近 30 期见 `DEFAULT_STATS_WINDOW`）。
 
     only:
@@ -1576,6 +1799,7 @@ def main(only: str = "all") -> int:
       - ``kl8``：仅 ``kuaileba_analysis.md`` + ``kuaileba_prediction.md``。
     """
     only_n = _normalize_only(only)
+    used_seed = _set_random_seed(seed)
     if only_n not in ("all", "kl8", "dlt_ssq"):
         print(
             json.dumps(
@@ -1635,24 +1859,34 @@ def main(only: str = "all") -> int:
         )
         return 1
 
-    print(json.dumps({"ok": True, "only": only_n, "wrote": wrote}, ensure_ascii=True))
+    print(
+        json.dumps(
+            {"ok": True, "only": only_n, "seed": used_seed, "wrote": wrote},
+            ensure_ascii=True,
+        )
+    )
     return 0
 
 
-def _cli_only_from_argv(argv: list[str]) -> str:
-    """供 ``python src/scripts/regenerate_history_archives.py --only kl8`` 使用。"""
+def _cli_args_from_argv(argv: list[str]) -> tuple[str, int]:
+    """供直接 CLI 调用：支持 `--only` 与 `--seed`。"""
     only = "all"
+    seed = DEFAULT_RANDOM_SEED
     i = 0
     while i < len(argv):
         if argv[i] == "--only" and i + 1 < len(argv):
             only = argv[i + 1]
             i += 2
+        elif argv[i] == "--seed" and i + 1 < len(argv):
+            seed = int(argv[i + 1])
+            i += 2
         else:
             i += 1
-    return only
+    return only, seed
 
 
 if __name__ == "__main__":
     import sys
 
-    raise SystemExit(main(only=_cli_only_from_argv(sys.argv[1:])))
+    _only, _seed = _cli_args_from_argv(sys.argv[1:])
+    raise SystemExit(main(only=_only, seed=_seed))

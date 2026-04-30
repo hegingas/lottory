@@ -7,12 +7,13 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
 
-from .paths import manifest_path, processed_dir, schema_path
+from .paths import manifest_path, processed_dir, repo_root, schema_path
 
 
 def _norm_columns(df: pd.DataFrame) -> pd.DataFrame:
@@ -148,6 +149,17 @@ def _manifest_row_counts(manifest: dict) -> dict[str, Any]:
     return out
 
 
+def _extract_period_max_from_history(md_path: Path) -> int | None:
+    """从 history markdown 中提取 `期号范围` 的末期号。"""
+    if not md_path.is_file():
+        return None
+    txt = md_path.read_text(encoding="utf-8", errors="ignore")
+    m = re.search(r"期号范围.*?`(\d+)`\s*[–-]\s*`(\d+)`", txt)
+    if not m:
+        return None
+    return int(m.group(2))
+
+
 def run_validate() -> dict[str, Any]:
     proc = processed_dir()
     result: dict[str, Any] = {"ok": True, "errors": [], "manifest_check": {}, "row_counts": {}}
@@ -168,6 +180,25 @@ def run_validate() -> dict[str, Any]:
     if dlt_p.is_file():
         dlt = _load_csv(dlt_p)
         result["row_counts"]["dlt_csv"] = len(dlt)
+        dlt_pid = pd.to_numeric(dlt["period_id"], errors="coerce")
+        if dlt_pid.isna().any():
+            all_errs.append("dlt: period_id 含非数值")
+        else:
+            if not dlt_pid.is_monotonic_increasing:
+                all_errs.append("dlt: period_id 必须严格递增")
+            if dlt_pid.duplicated().any():
+                all_errs.append("dlt: period_id 出现重复（单调校验）")
+            m = result["manifest_check"].get("dlt", {})
+            pmin = m.get("period_id_min")
+            pmax = m.get("period_id_max")
+            if pmin is not None and int(pmin) != int(dlt_pid.min()):
+                all_errs.append(
+                    f"manifest dlt period_id_min={pmin} 与 CSV 最小期号 {int(dlt_pid.min())} 不一致"
+                )
+            if pmax is not None and int(pmax) != int(dlt_pid.max()):
+                all_errs.append(
+                    f"manifest dlt period_id_max={pmax} 与 CSV 最大期号 {int(dlt_pid.max())} 不一致"
+                )
         e = validate_dlt(dlt)
         all_errs.extend(e)
         ro = result["manifest_check"].get("dlt", {}).get("rows_out")
@@ -180,6 +211,25 @@ def run_validate() -> dict[str, Any]:
     if ssq_p.is_file():
         ssq = _load_csv(ssq_p)
         result["row_counts"]["ssq_csv"] = len(ssq)
+        ssq_pid = pd.to_numeric(ssq["period_id"], errors="coerce")
+        if ssq_pid.isna().any():
+            all_errs.append("ssq: period_id 含非数值")
+        else:
+            if not ssq_pid.is_monotonic_increasing:
+                all_errs.append("ssq: period_id 必须严格递增")
+            if ssq_pid.duplicated().any():
+                all_errs.append("ssq: period_id 出现重复（单调校验）")
+            m = result["manifest_check"].get("ssq", {})
+            pmin = m.get("period_id_min")
+            pmax = m.get("period_id_max")
+            if pmin is not None and int(pmin) != int(ssq_pid.min()):
+                all_errs.append(
+                    f"manifest ssq period_id_min={pmin} 与 CSV 最小期号 {int(ssq_pid.min())} 不一致"
+                )
+            if pmax is not None and int(pmax) != int(ssq_pid.max()):
+                all_errs.append(
+                    f"manifest ssq period_id_max={pmax} 与 CSV 最大期号 {int(ssq_pid.max())} 不一致"
+                )
         all_errs.extend(validate_ssq(ssq))
         ro = result["manifest_check"].get("ssq", {}).get("rows_out")
         if ro is not None and int(ro) != len(ssq):
@@ -191,12 +241,79 @@ def run_validate() -> dict[str, Any]:
     if kl8_p.is_file():
         kl8 = _load_csv(kl8_p)
         result["row_counts"]["kl8_csv"] = len(kl8)
+        kl8_pid = pd.to_numeric(kl8["period_id"], errors="coerce")
+        if kl8_pid.isna().any():
+            all_errs.append("kl8: period_id 含非数值")
+        else:
+            if not kl8_pid.is_monotonic_increasing:
+                all_errs.append("kl8: period_id 必须严格递增")
+            if kl8_pid.duplicated().any():
+                all_errs.append("kl8: period_id 出现重复（单调校验）")
+            m = result["manifest_check"].get("kl8", {})
+            pmin = m.get("period_id_min")
+            pmax = m.get("period_id_max")
+            if pmin is not None and int(pmin) != int(kl8_pid.min()):
+                all_errs.append(
+                    f"manifest kl8 period_id_min={pmin} 与 CSV 最小期号 {int(kl8_pid.min())} 不一致"
+                )
+            if pmax is not None and int(pmax) != int(kl8_pid.max()):
+                all_errs.append(
+                    f"manifest kl8 period_id_max={pmax} 与 CSV 最大期号 {int(kl8_pid.max())} 不一致"
+                )
         all_errs.extend(validate_kl8(kl8))
         ro = result["manifest_check"].get("kl8", {}).get("rows_out")
         if ro is not None and int(ro) != len(kl8):
             all_errs.append(f"manifest kl8 rows_out={ro} 与 CSV 行数 {len(kl8)} 不一致")
     else:
         result["row_counts"]["kl8_csv"] = 0
+
+    # history 同步性（可选但强烈建议）：预测归档的末期应与 CSV 最新期一致
+    hist = repo_root() / "history"
+    latest_dlt = latest_ssq = latest_kl8 = None
+    if dlt_p.is_file():
+        ddf = _load_csv(dlt_p)
+        latest_dlt = int(pd.to_numeric(ddf["period_id"], errors="coerce").max())
+    if ssq_p.is_file():
+        sdf = _load_csv(ssq_p)
+        latest_ssq = int(pd.to_numeric(sdf["period_id"], errors="coerce").max())
+    if kl8_p.is_file():
+        kdf = _load_csv(kl8_p)
+        latest_kl8 = int(pd.to_numeric(kdf["period_id"], errors="coerce").max())
+
+    dlt_pred_max = _extract_period_max_from_history(hist / "daletou_prediction.md")
+    ssq_pred_max = _extract_period_max_from_history(hist / "shuangseqiu_prediction.md")
+    kl8_pred_max = _extract_period_max_from_history(hist / "kuaileba_prediction.md")
+    dlt_ana_max = _extract_period_max_from_history(hist / "daletou_analysis.md")
+    ssq_ana_max = _extract_period_max_from_history(hist / "shuangseqiu_analysis.md")
+    kl8_ana_max = _extract_period_max_from_history(hist / "kuaileba_analysis.md")
+
+    if latest_dlt is not None:
+        if dlt_pred_max is not None and dlt_pred_max != latest_dlt:
+            all_errs.append(
+                f"history daletou_prediction 末期={dlt_pred_max} 与 dlt_draws.csv 最新期 {latest_dlt} 不一致"
+            )
+        if dlt_ana_max is not None and dlt_ana_max != latest_dlt:
+            all_errs.append(
+                f"history daletou_analysis 末期={dlt_ana_max} 与 dlt_draws.csv 最新期 {latest_dlt} 不一致"
+            )
+    if latest_ssq is not None:
+        if ssq_pred_max is not None and ssq_pred_max != latest_ssq:
+            all_errs.append(
+                f"history shuangseqiu_prediction 末期={ssq_pred_max} 与 ssq_draws.csv 最新期 {latest_ssq} 不一致"
+            )
+        if ssq_ana_max is not None and ssq_ana_max != latest_ssq:
+            all_errs.append(
+                f"history shuangseqiu_analysis 末期={ssq_ana_max} 与 ssq_draws.csv 最新期 {latest_ssq} 不一致"
+            )
+    if latest_kl8 is not None:
+        if kl8_pred_max is not None and kl8_pred_max != latest_kl8:
+            all_errs.append(
+                f"history kuaileba_prediction 末期={kl8_pred_max} 与 kl8_draws.csv 最新期 {latest_kl8} 不一致"
+            )
+        if kl8_ana_max is not None and kl8_ana_max != latest_kl8:
+            all_errs.append(
+                f"history kuaileba_analysis 末期={kl8_ana_max} 与 kl8_draws.csv 最新期 {latest_kl8} 不一致"
+            )
 
     result["errors"] = all_errs
     result["ok"] = len(all_errs) == 0
