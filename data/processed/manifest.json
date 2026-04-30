@@ -43,13 +43,13 @@
       "lottery_type": "ssq",
       "output": "data/processed/ssq_draws.csv",
       "source": "maintained_processed_csv",
-      "rows_out": 3444,
+      "rows_out": 3445,
       "rows_in": 3437,
       "excluded": [],
       "period_id_min": 2003001,
-      "period_id_max": 2026047,
+      "period_id_max": 2026048,
       "supplement": {
-        "rows_added": 8,
+        "rows_added": 9,
         "period_ids": [
           "2026040",
           "2026041",
@@ -58,9 +58,10 @@
           "2026044",
           "2026045",
           "2026046",
-          "2026047"
+          "2026047",
+          "2026048"
         ],
-        "source_note": "user_screenshot_table_2026-04-18;2026043_user_provided_numbers_2026-04-19;2026044_user_provided_numbers_2026-04-21;2026045_user_provided_numbers_2026-04-21;2026046_user_provided_numbers_2026-04-27;2026047_user_provided_numbers_2026-04-30",
+        "source_note": "user_screenshot_table_2026-04-18;2026043_user_provided_numbers_2026-04-19;2026044_user_provided_numbers_2026-04-21;2026045_user_provided_numbers_2026-04-21;2026046_user_provided_numbers_2026-04-27;2026047_user_provided_numbers_2026-04-30;2026048_user_provided_numbers_2026-04-30",
         "official_verify": "\u5efa\u8bae\u4e0e\u798f\u5f69\u5b98\u65b9\u516c\u544a\u6838\u5bf9"
       }
     },
@@ -68,9 +69,9 @@
       "lottery_type": "kl8",
       "output": "data/processed/kl8_draws.csv",
       "source": "user_screenshots_917500.cn_batch_2026-04-18",
-      "rows_out": 130,
+      "rows_out": 131,
       "period_id_min": 2025331,
-      "period_id_max": 2026109,
+      "period_id_max": 2026110,
       "generated_at": "2026-04-18T22:00:00+00:00",
       "note": "\u7b2c\u4e09\u65b9\u9875\u9762\u622a\u56fe\u5f55\u5165\uff0c\u5efa\u8bae\u4e0e\u798f\u5f69\u5b98\u65b9\u516c\u544a\u62bd\u6837\u6838\u5bf9",
       "supplement": {
@@ -87,9 +88,10 @@
             "2026106",
             "2026107",
             "2026108",
-            "2026109"
+            "2026109",
+            "2026110"
           ],
-          "source_note": "user_provided_numbers_2026-04-18;2026099_user_provided_numbers_2026-04-19;2026100_user_provided_numbers_2026-04-21;2026101_user_provided_numbers_2026-04-21;2026102_user_provided_numbers_2026-04-21;2026103_user_provided_numbers_2026-04-21;2026104_user_provided_numbers_2026-04-24;2026105_user_provided_numbers_2026-04-25;2026106_user_provided_numbers_2026-04-27;2026107_user_provided_numbers_2026-04-27;2026108_user_provided_numbers_2026-04-30;2026109_user_provided_numbers_2026-04-30",
+          "source_note": "user_provided_numbers_2026-04-18;2026099_user_provided_numbers_2026-04-19;2026100_user_provided_numbers_2026-04-21;2026101_user_provided_numbers_2026-04-21;2026102_user_provided_numbers_2026-04-21;2026103_user_provided_numbers_2026-04-21;2026104_user_provided_numbers_2026-04-24;2026105_user_provided_numbers_2026-04-25;2026106_user_provided_numbers_2026-04-27;2026107_user_provided_numbers_2026-04-27;2026108_user_provided_numbers_2026-04-30;2026109_user_provided_numbers_2026-04-30;2026110_user_provided_numbers_2026-04-30",
           "official_verify": "\u5efa\u8bae\u4e0e\u798f\u5f69\u5b98\u65b9\u516c\u544a\u6838\u5bf9"
         }
       }

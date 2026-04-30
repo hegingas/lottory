@@ -7,68 +7,44 @@
   python src/scripts/lottery.py validate
   python src/scripts/lottery.py regenerate-history [--only all|kl8|dlt-ssq]
 
-**唯一推荐的刷新路径**：`regenerate-history`，用 ``--only`` 按用户/任务要刷的彩种选择范围（见子命令 help）。
-
-- ``--only all``（默认）：大乐透+双色球四个 md；若存在 ``kl8_draws.csv`` 再写快乐八分析与预测两个 md。
-- ``--only kl8``：仅 ``kuaileba_analysis.md`` + ``kuaileba_prediction.md``。
-- ``--only dlt-ssq``：仅大乐透+双色球四个 md（不写快乐八）。
-
-``regenerate-kl8-prediction`` 为兼容别名，等同 ``regenerate-history --only kl8``。
-
-Agent 协作：改 CSV / manifest 后应先 ``validate``；通过后再 ``regenerate-history``。
-注意：被选中写入的 md 会**整文件覆盖**；预测中的 combo 附录须在命令后按需补回。
+**唯一推荐的刷新路径**：`regenerate-history`，用 ``--only`` 按用户/任务要刷的彩种选择范围。
 """
 
 from __future__ import annotations
 
 import argparse
 import csv
-import importlib.util
 import json
 import re
 import sys
 from pathlib import Path
 
+# 确保 src/ 在 sys.path 中
+_REPO = Path(__file__).resolve().parents[2]
+if str(_REPO / "src") not in sys.path:
+    sys.path.insert(0, str(_REPO / "src"))
 
-def _repo_root() -> Path:
-    return Path(__file__).resolve().parents[2]
+from lottery.paths import repo_root, processed_dir, manifest_path
+from lottery.inventory import print_inventory_json
+from lottery.validate import run_validate
 
 
 def cmd_inventory() -> int:
-    sys.path.insert(0, str(_repo_root() / "src"))
-    from lottery.inventory import print_inventory_json
-
     print_inventory_json()
     return 0
 
 
 def cmd_validate() -> int:
-    sys.path.insert(0, str(_repo_root() / "src"))
-    from lottery.validate import run_validate
-
     r = run_validate()
     print(json.dumps(r, ensure_ascii=True, indent=2))
     return 0 if r.get("ok") else 1
 
 
-def _load_regen_module():
-    root = _repo_root()
-    script = root / "src" / "scripts" / "regenerate_history_archives.py"
-    spec = importlib.util.spec_from_file_location("_regen", script)
-    if spec is None or spec.loader is None:
-        return None
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
-
-
 def cmd_regenerate_history(only_api: str, seed: int) -> int:
-    mod = _load_regen_module()
-    if mod is None:
-        print(json.dumps({"ok": False, "error": "cannot load regenerate script"}, ensure_ascii=True))
-        return 1
+    from scripts.regenerate_history_archives import main as regen_main
+
     internal = {"all": "all", "kl8": "kl8", "dlt-ssq": "dlt_ssq"}[only_api]
-    rc = int(mod.main(only=internal, seed=seed))
+    rc = int(regen_main(only=internal, seed=seed))
     if rc == 0:
         report, _ = _build_doctor_report()
         if isinstance(report, dict):
@@ -102,7 +78,6 @@ def _latest_period_from_history(path: Path) -> int | None:
     if not path.is_file():
         return None
     txt = path.read_text(encoding="utf-8", errors="ignore")
-    # 兼容旧模板（期号范围 a-b）与新模板（期号 ... 至 ...）
     pairs = re.findall(r"`(\d+)`\s*(?:[–\-~]|至|到)\s*`(\d+)`", txt)
     if not pairs:
         return None
@@ -118,15 +93,12 @@ def _latest_period_from_history(path: Path) -> int | None:
 
 
 def _extract_markov_formula_weight(path: Path) -> float | None:
-    """从预测归档中提取马尔可夫权重。"""
     if not path.is_file():
         return None
     txt = path.read_text(encoding="utf-8", errors="ignore")
-    # 旧模板：C=0.12*N
     m_old = re.search(r"C=([0-9]+(?:\.[0-9]+)?)\*N", txt)
     if m_old:
         return float(m_old.group(1))
-    # 新模板：12%×马尔可夫转移
     m_new = re.search(r"([0-9]+(?:\.[0-9]+)?)%\s*[×xX*]\s*马尔可夫", txt)
     if m_new:
         return float(m_new.group(1)) / 100.0
@@ -134,16 +106,14 @@ def _extract_markov_formula_weight(path: Path) -> float | None:
 
 
 def _build_doctor_report() -> tuple[dict, object]:
-    root = _repo_root()
-    proc = root / "data" / "processed"
+    import lottery.config as cfg
+
+    root = repo_root()
+    proc = processed_dir()
     hist = root / "history"
-    sys.path.insert(0, str(root / "src"))
-    from lottery.validate import run_validate
 
     val = run_validate()
-    regen = _load_regen_module()
-    if regen is None:
-        return {"ok": False, "error": "cannot load regenerate script"}, None
+    from scripts.regenerate_history_archives import main as regen_main
 
     data_latest = {
         "dlt": _latest_period_from_csv(proc / "dlt_draws.csv"),
@@ -168,7 +138,7 @@ def _build_doctor_report() -> tuple[dict, object]:
         k: (data_latest.get(k) is not None and data_latest.get(k) == history_analysis_latest.get(k))
         for k in ("dlt", "ssq", "kl8")
     }
-    expected_markov_weight = float(getattr(regen, "PATTERN_W_MARKOV", 0.0))
+    expected_markov_weight = float(cfg.PATTERN_W_MARKOV)
     formula_weight = {
         "dlt": _extract_markov_formula_weight(hist / "daletou_prediction.md"),
         "ssq": _extract_markov_formula_weight(hist / "shuangseqiu_prediction.md"),
@@ -203,50 +173,41 @@ def _build_doctor_report() -> tuple[dict, object]:
         "formula_weight_in_history": formula_weight,
         "formula_sync": formula_sync,
         "seed": {
-            "default_random_seed": int(getattr(regen, "DEFAULT_RANDOM_SEED", 20260430)),
-            "active_random_seed": int(getattr(regen, "_ACTIVE_RANDOM_SEED", 20260430)),
+            "default_random_seed": int(cfg.DEFAULT_RANDOM_SEED),
+            "active_random_seed": int(cfg._ACTIVE_RANDOM_SEED),
         },
         "weights": {
-            "miss": float(getattr(regen, "PATTERN_W_MISS", 0.0)),
-            "freq": float(getattr(regen, "PATTERN_W_FREQ", 0.0)),
-            "zone": float(getattr(regen, "PATTERN_W_ZONE", 0.0)),
-            "recency": float(getattr(regen, "PATTERN_W_RECENCY", 0.0)),
-            "parity": float(getattr(regen, "PATTERN_W_PARITY", 0.0)),
-            "size": float(getattr(regen, "PATTERN_W_SIZE", 0.0)),
-            "sum": float(getattr(regen, "PATTERN_W_SUM", 0.0)),
-            "markov": float(getattr(regen, "PATTERN_W_MARKOV", 0.0)),
+            "miss": float(cfg.PATTERN_W_MISS),
+            "freq": float(cfg.PATTERN_W_FREQ),
+            "zone": float(cfg.PATTERN_W_ZONE),
+            "recency": float(cfg.PATTERN_W_RECENCY),
+            "parity": float(cfg.PATTERN_W_PARITY),
+            "size": float(cfg.PATTERN_W_SIZE),
+            "sum": float(cfg.PATTERN_W_SUM),
+            "markov": float(cfg.PATTERN_W_MARKOV),
         },
         "validate_errors": val.get("errors", []),
         "suggested_commands": suggest_cmds,
     }
-    return out, regen
+    return out, regen_main
 
 
 def cmd_doctor(as_json: bool = False, auto_fix: bool = False) -> int:
-    out, regen = _build_doctor_report()
-    if regen is None:
-        print(json.dumps(out, ensure_ascii=True, indent=2))
-        return 1
+    out, regen_main = _build_doctor_report()
 
     if auto_fix and not out.get("ok", False):
         out["auto_fix_executed"] = True
         out["auto_fix_steps"] = []
         out["auto_fix_error"] = None
         try:
-            # 1) 先做 validate 自检（保持与建议命令一致的顺序）
-            sys.path.insert(0, str(_repo_root() / "src"))
-            from lottery.validate import run_validate
-
             v = run_validate()
             out["auto_fix_steps"].append({"step": "validate", "ok": bool(v.get("ok", False))})
 
-            # 2) 固定 seed 全量重算 analysis + prediction
-            rc = int(regen.main(only="all", seed=20260430))
+            rc = int(regen_main(only="all", seed=20260430))
             out["auto_fix_steps"].append({"step": "regenerate-history", "exit_code": rc})
             if rc != 0:
                 out["auto_fix_error"] = f"regenerate-history failed with exit_code={rc}"
 
-            # 3) 重新收集报告（强制二次校验）
             out2, _ = _build_doctor_report()
             out2["auto_fix_executed"] = True
             out2["auto_fix_steps"] = out["auto_fix_steps"]
@@ -302,11 +263,7 @@ def main() -> int:
     sub.add_parser("inventory", help="列出 data/ 下文件（UTF-8 JSON）")
     sub.add_parser("validate", help="校验 processed CSV 与 manifest rows_out")
     p_doctor = sub.add_parser("doctor", help="诊断 data/history/seed/weights 一致性")
-    p_doctor.add_argument(
-        "--json",
-        action="store_true",
-        help="输出 JSON（默认输出可读摘要）",
-    )
+    p_doctor.add_argument("--json", action="store_true", help="输出 JSON（默认输出可读摘要）")
     p_doctor.add_argument(
         "--fix",
         action="store_true",
@@ -315,7 +272,7 @@ def main() -> int:
 
     p_rh = sub.add_parser(
         "regenerate-history",
-        help="统一刷新 history 分析/预测归档（默认近 30 期，见脚本 DEFAULT_STATS_WINDOW）",
+        help="统一刷新 history 分析/预测归档（默认近 30 期）",
         description="根据 --only 选择写入范围；为三彩种唯一推荐的机械重算入口。",
     )
     p_rh.add_argument(
@@ -330,13 +287,10 @@ def main() -> int:
         "--seed",
         type=int,
         default=20260430,
-        help="预测随机种子（默认 20260430，可复现；同数据同种子输出一致）",
+        help="预测随机种子（默认 20260430，可复现）",
     )
 
-    sub.add_parser(
-        "regenerate-kl8-prediction",
-        help="[兼容] 等同 regenerate-history --only kl8",
-    )
+    sub.add_parser("regenerate-kl8-prediction", help="[兼容] 等同 regenerate-history --only kl8")
 
     args = p.parse_args()
     if args.command == "inventory":

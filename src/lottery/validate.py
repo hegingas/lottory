@@ -14,16 +14,12 @@ from typing import Any
 import pandas as pd
 
 from .paths import manifest_path, processed_dir, repo_root, schema_path
-
-
-def _norm_columns(df: pd.DataFrame) -> pd.DataFrame:
-    df = df.copy()
-    df.columns = [str(c).lstrip("\ufeff").strip() for c in df.columns]
-    return df
+from .builders import _norm_df
+from .config import VALIDATE_MAX_ERRORS
 
 
 def _load_csv(path: Path) -> pd.DataFrame:
-    return _norm_columns(pd.read_csv(path, encoding="utf-8-sig"))
+    return _norm_df(pd.read_csv(path, encoding="utf-8-sig"))
 
 
 def validate_dlt(df: pd.DataFrame) -> list[str]:
@@ -49,7 +45,7 @@ def validate_dlt(df: pd.DataFrame) -> list[str]:
     if dup.any():
         errs.append(f"dlt: 重复 period_id 共 {int(dup.sum())} 行")
     for _, row in df.iterrows():
-        if len(errs) >= 40:
+        if len(errs) >= VALIDATE_MAX_ERRORS:
             errs.append("dlt: 错误过多，已截断")
             break
         pid = row["period_id"]
@@ -91,7 +87,7 @@ def validate_ssq(df: pd.DataFrame) -> list[str]:
     if dup.any():
         errs.append(f"ssq: 重复 period_id 共 {int(dup.sum())} 行")
     for _, row in df.iterrows():
-        if len(errs) >= 40:
+        if len(errs) >= VALIDATE_MAX_ERRORS:
             errs.append("ssq: 错误过多，已截断")
             break
         pid = row["period_id"]
@@ -121,7 +117,7 @@ def validate_kl8(df: pd.DataFrame) -> list[str]:
     if dup.any():
         errs.append(f"kl8: 重复 period_id 共 {int(dup.sum())} 行")
     for _, row in df.iterrows():
-        if len(errs) >= 40:
+        if len(errs) >= VALIDATE_MAX_ERRORS:
             errs.append("kl8: 错误过多，已截断")
             break
         pid = row["period_id"]
