@@ -3,7 +3,7 @@
 基于 data/processed/*.csv 重算并写入 history 下归档（N 默认见 `DEFAULT_STATS_WINDOW`，当前为 30）。
 
 运行（在仓库根，统一入口）：
-  python src/scripts/lottery.py regenerate-history [--only all|kl8|dlt-ssq]
+  python src/scripts/lottery.py regenerate-history [--only all|kl8|dlt-ssq|pl5]
   # 或直接：python src/scripts/regenerate_history_archives.py [--only kl8]
 """
 
@@ -26,9 +26,11 @@ from lottery.builders import (
     build_dlt_analysis,
     build_ssq_analysis,
     build_kl8_analysis,
+    build_pl5_analysis,
     prediction_block_dlt,
     prediction_block_ssq,
     prediction_block_kl8,
+    prediction_block_pl5,
 )
 from lottery.paths import repo_root  # noqa: E402
 
@@ -43,10 +45,10 @@ def _normalize_only(only: str) -> str:
 def main(only: str = "all", seed: int | None = DEFAULT_RANDOM_SEED) -> int:
     only_n = _normalize_only(only)
     used_seed = _set_random_seed(seed)
-    if only_n not in ("all", "kl8", "dlt_ssq"):
+    if only_n not in ("all", "kl8", "dlt_ssq", "pl5"):
         print(
             json.dumps(
-                {"ok": False, "error": f"invalid only={only!r}; use all | kl8 | dlt-ssq"},
+                {"ok": False, "error": f"invalid only={only!r}; use all | kl8 | dlt-ssq | pl5"},
                 ensure_ascii=True,
             )
         )
@@ -126,6 +128,28 @@ def main(only: str = "all", seed: int | None = DEFAULT_RANDOM_SEED) -> int:
             (HIST / "kuaileba_analysis.md").write_text(build_kl8_analysis(kl8), encoding="utf-8")
             (HIST / "kuaileba_prediction.md").write_text(prediction_block_kl8(kl8), encoding="utf-8")
             wrote.extend(["history/kuaileba_analysis.md", "history/kuaileba_prediction.md"])
+
+    if only_n in ("all", "pl5"):
+        pl5_path = PROC / "pl5_draws.csv"
+        if not pl5_path.is_file():
+            if only_n == "pl5":
+                raise SystemExit("缺少 data/processed/pl5_draws.csv；请先补数。")
+        else:
+            try:
+                import pandas as pd
+
+                pl5 = pd.read_csv(pl5_path, encoding="utf-8-sig")
+            except Exception as e:
+                print(
+                    json.dumps(
+                        {"ok": False, "error": f"读取 PL5 CSV 失败：{e}"},
+                        ensure_ascii=True,
+                    )
+                )
+                return 1
+            (HIST / "pailie5_analysis.md").write_text(build_pl5_analysis(pl5), encoding="utf-8")
+            (HIST / "pailie5_prediction.md").write_text(prediction_block_pl5(pl5), encoding="utf-8")
+            wrote.extend(["history/pailie5_analysis.md", "history/pailie5_prediction.md"])
 
     if not wrote:
         print(

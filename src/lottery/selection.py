@@ -21,9 +21,12 @@ from .config import (
     TICKET_COLLECT_MAX_ITER,
     TICKET_COLLECT_PENALTY_INIT,
     TICKET_COLLECT_FALLBACK_MAX,
+    TICKET_COLLECT_RANDOM_PHASE_MAX,
+    TICKET_COLLECT_LATEST_SCORE_PENALTY,
     KL8_ELEVEN_RANDOM_TRIES,
     _fmt2,
 )
+from . import config as _lottery_config
 from .scoring import _kl8_twenty_scores
 
 
@@ -39,6 +42,13 @@ def _counts_per_zone_for_balls(balls: list[int], zones: list[tuple[int, int]]) -
     for x in balls:
         zc[_zone_index_for_ball(int(x), zones)] += 1
     return zc
+
+
+def _zone_max_cap_ok(
+    balls: list[int], zones: list[tuple[int, int]], max_per_zone: int
+) -> bool:
+    zc = _counts_per_zone_for_balls(balls, zones)
+    return all(c <= max_per_zone for c in zc)
 
 
 def _zone_label_for_ball(ball: int, zones: list[tuple[int, int]], prefix: str) -> str:
@@ -173,12 +183,77 @@ def _pick_top_scored_pairs_zone_capped(
 
 # ── 大乐透 / 双色球 多注互异收集 ──────────────────────────────
 
+
+def _dlt_draw_one_random_valid(
+    rng: random.Random,
+    hist_keys: set[tuple[tuple[int, ...], tuple[int, ...]]] | None,
+    latest_seven: set[int] | None,
+) -> tuple[list[int], list[int]] | None:
+    """均匀随机一注单式，满足分区上限、历史不全重合、与最新期 7 码重合 ≤3。"""
+    f = sorted(rng.sample(range(1, 36), 5))
+    b = sorted(rng.sample(range(1, 13), 2))
+    if not _zone_max_cap_ok(f, DLT_FRONT_ZONES_CAP, DLT_FRONT_MAX_PER_ZONE):
+        return None
+    if not _zone_max_cap_ok(b, DLT_BACK_ZONES_CAP, DLT_BACK_MAX_PER_ZONE):
+        return None
+    if not _dlt_ticket_passes_history_rules(f, b, hist_keys, latest_seven):
+        return None
+    return (f, b)
+
+
+def _ssq_draw_one_random_valid(
+    rng: random.Random,
+    hist_keys: set[tuple[tuple[int, ...], int]] | None,
+    latest_seven: set[int] | None,
+) -> tuple[list[int], int] | None:
+    reds = sorted(rng.sample(range(1, 34), 6))
+    blue = int(rng.randint(1, 16))
+    if not _zone_max_cap_ok(reds, SSQ_RED_ZONES_CAP, SSQ_RED_MAX_PER_ZONE):
+        return None
+    if not _zone_max_cap_ok([blue], SSQ_BLUE_ZONES_CAP, SSQ_BLUE_MAX_PER_ZONE):
+        return None
+    if not _ssq_ticket_passes_history_rules(reds, blue, hist_keys, latest_seven):
+        return None
+    return (reds, blue)
+
+
+def _dlt_ticket_passes_history_rules(
+    fi: list[int],
+    bi: list[int],
+    hist_keys: set[tuple[tuple[int, ...], tuple[int, ...]]] | None,
+    latest_seven: set[int] | None,
+) -> bool:
+    """任一单式不得与历史开奖完全一致；与最新一期 7 码（前 5+后 2）集合重合数须 ≤3。"""
+    fs, bs = sorted(int(x) for x in fi), sorted(int(x) for x in bi)
+    if hist_keys is not None and (tuple(fs), tuple(bs)) in hist_keys:
+        return False
+    if latest_seven is not None and len(set(fs + bs) & latest_seven) > 3:
+        return False
+    return True
+
+
+def _ssq_ticket_passes_history_rules(
+    reds: list[int],
+    blue: int,
+    hist_keys: set[tuple[tuple[int, ...], int]] | None,
+    latest_seven: set[int] | None,
+) -> bool:
+    rs, b = sorted(int(x) for x in reds), int(blue)
+    if hist_keys is not None and (tuple(rs), b) in hist_keys:
+        return False
+    if latest_seven is not None and len((set(rs) | {b}) & latest_seven) > 3:
+        return False
+    return True
+
+
 def _dlt_collect_five_unique_tickets(
     fs: np.ndarray,
     bs: np.ndarray,
     n_lines: int = PREDICTION_SINGLE_LINES,
     max_iter: int = TICKET_COLLECT_MAX_ITER,
     penalty0: float = TICKET_COLLECT_PENALTY_INIT,
+    hist_keys: set[tuple[tuple[int, ...], tuple[int, ...]]] | None = None,
+    latest_seven: set[int] | None = None,
 ) -> list[tuple[list[int], list[int]]]:
     pick_cf = np.zeros(36, dtype=np.float64)
     pick_cb = np.zeros(13, dtype=np.float64)
@@ -192,6 +267,14 @@ def _dlt_collect_five_unique_tickets(
         bs_adj = bs.astype(np.float64).copy()
         fs_adj[1:36] -= penalty * pick_cf[1:36]
         bs_adj[1:13] -= penalty * pick_cb[1:13]
+        if latest_seven is not None:
+            lp = float(TICKET_COLLECT_LATEST_SCORE_PENALTY)
+            for x in latest_seven:
+                xi = int(x)
+                if 1 <= xi <= 35:
+                    fs_adj[xi] -= lp
+                if 1 <= xi <= 12:
+                    bs_adj[xi] -= lp
         try:
             fi = _pick_top_indices_zone_capped(
                 fs_adj, 1, 35, 5, DLT_FRONT_ZONES_CAP, DLT_FRONT_MAX_PER_ZONE
@@ -205,6 +288,9 @@ def _dlt_collect_five_unique_tickets(
         key = (tuple(sorted(fi)), tuple(sorted(bi)))
         if key in seen:
             penalty *= 1.14
+            continue
+        if not _dlt_ticket_passes_history_rules(fi, bi, hist_keys, latest_seven):
+            penalty *= 1.07
             continue
         seen.add(key)
         out.append((sorted(fi), sorted(bi)))
@@ -229,10 +315,27 @@ def _dlt_collect_five_unique_tickets(
             key = (tuple(sorted(fi)), tuple(sorted(bi)))
             if key in seen:
                 continue
+            if not _dlt_ticket_passes_history_rules(fi, bi, hist_keys, latest_seven):
+                continue
             seen.add(key)
             out.append((sorted(fi), sorted(bi)))
             if len(out) >= n_lines:
                 break
+
+    if len(out) < n_lines:
+        rng_r = random.Random(int(_lottery_config._ACTIVE_RANDOM_SEED) + 91331)
+        for _ in range(TICKET_COLLECT_RANDOM_PHASE_MAX):
+            if len(out) >= n_lines:
+                break
+            one = _dlt_draw_one_random_valid(rng_r, hist_keys, latest_seven)
+            if one is None:
+                continue
+            fi, bi = one
+            key = (tuple(fi), tuple(bi))
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append((fi, bi))
 
     if len(out) < n_lines:
         raise ValueError(f"大乐透：无法在尝试内凑满 {n_lines} 组互异单式（已得 {len(out)}）")
@@ -245,6 +348,8 @@ def _ssq_collect_five_unique_tickets(
     n_lines: int = PREDICTION_SINGLE_LINES,
     max_iter: int = TICKET_COLLECT_MAX_ITER,
     penalty0: float = TICKET_COLLECT_PENALTY_INIT,
+    hist_keys: set[tuple[tuple[int, ...], int]] | None = None,
+    latest_seven: set[int] | None = None,
 ) -> list[tuple[list[int], int]]:
     pick_cr = np.zeros(34, dtype=np.float64)
     pick_cb = np.zeros(17, dtype=np.float64)
@@ -258,6 +363,14 @@ def _ssq_collect_five_unique_tickets(
         bs_adj = bs.astype(np.float64).copy()
         rs_adj[1:34] -= penalty * pick_cr[1:34]
         bs_adj[1:17] -= penalty * pick_cb[1:17]
+        if latest_seven is not None:
+            lp = float(TICKET_COLLECT_LATEST_SCORE_PENALTY)
+            for x in latest_seven:
+                xi = int(x)
+                if 1 <= xi <= 33:
+                    rs_adj[xi] -= lp
+                if 1 <= xi <= 16:
+                    bs_adj[xi] -= lp
         try:
             fi = _pick_top_indices_zone_capped(
                 rs_adj, 1, 33, 6, SSQ_RED_ZONES_CAP, SSQ_RED_MAX_PER_ZONE
@@ -272,6 +385,9 @@ def _ssq_collect_five_unique_tickets(
         key = (tuple(sorted(fi)), bl)
         if key in seen:
             penalty *= 1.14
+            continue
+        if not _ssq_ticket_passes_history_rules(fi, bl, hist_keys, latest_seven):
+            penalty *= 1.07
             continue
         seen.add(key)
         out.append((sorted(fi), bl))
@@ -296,10 +412,27 @@ def _ssq_collect_five_unique_tickets(
             key = (tuple(sorted(fi)), bl)
             if key in seen:
                 continue
+            if not _ssq_ticket_passes_history_rules(fi, bl, hist_keys, latest_seven):
+                continue
             seen.add(key)
             out.append((sorted(fi), bl))
             if len(out) >= n_lines:
                 break
+
+    if len(out) < n_lines:
+        rng_r = random.Random(int(_lottery_config._ACTIVE_RANDOM_SEED) + 71477)
+        for _ in range(TICKET_COLLECT_RANDOM_PHASE_MAX):
+            if len(out) >= n_lines:
+                break
+            one = _ssq_draw_one_random_valid(rng_r, hist_keys, latest_seven)
+            if one is None:
+                continue
+            fi, bl = one
+            key = (tuple(fi), bl)
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append((sorted(fi), bl))
 
     if len(out) < n_lines:
         raise ValueError(f"双色球：无法在尝试内凑满 {n_lines} 组互异单式（已得 {len(out)}）")
@@ -325,6 +458,42 @@ def _kl8_twenty_from_patterns(
         KL8_MAX_PER_PICK_ZONE,
     )
     return sorted(ranked)
+
+
+def _kl8_twenty_cap_overlap_latest(
+    twenty: list[int],
+    latest20: set[int],
+    scores: np.ndarray,
+    max_overlap: int = 6,
+    max_rounds: int = 500,
+) -> list[int]:
+    """参考 20 码与最新一期真实 20 码重合数压至 ≤ max_overlap（优先去掉重合中综合分最低者并补分最高且满足十码段约束的号）。"""
+    cur = sorted(twenty)
+    if len(cur) != 20 or len(set(cur)) != 20:
+        return cur
+    latest_set = set(latest20)
+    rnd = 0
+    while rnd < max_rounds:
+        rnd += 1
+        s_cur = set(cur)
+        inter = s_cur & latest_set
+        if len(inter) <= max_overlap:
+            return sorted(cur)
+        victim = min(inter, key=lambda x: float(scores[int(x)]))
+        s_cur.remove(victim)
+        candidates = [i for i in range(1, 81) if i not in s_cur]
+        candidates.sort(key=lambda i: -float(scores[int(i)]))
+        added = False
+        for c in candidates:
+            trial = sorted(s_cur | {c})
+            zc = _counts_per_zone_for_balls(trial, KL8_PICK_ZONES_CAP)
+            if all(KL8_MIN_PER_PICK_ZONE <= z <= KL8_MAX_PER_PICK_ZONE for z in zc):
+                cur = trial
+                added = True
+                break
+        if not added:
+            break
+    return sorted(cur)
 
 
 def _kl8_eleven_zone_capped_from_twenty(twenty: list[int]) -> list[int]:

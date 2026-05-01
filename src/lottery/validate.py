@@ -2,6 +2,7 @@
 
 - 大乐透/双色球：前区/红球、后区/蓝球仅检查 **互异 + 区间合法**；列顺序可为摇出顺序，不要求列内升序。
 - 快乐八：`n01`–`n20` 须 **升序且 20 个互异**（与 schema 约定一致）。
+- 排列5：`d1`–`d5` 为 0-9 数字，允许重复。
 """
 
 from __future__ import annotations
@@ -132,11 +133,35 @@ def validate_kl8(df: pd.DataFrame) -> list[str]:
     return errs
 
 
+def validate_pl5(df: pd.DataFrame) -> list[str]:
+    errs: list[str] = []
+    need = {"lottery_type", "period_id", "d1", "d2", "d3", "d4", "d5"}
+    missing = need - set(df.columns)
+    if missing:
+        errs.append(f"pl5: 缺列 {sorted(missing)}")
+        return errs
+    if not (df["lottery_type"].astype(str).str.strip() == "pl5").all():
+        errs.append("pl5: lottery_type 须全为 pl5")
+    dup = df["period_id"].duplicated()
+    if dup.any():
+        errs.append(f"pl5: 重复 period_id 共 {int(dup.sum())} 行")
+    for _, row in df.iterrows():
+        if len(errs) >= VALIDATE_MAX_ERRORS:
+            errs.append("pl5: 错误过多，已截断")
+            break
+        pid = row["period_id"]
+        nums = [int(row[f"d{i}"]) for i in range(1, 6)]
+        for x in nums:
+            if not (0 <= x <= 9):
+                errs.append(f"pl5 period {pid}: 越界 {x}")
+    return errs
+
+
 def _manifest_row_counts(manifest: dict) -> dict[str, Any]:
     out: dict[str, Any] = {}
     for block in manifest.get("outputs", []):
         lt = block.get("lottery_type")
-        if lt in ("dlt", "ssq", "kl8"):
+        if lt in ("dlt", "ssq", "kl8", "pl5"):
             out[lt] = {
                 "rows_out": block.get("rows_out"),
                 "period_id_min": block.get("period_id_min"),
@@ -265,7 +290,7 @@ def run_validate() -> dict[str, Any]:
 
     # history 同步性（可选但强烈建议）：预测归档的末期应与 CSV 最新期一致
     hist = repo_root() / "history"
-    latest_dlt = latest_ssq = latest_kl8 = None
+    latest_dlt = latest_ssq = latest_kl8 = latest_pl5 = None
     if dlt_p.is_file():
         ddf = _load_csv(dlt_p)
         latest_dlt = int(pd.to_numeric(ddf["period_id"], errors="coerce").max())
@@ -275,13 +300,19 @@ def run_validate() -> dict[str, Any]:
     if kl8_p.is_file():
         kdf = _load_csv(kl8_p)
         latest_kl8 = int(pd.to_numeric(kdf["period_id"], errors="coerce").max())
+    pl5_p = proc / "pl5_draws.csv"
+    if pl5_p.is_file():
+        pdf = _load_csv(pl5_p)
+        latest_pl5 = int(pd.to_numeric(pdf["period_id"], errors="coerce").max())
 
     dlt_pred_max = _extract_period_max_from_history(hist / "daletou_prediction.md")
     ssq_pred_max = _extract_period_max_from_history(hist / "shuangseqiu_prediction.md")
     kl8_pred_max = _extract_period_max_from_history(hist / "kuaileba_prediction.md")
+    pl5_pred_max = _extract_period_max_from_history(hist / "pailie5_prediction.md")
     dlt_ana_max = _extract_period_max_from_history(hist / "daletou_analysis.md")
     ssq_ana_max = _extract_period_max_from_history(hist / "shuangseqiu_analysis.md")
     kl8_ana_max = _extract_period_max_from_history(hist / "kuaileba_analysis.md")
+    pl5_ana_max = _extract_period_max_from_history(hist / "pailie5_analysis.md")
 
     if latest_dlt is not None:
         if dlt_pred_max is not None and dlt_pred_max != latest_dlt:
@@ -310,6 +341,42 @@ def run_validate() -> dict[str, Any]:
             all_errs.append(
                 f"history kuaileba_analysis 末期={kl8_ana_max} 与 kl8_draws.csv 最新期 {latest_kl8} 不一致"
             )
+    if latest_pl5 is not None:
+        if pl5_pred_max is not None and pl5_pred_max != latest_pl5:
+            all_errs.append(
+                f"history pailie5_prediction 末期={pl5_pred_max} 与 pl5_draws.csv 最新期 {latest_pl5} 不一致"
+            )
+        if pl5_ana_max is not None and pl5_ana_max != latest_pl5:
+            all_errs.append(
+                f"history pailie5_analysis 末期={pl5_ana_max} 与 pl5_draws.csv 最新期 {latest_pl5} 不一致"
+            )
+
+    if pl5_p.is_file():
+        pl5 = _load_csv(pl5_p)
+        result["row_counts"]["pl5_csv"] = len(pl5)
+        pl5_pid = pd.to_numeric(pl5["period_id"], errors="coerce")
+        if pl5_pid.isna().any():
+            all_errs.append("pl5: period_id 含非数值")
+        else:
+            if not pl5_pid.is_monotonic_increasing:
+                all_errs.append("pl5: period_id 必须严格递增")
+            if pl5_pid.duplicated().any():
+                all_errs.append("pl5: period_id 出现重复（单调校验）")
+            m = result["manifest_check"].get("pl5", {})
+            pmin = m.get("period_id_min")
+            pmax = m.get("period_id_max")
+            if pmin is not None and int(pmin) != int(pl5_pid.min()):
+                all_errs.append(
+                    f"manifest pl5 period_id_min={pmin} 与 CSV 最小期号 {int(pl5_pid.min())} 不一致"
+                )
+            if pmax is not None and int(pmax) != int(pl5_pid.max()):
+                all_errs.append(
+                    f"manifest pl5 period_id_max={pmax} 与 CSV 最大期号 {int(pl5_pid.max())} 不一致"
+                )
+        all_errs.extend(validate_pl5(pl5))
+        ro = result["manifest_check"].get("pl5", {}).get("rows_out")
+        if ro is not None and int(ro) != len(pl5):
+            all_errs.append(f"manifest pl5 rows_out={ro} 与 CSV 行数 {len(pl5)} 不一致")
 
     result["errors"] = all_errs
     result["ok"] = len(all_errs) == 0

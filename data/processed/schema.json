@@ -56,5 +56,18 @@
       "n20"
     ],
     "notes": "不含开奖日期列；每期 20 个开奖号存为 n01–n20（升序）；由 lottery-draw-sync 或官方同步流程写入；manifest.json 记录溯源"
+  },
+  "pl5_draws.csv": {
+    "lottery_type": "pl5",
+    "columns": [
+      "lottery_type",
+      "period_id",
+      "d1",
+      "d2",
+      "d3",
+      "d4",
+      "d5"
+    ],
+    "notes": "不含开奖日期列；每期 5 位数字开奖，允许重复数字（0-9）；由用户截图录入或后续同步流程写入；manifest.json 记录溯源"
   }
 }

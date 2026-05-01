@@ -1,11 +1,11 @@
 # 快乐八 — 历史数据分析归档
 
-> **最后更新**：2026-04-30T22:03:13+08:00
+> **最后更新**：2026-05-01T17:06:49+08:00
 > **统计窗口（默认）**：近 **30** 期，期号 **`2026081`–`2026110`**（期末尾连续段，至多 **30** 期）。
-> **全表收录**：`data/processed/kl8_draws.csv` 共 **131** 行，期号 **`2025331`–`2026110`**（溯源见 `data/processed/manifest.json`）
+> **全表收录**：`data/processed/kl8_draws.csv` 共 **1920** 行，期号 **`2020012`–`2026110`**（溯源见 `data/processed/manifest.json`）
 > **所用数据路径**：`data/processed/kl8_draws.csv`
 > **最后一期（窗口内）**：`2026110`
-> **manifest.source**：`user_screenshots_917500.cn_batch_2026-04-18`
+> **manifest.source**：`user_screenshots_917500.cn_batch_2026-05-01`
 > **manifest.note**：第三方页面截图录入，建议与福彩官方公告抽样核对
 
 ---

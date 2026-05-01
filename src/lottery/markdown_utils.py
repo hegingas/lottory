@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone, timedelta
 import numpy as np
 
+from . import config as _lottery_config
 from .config import (
     PATTERN_RECENT_K,
     PATTERN_W_MISS,
@@ -26,8 +27,12 @@ from .config import (
     DEFAULT_COMBO_BUDGET_MIN_YUAN,
     DEFAULT_COMBO_BUDGET_MAX_YUAN,
     PREDICTION_SINGLE_LINES,
-    _ACTIVE_RANDOM_SEED,
     _fmt2,
+)
+from .selection import (
+    _pick_top_indices_zone_capped,
+    _dlt_ticket_passes_history_rules,
+    _ssq_ticket_passes_history_rules,
 )
 
 
@@ -169,10 +174,12 @@ def _build_dlt_five_numbers_md(
     bmk_norm: np.ndarray,
     n_win: int,
     pred_ts: str,
+    hist_keys: set[tuple[tuple[int, ...], tuple[int, ...]]] | None = None,
+    latest_seven: set[int] | None = None,
 ) -> str:
     parts: list[str] = [
         f"> **预测生成时间**：`{pred_ts}`（北京时间，ISO-8601）。\n",
-        f"> **随机种子**：`{_ACTIVE_RANDOM_SEED}`（同数据同种子可复现）。\n",
+        f"> **随机种子**：`{_lottery_config._ACTIVE_RANDOM_SEED}`（同数据同种子可复现）。\n",
         f"> 共 **{PREDICTION_SINGLE_LINES}** 注单式，每注 **2** 元；下列「选择原因」均为窗口内统计指标说明，**非**开奖承诺。\n\n",
     ]
     for i, (f, b) in enumerate(five, 1):
@@ -189,6 +196,41 @@ def _build_dlt_five_numbers_md(
             parts.append(
                 f"  - {_reason_dlt_back_line(int(x), n_win, bq, bcur, bs, bmk_raw, bmk_norm)}\n\n"
             )
+    try:
+        fi_p = sorted(
+            _pick_top_indices_zone_capped(
+                fs, 1, 35, 5, DLT_FRONT_ZONES_CAP, DLT_FRONT_MAX_PER_ZONE
+            )
+        )
+        bi_p = sorted(
+            _pick_top_indices_zone_capped(
+                bs, 1, 12, 2, DLT_BACK_ZONES_CAP, DLT_BACK_MAX_PER_ZONE
+            )
+        )
+        if not _dlt_ticket_passes_history_rules(fi_p, bi_p, hist_keys, latest_seven):
+            fi_p, bi_p = five[0]
+        tot = sum(float(fs[i]) for i in fi_p) + sum(float(bs[i]) for i in bi_p)
+        ff_p = ",".join(_fmt2(x) for x in fi_p)
+        bb_p = ",".join(_fmt2(x) for x in bi_p)
+        parts.append(
+            "\n## 单式优选（强制）\n\n"
+            f"> **生成时间**：`{pred_ts}`（北京时间）。\n\n"
+            f"- **号码**：前区 **{ff_p}**；后区 **{bb_p}**\n"
+            f"- **总分（前区+后区综合分之和，同正文口径）**：**{tot:.3f}**\n"
+            "- **关键因子**：遗漏、频次、区间热度、近端密度、奇偶/大小/和值带、马尔可夫转移（见口径说明权重）。\n"
+        )
+    except Exception:
+        fi_p, bi_p = five[0]
+        tot = sum(float(fs[i]) for i in fi_p) + sum(float(bs[i]) for i in bi_p)
+        ff_p = ",".join(_fmt2(x) for x in fi_p)
+        bb_p = ",".join(_fmt2(x) for x in bi_p)
+        parts.append(
+            "\n## 单式优选（强制）\n\n"
+            f"> **生成时间**：`{pred_ts}`（北京时间）。\n\n"
+            f"- **号码**：前区 **{ff_p}**；后区 **{bb_p}**\n"
+            f"- **总分（前区+后区综合分之和，同正文口径）**：**{tot:.3f}**\n"
+            "- **说明**：分区贪心回退为正文第 1 注（已满足防重合时与优选一致或近似）。\n"
+        )
     return "".join(parts).rstrip() + "\n"
 
 
@@ -206,10 +248,12 @@ def _build_ssq_five_numbers_md(
     bmk_norm: np.ndarray,
     n_win: int,
     pred_ts: str,
+    hist_keys: set[tuple[tuple[int, ...], int]] | None = None,
+    latest_seven: set[int] | None = None,
 ) -> str:
     parts: list[str] = [
         f"> **预测生成时间**：`{pred_ts}`（北京时间，ISO-8601）。\n",
-        f"> **随机种子**：`{_ACTIVE_RANDOM_SEED}`（同数据同种子可复现）。\n",
+        f"> **随机种子**：`{_lottery_config._ACTIVE_RANDOM_SEED}`（同数据同种子可复现）。\n",
         f"> 共 **{PREDICTION_SINGLE_LINES}** 注单式，每注 **2** 元；下列「选择原因」均为窗口内统计指标说明，**非**开奖承诺。\n\n",
     ]
     for i, (r, bl) in enumerate(five, 1):
@@ -223,6 +267,38 @@ def _build_ssq_five_numbers_md(
             )
         parts.append(
             f"  - {_reason_ssq_blue_line(bl, n_win, bq, bcur, bs, bmk_raw, bmk_norm)}\n\n"
+        )
+    try:
+        ri_p = sorted(
+            _pick_top_indices_zone_capped(
+                rs, 1, 33, 6, SSQ_RED_ZONES_CAP, SSQ_RED_MAX_PER_ZONE
+            )
+        )
+        bi_p = _pick_top_indices_zone_capped(
+            bs, 1, 16, 1, SSQ_BLUE_ZONES_CAP, SSQ_BLUE_MAX_PER_ZONE
+        )
+        bl_p = int(bi_p[0])
+        if not _ssq_ticket_passes_history_rules(ri_p, bl_p, hist_keys, latest_seven):
+            ri_p, bl_p = five[0]
+        tot = sum(float(rs[i]) for i in ri_p) + float(bs[bl_p])
+        rs_s = ",".join(_fmt2(x) for x in ri_p)
+        parts.append(
+            "\n## 单式优选（强制）\n\n"
+            f"> **生成时间**：`{pred_ts}`（北京时间）。\n\n"
+            f"- **号码**：红球 **{rs_s}**；蓝球 **`{_fmt2(bl_p)}`**\n"
+            f"- **总分（红球+蓝球综合分之和，同正文口径）**：**{tot:.3f}**\n"
+            "- **关键因子**：遗漏、频次、区间热度、近端密度、奇偶/大小/和值带、马尔可夫转移（见口径说明权重）。\n"
+        )
+    except Exception:
+        ri_p, bl_p = five[0]
+        tot = sum(float(rs[i]) for i in ri_p) + float(bs[bl_p])
+        rs_s = ",".join(_fmt2(x) for x in ri_p)
+        parts.append(
+            "\n## 单式优选（强制）\n\n"
+            f"> **生成时间**：`{pred_ts}`（北京时间）。\n\n"
+            f"- **号码**：红球 **{rs_s}**；蓝球 **`{_fmt2(bl_p)}`**\n"
+            f"- **总分（红球+蓝球综合分之和，同正文口径）**：**{tot:.3f}**\n"
+            "- **说明**：分区贪心回退为正文第 1 注（已满足防重合时与优选一致或近似）。\n"
         )
     return "".join(parts).rstrip() + "\n"
 

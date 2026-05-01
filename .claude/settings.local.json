@@ -36,7 +36,9 @@
       "Bash(curl -s --max-time 10 \"https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry?gameNo=86&provinceId=0&pageSize=1&pageNo=1\")",
       "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(json.dumps\\({'game':d['value']['list'][0]['lotteryGameName'],'period':d['value']['list'][0]['lotteryDrawNum'],'result':d['value']['list'][0]['lotteryDrawResult']},ensure_ascii=False\\)\\)\")",
       "Bash(curl -s --max-time 8 'https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry?gameNo=__TRACKED_VAR__&provinceId=0&pageSize=1&pageNo=1')",
-      "Bash(python3 *)"
+      "Bash(python3 *)",
+      "Bash(echo \"---exit: $?\")",
+      "Bash(pip install *)"
     ]
   },
   "mcpServers": {

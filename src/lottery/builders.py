@@ -9,6 +9,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from . import config as _lottery_config
 from .config import (
     DEFAULT_STATS_WINDOW,
     DLT_FRONT_ZONES_CAP,
@@ -24,7 +25,6 @@ from .config import (
     PATTERN_W_MARKOV,
     KL8_MIN_PER_PICK_ZONE,
     KL8_MAX_PER_PICK_ZONE,
-    _ACTIVE_RANDOM_SEED,
 )
 from .scoring import (
     ac_value,
@@ -37,11 +37,13 @@ from .scoring import (
     _dlt_back_scores,
     _ssq_red_scores,
     _ssq_blue_scores,
+    _kl8_twenty_scores,
 )
 from .selection import (
     _dlt_collect_five_unique_tickets,
     _ssq_collect_five_unique_tickets,
     _kl8_twenty_from_patterns,
+    _kl8_twenty_cap_overlap_latest,
     _kl8_eleven_random_from_twenty,
     _assert_kl8_zone_bounds,
 )
@@ -533,9 +535,35 @@ def prediction_block_dlt(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW) -
     b_mk_n = _minmax01_ball(b_mk, 12)
     fs = _dlt_front_scores(f_draws, fq, fcur, f_mk)
     bs = _dlt_back_scores(b_draws, bq, bcur, b_mk)
-    five = _dlt_collect_five_unique_tickets(fs, bs)
+    hist_keys_dlt: set[tuple[tuple[int, ...], tuple[int, ...]]] = set()
+    for _, row in full.iterrows():
+        f_t = tuple(sorted(int(row[f"front_{i}"]) for i in range(1, 6)))
+        b_t = tuple(sorted((int(row["back_1"]), int(row["back_2"]))))
+        hist_keys_dlt.add((f_t, b_t))
+    lr_d = full.iloc[-1]
+    latest_dlt_seven = set(int(lr_d[f"front_{i}"]) for i in range(1, 6)) | {
+        int(lr_d["back_1"]),
+        int(lr_d["back_2"]),
+    }
+    five = _dlt_collect_five_unique_tickets(
+        fs, bs, hist_keys=hist_keys_dlt, latest_seven=latest_dlt_seven
+    )
     numbers_md = _build_dlt_five_numbers_md(
-        five, fs, bs, fq, fcur, bq, bcur, f_mk, f_mk_n, b_mk, b_mk_n, n_win, pred_ts,
+        five,
+        fs,
+        bs,
+        fq,
+        fcur,
+        bq,
+        bcur,
+        f_mk,
+        f_mk_n,
+        b_mk,
+        b_mk_n,
+        n_win,
+        pred_ts,
+        hist_keys_dlt,
+        latest_dlt_seven,
     )
 
     return f"""# 大乐透 — 统计型预测参考归档
@@ -565,6 +593,8 @@ def prediction_block_dlt(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW) -
 - 大小主结构：{ "；".join([f"`{k}`（{v}期）" for k,v in top_sz]) }
 - 和值：中位数约 `{qs[1]:.0f}`，Q1–Q3 约 `{qs[0]:.0f}`–`{qs[2]:.0f}`，均值 `{s.mean():.2f}`
 - 跨度：中位数约 `{qsp[1]:.0f}`，Q1–Q3 约 `{qsp[0]:.0f}`–`{qsp[2]:.0f}`
+- **去核心化**：已执行去核心化约束——选号在多因子加权、小区上限与注间递减惩罚下进行，未直接采用「最近窗口纯频次 Top 骨架」作为唯一依据。
+- **防重合**：防重合约束已执行（**历史任一期开奖与预测单式不完全相同**，且与**最新一期** 7 码集合重合 **≤3**）。
 
 ## 明确号码输出（强制，统计参考）
 
@@ -624,9 +654,32 @@ def prediction_block_ssq(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW) -
     b_mk_n = _minmax01_ball(b_mk, 16)
     rs = _ssq_red_scores(r_draws, rq, rcur, r_mk)
     bs_sc = _ssq_blue_scores(blues_list, bq, bcur, b_mk)
-    five = _ssq_collect_five_unique_tickets(rs, bs_sc)
+    hist_keys_ssq: set[tuple[tuple[int, ...], int]] = set()
+    for _, row in full.iterrows():
+        r_t = tuple(sorted(int(row[f"red_{i}"]) for i in range(1, 7)))
+        b_t = int(row["blue"])
+        hist_keys_ssq.add((r_t, b_t))
+    lr_s = full.iloc[-1]
+    latest_ssq_seven = set(int(lr_s[f"red_{i}"]) for i in range(1, 7)) | {int(lr_s["blue"])}
+    five = _ssq_collect_five_unique_tickets(
+        rs, bs_sc, hist_keys=hist_keys_ssq, latest_seven=latest_ssq_seven
+    )
     numbers_md = _build_ssq_five_numbers_md(
-        five, rs, bs_sc, rq, rcur, bq, bcur, r_mk, r_mk_n, b_mk, b_mk_n, n_win, pred_ts,
+        five,
+        rs,
+        bs_sc,
+        rq,
+        rcur,
+        bq,
+        bcur,
+        r_mk,
+        r_mk_n,
+        b_mk,
+        b_mk_n,
+        n_win,
+        pred_ts,
+        hist_keys_ssq,
+        latest_ssq_seven,
     )
 
     return f"""# 双色球 — 统计型预测参考归档
@@ -656,6 +709,8 @@ def prediction_block_ssq(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW) -
 - 大小主结构：{ "；".join([f"`{k}`（{v}期）" for k,v in top_sz]) }
 - 和值：中位数约 `{qs[1]:.0f}`，Q1–Q3 约 `{qs[0]:.0f}`–`{qs[2]:.0f}`，均值 `{s.mean():.2f}`
 - 跨度：中位数约 `{qsp[1]:.0f}`，Q1–Q3 约 `{qsp[0]:.0f}`–`{qsp[2]:.0f}`
+- **去核心化**：已执行去核心化约束——选号在多因子加权、小区上限与注间递减惩罚下进行，未直接采用「最近窗口纯频次 Top 骨架」作为唯一依据。
+- **防重合**：防重合约束已执行（**历史任一期开奖与预测单式不完全相同**，且与**最新一期** 7 码集合重合 **≤3**）。
 
 ## 明确号码输出（强制，统计参考）
 
@@ -691,11 +746,16 @@ def prediction_block_kl8(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW) -
     markov_raw = _markov_next_probabilities(draws_all, 80)
     markov_norm = _minmax01_ball(markov_raw, 80)
     twenty = _kl8_twenty_from_patterns(fq, fcur, draws, markov_raw)
+    kl8_scores = _kl8_twenty_scores(fq, fcur, draws, markov_raw)
+    latest20_set = set(int(x) for x in draws_all[-1])
+    twenty = _kl8_twenty_cap_overlap_latest(twenty, latest20_set, kl8_scores)
+    olap_kl8 = len(set(twenty) & latest20_set)
     twenty_zone_counts = _assert_kl8_zone_bounds(twenty, "参考开奖20码")
     twenty_fmt = ",".join(_fmt2(x) for x in twenty)
     eleven = _kl8_eleven_random_from_twenty(twenty)
     eleven_zone_counts = _assert_kl8_zone_bounds(eleven, "选十参考11码")
     eleven_fmt = ",".join(_fmt2(x) for x in eleven)
+    pref11_score = sum(float(kl8_scores[int(x)]) for x in eleven)
     twenty_markov_detail = "；".join(
         [
             f"{_fmt2(x)}:P={float(markov_raw[x]):.4f},N={float(markov_norm[x]):.3f},C≈{PATTERN_W_MARKOV * float(markov_norm[x]):.3f}"
@@ -718,7 +778,7 @@ def prediction_block_kl8(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW) -
 
 > **最后更新**：{now_cn_iso()}
 > **统计窗口（默认）**：近 **{n}** 期，期号 **`{pid_min}`–`{pid_max}`**（期末尾连续段，至多 **{n_last}** 期）。
-> **随机种子**：`{_ACTIVE_RANDOM_SEED}`（同数据同种子可复现）。
+> **随机种子**：`{_lottery_config._ACTIVE_RANDOM_SEED}`（同数据同种子可复现）。
 > **全表收录**：`kl8_draws.csv` 共 **{full_n}** 行，期号 **`{pid_full_min}`–`{pid_full_max}`**（见 `data/processed/manifest.json` 中 `lottery_type` 为 `kl8` 的条目）
 > **所用数据路径**：`data/processed/kl8_draws.csv`
 > **manifest 路径**：`data/processed/manifest.json`（`outputs` 中 `lottery_type: "kl8"`；第三方批次等以 manifest 为准，建议与福彩官方公告抽样核对）
@@ -764,6 +824,11 @@ def prediction_block_kl8(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW) -
 
 {miss_line}
 
+### 合规与去核心化（仓库硬规则）
+
+- **去核心化**：已执行去核心化约束——20 码在多因子与十码段上下限内取号，**不是**单纯频次 Top20，也**不是**从上一期 20 码中抽样。
+- **重合约束**：参考 20 码与**最新一期 `{last_pid}`** 真实开奖 20 码重合 **{olap_kl8}** 个（目标 **≤6**；脚本对超出部分按「重合球中综合分从低到高」优先替换并校验十码段约束；仍建议与官方公告核对）。
+
 ---
 
 ## 参考开奖 20 码（规律线 → 模拟一期 20 个开奖号）
@@ -784,6 +849,14 @@ def prediction_block_kl8(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW) -
 - **分区计数校验（01-10..71-80）**：`{eleven_zone_counts}`（每区至少 {KL8_MIN_PER_PICK_ZONE}、至多 {KL8_MAX_PER_PICK_ZONE}）
 - **马尔可夫因子明细（P=原始概率, N=归一值, C=权重贡献）**：{eleven_markov_detail}
 
+## 单式优选（强制，选十 11 码复式参考）
+
+> **生成时间**：`{now_cn_iso()}`（北京时间）。
+
+- **11 码（升序，同正文选十参考，用于 C(11,10) 复式）**：**{eleven_fmt}**
+- **11 码综合分之和（各号取与 20 码相同口径的 KL8 综合分）**：**{pref11_score:.3f}**
+- **关键因子**：与 20 码口径一致（频次、遗漏、近端密度、奇偶/半区/和值带、区段热度、马尔可夫等，见上文权重）。
+
 ## 使用说明
 
 以上全部内容均为对**已发生开奖记录**在声明口径下的**描述性统计**，用于娱乐与自行复盘参考。**下一期开奖仍为独立随机事件**，历史冷热、遗漏长短**不构成**对未来开奖的任何保证或「必出」依据；本归档**不包含**中奖承诺与投注金额建议。
@@ -792,4 +865,228 @@ def prediction_block_kl8(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW) -
 ---
 
 > **提示**：本文件由 `python src/scripts/lottery.py regenerate-history --only kl8`（**同时**重写 `history/kuaileba_analysis.md`）或 `regenerate-history --only all`（存在 `kl8_draws.csv` 时）生成；文末附录含 **10～30 元** 带内机械复式示例。若追加更复杂方案，可再请 **`lottery-combo-optimize`** 并写投注原因。
+"""
+
+
+# ── 排列5分析与预测 ──────────────────────────────────────────────
+
+def _pl5_norm01(vals: np.ndarray) -> np.ndarray:
+    arr = vals.astype(float)
+    lo = float(arr.min())
+    hi = float(arr.max())
+    if hi <= lo:
+        return np.full_like(arr, 0.5, dtype=float)
+    return (arr - lo) / (hi - lo)
+
+
+def _pl5_markov_probs(draws: list[list[int]], pos: int, laplace: float = 1.0) -> np.ndarray:
+    out = np.full(10, 0.1, dtype=float)
+    if len(draws) < 2:
+        return out
+    trans = np.zeros((10, 10), dtype=float)
+    for t in range(1, len(draws)):
+        prev = int(draws[t - 1][pos])
+        cur = int(draws[t][pos])
+        trans[prev, cur] += 1.0
+    latest = int(draws[-1][pos])
+    row = trans[latest]
+    den = float(row.sum() + 10.0 * laplace)
+    for d in range(10):
+        out[d] = (float(row[d]) + laplace) / den
+    return out
+
+
+def build_pl5_analysis(df: pd.DataFrame, analysis_window: int = DEFAULT_STATS_WINDOW) -> str:
+    df = df.copy()
+    df["period_id"] = pd.to_numeric(df["period_id"], errors="coerce")
+    df = df.sort_values("period_id").reset_index(drop=True)
+    full_n = len(df)
+    if full_n == 0:
+        return "# 排列5 — 历史数据分析归档\n\n（无数据行）\n"
+    pid_full_min, pid_full_max = int(df["period_id"].iloc[0]), int(df["period_id"].iloc[-1])
+    win = df.tail(min(analysis_window, full_n)).reset_index(drop=True)
+    n = len(win)
+    pid_min, pid_max = int(win["period_id"].min()), int(win["period_id"].max())
+
+    cols = [f"d{i}" for i in range(1, 6)]
+    draws = win[cols].astype(int).values.tolist()
+    flat = [x for row in draws for x in row]
+    ctr = Counter(flat)
+    hot = sorted(ctr.items(), key=lambda kv: (-kv[1], kv[0]))[:5]
+    cold = sorted(ctr.items(), key=lambda kv: (kv[1], kv[0]))[:5]
+
+    pos_lines: list[str] = []
+    for i in range(5):
+        c = Counter(int(row[i]) for row in draws)
+        top3 = sorted(c.items(), key=lambda kv: (-kv[1], kv[0]))[:3]
+        pos_lines.append(
+            f"- 第{i + 1}位：{ '、'.join([f'`{d}`（{ct}次）' for d, ct in top3]) }"
+        )
+
+    sums = np.array([sum(map(int, row)) for row in draws], dtype=float)
+    spans = np.array([max(map(int, row)) - min(map(int, row)) for row in draws], dtype=float)
+    repeat_n = sum(1 for row in draws if len(set(map(int, row))) < 5)
+
+    return f"""# 排列5 — 历史数据分析归档
+
+> **最后更新**：{now_cn_iso()}
+> **统计窗口（默认）**：近 **{n}** 期，期号 **`{pid_min}`–`{pid_max}`**（期末尾连续段，至多 **{analysis_window}** 期）。
+> **全表收录**：`data/processed/pl5_draws.csv` 共 **{full_n}** 期，期号 **`{pid_full_min}`–`{pid_full_max}`**（溯源见 `data/processed/manifest.json`）
+
+---
+
+## 摘要（数据范围与口径）
+
+本次基于 `data/processed/pl5_draws.csv` 进行描述性统计。每期包含 **5** 位数字（`d1`–`d5`），取值范围 **0–9**，**允许重复数字**。
+
+## 结果摘要
+
+- 全窗口数字热度 Top5：{ "、".join([f"`{d}`（{ct}次）" for d, ct in hot]) }
+- 全窗口数字冷度 Top5：{ "、".join([f"`{d}`（{ct}次）" for d, ct in cold]) }
+- 含重复数字的期数占比：**{repeat_n}/{n} = {repeat_n / max(n, 1) * 100:.2f}%**
+- 和值：{_qstats(sums)}
+- 跨度（max-min）：{_qstats(spans)}
+
+## 分位热度（Top3）
+
+{chr(10).join(pos_lines)}
+
+## 局限
+
+排列5开奖结果具有随机性；以上统计仅用于历史描述，不构成中奖承诺或投资建议。
+"""
+
+
+def prediction_block_pl5(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW) -> str:
+    df = df.copy()
+    df["period_id"] = pd.to_numeric(df["period_id"], errors="coerce")
+    full = df.sort_values("period_id").reset_index(drop=True)
+    if len(full) == 0:
+        return "# 排列5 — 统计型预测参考归档\n\n（无数据行）\n"
+    tail = full.tail(min(n_last, len(full))).reset_index(drop=True)
+    pmin, pmax = int(tail["period_id"].min()), int(tail["period_id"].max())
+    cols = [f"d{i}" for i in range(1, 6)]
+    draws_all = full[cols].astype(int).values.tolist()
+    draws = tail[cols].astype(int).values.tolist()
+    n_win = len(draws)
+    pred_ts = now_cn_iso()
+
+    scores_by_pos: list[np.ndarray] = []
+    mk_by_pos: list[np.ndarray] = []
+    for pos in range(5):
+        freq = np.zeros(10, dtype=float)
+        miss = np.zeros(10, dtype=float)
+        rec = np.zeros(10, dtype=float)
+        for row in draws:
+            freq[int(row[pos])] += 1.0
+        for d in range(10):
+            m = n_win
+            for k in range(n_win - 1, -1, -1):
+                if int(draws[k][pos]) == d:
+                    m = n_win - 1 - k
+                    break
+            miss[d] = float(m)
+        for row in draws[-min(PATTERN_RECENT_K, n_win):]:
+            rec[int(row[pos])] += 1.0
+        mk = _pl5_markov_probs(draws_all, pos)
+        mk_by_pos.append(mk)
+        sc = (
+            0.36 * _pl5_norm01(miss)
+            + 0.30 * _pl5_norm01(freq)
+            + 0.18 * _pl5_norm01(rec)
+            + 0.16 * _pl5_norm01(mk)
+        )
+        scores_by_pos.append(sc)
+
+    tickets: list[list[int]] = []
+    used_pos_counts = np.zeros((5, 10), dtype=float)
+    for _ in range(PREDICTION_SINGLE_LINES):
+        ticket: list[int] = []
+        for pos in range(5):
+            adj = scores_by_pos[pos] - 0.08 * used_pos_counts[pos]
+            digit = int(np.argmax(adj))
+            ticket.append(digit)
+            used_pos_counts[pos, digit] += 1.0
+        if ticket in tickets:
+            # 轻量去重：最后一位改为次优
+            pos = 4
+            adj = scores_by_pos[pos] - 0.08 * used_pos_counts[pos]
+            order = list(np.argsort(-adj))
+            for d in order:
+                cand = ticket[:-1] + [int(d)]
+                if cand not in tickets:
+                    ticket = cand
+                    used_pos_counts[pos, int(d)] += 1.0
+                    break
+        tickets.append(ticket)
+
+    hot_lines: list[str] = []
+    for pos in range(5):
+        arr = scores_by_pos[pos]
+        best = int(np.argmax(arr))
+        hot_lines.append(
+            f"- 第{pos + 1}位：优先 `[{best}]`（综合分 {float(arr[best]):.3f}，马尔可夫P≈{float(mk_by_pos[pos][best]):.4f}）"
+        )
+
+    numbers_md = []
+    for i, t in enumerate(tickets, 1):
+        num = "".join(str(int(x)) for x in t)
+        numbers_md.append(f"- 第{i}注：**{num}**（分位：{','.join(str(int(x)) for x in t)}）")
+
+    mech_line = (
+        f"- **机械方案（{PREDICTION_SINGLE_LINES} 注单式）**：正文 {PREDICTION_SINGLE_LINES} 组单式号码，"
+        f"每组按 **2 元**计，合计 **{PREDICTION_SINGLE_LINES * 2} 元**（落在 10～30 元带内）。"
+    )
+
+    pref_digits = [int(np.argmax(scores_by_pos[i])) for i in range(5)]
+    pl5_pref_num = "".join(str(d) for d in pref_digits)
+    pl5_pref_csv = ",".join(str(d) for d in pref_digits)
+    pl5_pref_tot = sum(float(scores_by_pos[i][pref_digits[i]]) for i in range(5))
+
+    return f"""# 排列5 — 统计型预测参考归档
+
+> **最后更新**：{pred_ts}
+> **统计窗口**：近 **{n_win}** 期（至多 **{n_last}** 期，期末尾连续段）
+> **期号范围**：`{pmin}`–`{pmax}`
+> **所用数据路径**：`data/processed/pl5_draws.csv`
+> **随机种子**：`{_lottery_config._ACTIVE_RANDOM_SEED}`（同数据同种子可复现）
+
+---
+
+## 口径说明
+
+- 彩种：排列5
+- 窗口：近 **{n_win}** 期（至多 **{n_last}** 期）
+- 因子：分位频次、当前遗漏、近 **{PATTERN_RECENT_K}** 期密度、马尔可夫转移概率（基于全历史按相邻期重算）
+- 评分：按 `0.36×遗漏 + 0.30×频次 + 0.18×近端密度 + 0.16×马尔可夫` 合成分位综合分，5注之间施加轻度去重惩罚。
+
+## 结果摘要
+
+{chr(10).join(hot_lines)}
+
+- **去核心化**：已执行去核心化约束——各注在分位综合分与注间去重惩罚下生成，未直接采用「每位单纯 Top1 热号」拼成 5 注不变体。
+
+## 明确号码输出（强制，统计参考）
+
+{chr(10).join(numbers_md)}
+
+## 单式优选（强制）
+
+> **生成时间**：`{pred_ts}`（北京时间）。
+
+- **号码（5 位）**：**{pl5_pref_num}**（分位：`{pl5_pref_csv}`）
+- **总分（五位综合分之和）**：**{pl5_pref_tot:.3f}**
+- **关键因子**：遗漏、频次、近端密度、马尔可夫（见口径说明）。
+
+## 使用说明
+
+以上仅为历史统计参考，下一期开奖仍为独立随机事件，不构成中奖承诺或投资建议。
+
+---
+
+## 附录：预算与投注推荐（仓库默认）
+
+- **金额带（强制）**：统计规律输出完成后，至少提供一套 **10～30 元（含）** 的打票参考。
+{mech_line}
+- **说明**：本附录仅作金额示例；若用户指定其他预算或倍投口径，以用户要求为准。
 """

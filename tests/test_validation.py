@@ -7,7 +7,7 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from lottery.validate import validate_dlt, validate_ssq, validate_kl8
+from lottery.validate import validate_dlt, validate_ssq, validate_kl8, validate_pl5
 
 
 def _make_dlt_df(rows):
@@ -78,3 +78,31 @@ def test_validate_kl8_duplicate():
     df = _make_kl8_df([row])
     errs = validate_kl8(df)
     assert any("重复" in e for e in errs)
+
+
+def _make_pl5_df(rows):
+    return pd.DataFrame(rows, columns=["lottery_type", "period_id", "d1", "d2", "d3", "d4", "d5"])
+
+
+def test_validate_pl5_valid():
+    df = _make_pl5_df([["pl5", 26101, 3, 4, 5, 6, 7]])
+    errs = validate_pl5(df)
+    assert not errs
+
+
+def test_validate_pl5_valid_with_repeats():
+    df = _make_pl5_df([["pl5", 26101, 0, 0, 5, 5, 9]])
+    errs = validate_pl5(df)
+    assert not errs
+
+
+def test_validate_pl5_out_of_range():
+    df = _make_pl5_df([["pl5", 26101, 3, 4, 5, 6, 10]])
+    errs = validate_pl5(df)
+    assert any("越界" in e for e in errs)
+
+
+def test_validate_pl5_wrong_type():
+    df = _make_pl5_df([["dlt", 26101, 3, 4, 5, 6, 7]])
+    errs = validate_pl5(df)
+    assert any("lottery_type" in e for e in errs)

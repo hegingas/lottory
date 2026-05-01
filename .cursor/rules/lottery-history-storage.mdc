@@ -1,5 +1,5 @@
 ---
-description: 历史分析结果固定写入 history/ 下三个 Markdown，每次分析后由历史分析 Agent 更新对应文件
+description: 历史分析结果固定写入 history/ 下四个 Markdown，每次分析后由历史分析 Agent 更新对应文件
 alwaysApply: true
 ---
 
@@ -12,13 +12,14 @@ alwaysApply: true
 | 大乐透 | `history/daletou_analysis.md` |
 | 双色球 | `history/shuangseqiu_analysis.md` |
 | 快乐八 | `history/kuaileba_analysis.md` |
+| 排列5 | `history/pailie5_analysis.md` |
 
 ## 更新义务
 
 - **`lottery-history-analysis` Agent** 每完成一次该彩种（或含该彩种）的历史数据分析任务，须在**同一轮任务内**用编辑器更新上表中**涉及彩种**对应的 Markdown：**写入本次完整分析结论**（可覆盖整文件），并更新文内「最后更新」「统计窗口 / 期号范围」「所用数据路径」等元信息。
 - **最新开奖重算强制**：每次历史分析任务前，必须先按 `data/processed/*.csv` 的最新 `period_id` 重算统计；输出前需保证分析文件中 `期号范围` 末期与对应 CSV 最新期号一致，禁止沿用旧窗口结果。
-- **`regenerate-history` 脚本**：`--only all`（且存在 `kl8_draws.csv`）或 `--only kl8` 时，按**相同默认窗口（近 30 期）**自动重写 `history/kuaileba_analysis.md`（机械统计正文）。`regenerate-kl8-prediction` 为兼容别名。Agent 的深度解读、数据质量叙事或与全表对照的补充，可在脚本生成结果之上**增量编辑**，并保证元数据不与脚本口径矛盾。
-- **其他 Agent** 默认**不修改**上述三文件；仅可读取供参考，除非用户明确要求其编辑。
+- **`regenerate-history` 脚本**：`--only all` 会重写 DLT/SSQ/PL5（以及存在 `kl8_draws.csv` 时的 KL8）分析归档；`--only kl8` 仅快乐八；`--only dlt-ssq` 仅大乐透+双色球；`--only pl5` 仅排列5。均按**相同默认窗口（近 30 期）**生成机械统计正文。`regenerate-kl8-prediction` 为兼容别名。Agent 的深度解读、数据质量叙事或与全表对照的补充，可在脚本生成结果之上**增量编辑**，并保证元数据不与脚本口径矛盾。
+- **其他 Agent** 默认**不修改**上述四文件；仅可读取供参考，除非用户明确要求其编辑。
 
 ## 文件内容建议结构
 
