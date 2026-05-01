@@ -5,7 +5,7 @@
 用法（在仓库根目录）：
   python src/scripts/lottery.py inventory
   python src/scripts/lottery.py validate
-  python src/scripts/lottery.py regenerate-history [--only all|kl8|dlt-ssq|pl5]
+  python src/scripts/lottery.py regenerate-history [--only all|kl8|dlt-ssq|pl5|qxc]
 
 **唯一推荐的刷新路径**：`regenerate-history`，用 ``--only`` 按用户/任务要刷的彩种选择范围。
 """
@@ -43,7 +43,7 @@ def cmd_validate() -> int:
 def cmd_regenerate_history(only_api: str, seed: int) -> int:
     from scripts.regenerate_history_archives import main as regen_main
 
-    internal = {"all": "all", "kl8": "kl8", "dlt-ssq": "dlt_ssq", "pl5": "pl5"}[only_api]
+    internal = {"all": "all", "kl8": "kl8", "dlt-ssq": "dlt_ssq", "pl5": "pl5", "qxc": "qxc"}[only_api]
     rc = int(regen_main(only=internal, seed=seed))
     if rc == 0:
         report, _ = _build_doctor_report()
@@ -120,26 +120,29 @@ def _build_doctor_report() -> tuple[dict, object]:
         "ssq": _latest_period_from_csv(proc / "ssq_draws.csv"),
         "kl8": _latest_period_from_csv(proc / "kl8_draws.csv"),
         "pl5": _latest_period_from_csv(proc / "pl5_draws.csv"),
+        "qxc": _latest_period_from_csv(proc / "qxc_draws.csv"),
     }
     history_latest = {
         "dlt": _latest_period_from_history(hist / "daletou_prediction.md"),
         "ssq": _latest_period_from_history(hist / "shuangseqiu_prediction.md"),
         "kl8": _latest_period_from_history(hist / "kuaileba_prediction.md"),
         "pl5": _latest_period_from_history(hist / "pailie5_prediction.md"),
+        "qxc": _latest_period_from_history(hist / "qixingcai_prediction.md"),
     }
     history_analysis_latest = {
         "dlt": _latest_period_from_history(hist / "daletou_analysis.md"),
         "ssq": _latest_period_from_history(hist / "shuangseqiu_analysis.md"),
         "kl8": _latest_period_from_history(hist / "kuaileba_analysis.md"),
         "pl5": _latest_period_from_history(hist / "pailie5_analysis.md"),
+        "qxc": _latest_period_from_history(hist / "qixingcai_analysis.md"),
     }
     sync = {
         k: (data_latest.get(k) is not None and data_latest.get(k) == history_latest.get(k))
-        for k in ("dlt", "ssq", "kl8", "pl5")
+        for k in ("dlt", "ssq", "kl8", "pl5", "qxc")
     }
     analysis_sync = {
         k: (data_latest.get(k) is not None and data_latest.get(k) == history_analysis_latest.get(k))
-        for k in ("dlt", "ssq", "kl8", "pl5")
+        for k in ("dlt", "ssq", "kl8", "pl5", "qxc")
     }
     expected_markov_weight = float(cfg.PATTERN_W_MARKOV)
     formula_weight = {
@@ -281,10 +284,10 @@ def main() -> int:
     p_rh.add_argument(
         "--only",
         dest="only_scope",
-        choices=["all", "kl8", "dlt-ssq", "pl5"],
+        choices=["all", "kl8", "dlt-ssq", "pl5", "qxc"],
         default="all",
         metavar="SCOPE",
-        help="all：DLT+SSQ+PL5 六文件，且存在 kl8 CSV 时追加 KL8 两文件；kl8：仅 KL8 分析+预测；dlt-ssq：仅 DLT+SSQ 四文件；pl5：仅排列5分析+预测",
+        help="all：DLT+SSQ+PL5 六文件，kl8/qxc CSV 存在时追加对应文件；kl8：仅 KL8；dlt-ssq：仅 DLT+SSQ；pl5：仅排列5；qxc：仅七星彩",
     )
     p_rh.add_argument(
         "--seed",

@@ -540,3 +540,33 @@ def _assert_kl8_zone_bounds(nums: list[int], label: str) -> list[int]:
             f"{label} 分区校验失败：要求每小区[{KL8_MIN_PER_PICK_ZONE},{KL8_MAX_PER_PICK_ZONE}]，实际 {', '.join(bad)}；全量计数={zc}"
         )
     return zc
+
+
+# ── 七星彩 5 注单式收集 ─────────────────────────────────────────
+
+def _qxc_collect_five_tickets(
+    scores_by_pos: list[np.ndarray],
+    n_lines: int = PREDICTION_SINGLE_LINES,
+) -> list[list[int]]:
+    tickets: list[list[int]] = []
+    n_pos = len(scores_by_pos)
+    used_pos_counts = np.zeros((n_pos, max(len(s) for s in scores_by_pos)), dtype=float)
+    for _ in range(n_lines):
+        ticket: list[int] = []
+        for pos in range(n_pos):
+            adj = scores_by_pos[pos] - 0.08 * used_pos_counts[pos]
+            digit = int(np.argmax(adj))
+            ticket.append(digit)
+            used_pos_counts[pos, digit] += 1.0
+        if ticket in tickets:
+            pos = n_pos - 1
+            adj = scores_by_pos[pos] - 0.08 * used_pos_counts[pos]
+            order = list(np.argsort(-adj))
+            for d in order:
+                cand = ticket[:-1] + [int(d)]
+                if cand not in tickets:
+                    ticket = cand
+                    used_pos_counts[pos, int(d)] += 1.0
+                    break
+        tickets.append(ticket)
+    return tickets

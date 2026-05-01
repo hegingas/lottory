@@ -3,7 +3,7 @@
 基于 data/processed/*.csv 重算并写入 history 下归档（N 默认见 `DEFAULT_STATS_WINDOW`，当前为 30）。
 
 运行（在仓库根，统一入口）：
-  python src/scripts/lottery.py regenerate-history [--only all|kl8|dlt-ssq|pl5]
+  python src/scripts/lottery.py regenerate-history [--only all|kl8|dlt-ssq|pl5|qxc]
   # 或直接：python src/scripts/regenerate_history_archives.py [--only kl8]
 """
 
@@ -31,6 +31,8 @@ from lottery.builders import (
     prediction_block_ssq,
     prediction_block_kl8,
     prediction_block_pl5,
+    build_qxc_analysis,
+    prediction_block_qxc,
 )
 from lottery.paths import repo_root  # noqa: E402
 
@@ -39,16 +41,18 @@ def _normalize_only(only: str) -> str:
     o = (only or "all").strip().lower().replace("-", "_")
     if o == "dltssq":
         return "dlt_ssq"
+    if o == "qxc":
+        return "qxc"
     return o
 
 
 def main(only: str = "all", seed: int | None = DEFAULT_RANDOM_SEED) -> int:
     only_n = _normalize_only(only)
     used_seed = _set_random_seed(seed)
-    if only_n not in ("all", "kl8", "dlt_ssq", "pl5"):
+    if only_n not in ("all", "kl8", "dlt_ssq", "pl5", "qxc"):
         print(
             json.dumps(
-                {"ok": False, "error": f"invalid only={only!r}; use all | kl8 | dlt-ssq | pl5"},
+                {"ok": False, "error": f"invalid only={only!r}; use all | kl8 | dlt-ssq | pl5 | qxc"},
                 ensure_ascii=True,
             )
         )
@@ -150,6 +154,28 @@ def main(only: str = "all", seed: int | None = DEFAULT_RANDOM_SEED) -> int:
             (HIST / "pailie5_analysis.md").write_text(build_pl5_analysis(pl5), encoding="utf-8")
             (HIST / "pailie5_prediction.md").write_text(prediction_block_pl5(pl5), encoding="utf-8")
             wrote.extend(["history/pailie5_analysis.md", "history/pailie5_prediction.md"])
+
+    if only_n in ("all", "qxc"):
+        qxc_path = PROC / "qxc_draws.csv"
+        if not qxc_path.is_file():
+            if only_n == "qxc":
+                raise SystemExit("缺少 data/processed/qxc_draws.csv；请先补数。")
+        else:
+            try:
+                import pandas as pd
+
+                qxc = pd.read_csv(qxc_path, encoding="utf-8-sig")
+            except Exception as e:
+                print(
+                    json.dumps(
+                        {"ok": False, "error": f"读取 QXC CSV 失败：{e}"},
+                        ensure_ascii=True,
+                    )
+                )
+                return 1
+            (HIST / "qixingcai_analysis.md").write_text(build_qxc_analysis(qxc), encoding="utf-8")
+            (HIST / "qixingcai_prediction.md").write_text(prediction_block_qxc(qxc), encoding="utf-8")
+            wrote.extend(["history/qixingcai_analysis.md", "history/qixingcai_prediction.md"])
 
     if not wrote:
         print(

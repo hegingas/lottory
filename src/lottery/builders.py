@@ -1090,3 +1090,186 @@ def prediction_block_pl5(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW) -
 {mech_line}
 - **说明**：本附录仅作金额示例；若用户指定其他预算或倍投口径，以用户要求为准。
 """
+
+
+# ── 七星彩分析与预测 ─────────────────────────────────────────────
+
+def build_qxc_analysis(df: pd.DataFrame, analysis_window: int = DEFAULT_STATS_WINDOW) -> str:
+    df = df.copy()
+    df["period_id"] = pd.to_numeric(df["period_id"], errors="coerce")
+    df = df.sort_values("period_id").reset_index(drop=True)
+    full_n = len(df)
+    if full_n == 0:
+        return "# 七星彩 — 历史数据分析归档\n\n（无数据行）\n"
+    pid_full_min, pid_full_max = int(df["period_id"].iloc[0]), int(df["period_id"].iloc[-1])
+    win = df.tail(min(analysis_window, full_n)).reset_index(drop=True)
+    n = len(win)
+    pid_min, pid_max = int(win["period_id"].min()), int(win["period_id"].max())
+
+    fcols = [f"d{i}" for i in range(1, 7)]
+    draws = win[fcols].astype(int).values.tolist()
+    specials = win["special"].astype(int).tolist()
+
+    flat_front = [x for row in draws for x in row]
+    ctr_front = Counter(flat_front)
+    hot_front = sorted(ctr_front.items(), key=lambda kv: (-kv[1], kv[0]))[:5]
+    cold_front = sorted(ctr_front.items(), key=lambda kv: (kv[1], kv[0]))[:5]
+    ctr_special = Counter(specials)
+    hot_special = sorted(ctr_special.items(), key=lambda kv: (-kv[1], kv[0]))[:5]
+    cold_special = sorted(ctr_special.items(), key=lambda kv: (kv[1], kv[0]))[:5]
+
+    pos_lines: list[str] = []
+    for i in range(6):
+        c = Counter(int(row[i]) for row in draws)
+        top3 = sorted(c.items(), key=lambda kv: (-kv[1], kv[0]))[:3]
+        pos_lines.append(
+            f"- 前区第{i + 1}位：{ '、'.join([f'`{d}`（{ct}次）' for d, ct in top3]) }"
+        )
+    pos_lines.append(
+        f"- 后区（special 0–14）：{ '、'.join([f'`{d}`（{ct}次）' for d, ct in hot_special[:3]]) }"
+    )
+
+    sums = np.array([sum(map(int, row)) + int(specials[j]) for j, row in enumerate(draws)], dtype=float)
+    spans_front = np.array([max(map(int, row)) - min(map(int, row)) for row in draws], dtype=float)
+    repeat_n = sum(1 for row in draws if len(set(map(int, row))) < 6)
+
+    return f"""# 七星彩 — 历史数据分析归档
+
+> **最后更新**：{now_cn_iso()}
+> **统计窗口（默认）**：近 **{n}** 期，期号 **`{pid_min}`–`{pid_max}`**（期末尾连续段，至多 **{analysis_window}** 期）。
+> **全表收录**：`data/processed/qxc_draws.csv` 共 **{full_n}** 期，期号 **`{pid_full_min}`–`{pid_full_max}`**（溯源见 `data/processed/manifest.json`）
+
+---
+
+## 摘要（数据范围与口径）
+
+本次基于 `data/processed/qxc_draws.csv` 进行描述性统计。每期包含 **前区 6 位**（`d1`–`d6`，0–9，允许重复）+ **后区 1 位**（`special`，0–14）。
+
+## 结果摘要
+
+- 前区 6 位数字热度 Top5：{ "、".join([f'`{d}`（{ct}次）' for d, ct in hot_front]) }
+- 前区 6 位数字冷度 Top5：{ "、".join([f'`{d}`（{ct}次）' for d, ct in cold_front]) }
+- 后区数字热度 Top5：{ "、".join([f'`{d}`（{ct}次）' for d, ct in hot_special]) }
+- 后区数字冷度 Top5：{ "、".join([f'`{d}`（{ct}次）' for d, ct in cold_special]) }
+- 前区含重复数字的期数占比：**{repeat_n}/{n} = {repeat_n / max(n, 1) * 100:.2f}%**
+- 七星和值（前区+后区）：{_qstats(sums)}
+- 前区跨度（max−min）：{_qstats(spans_front)}
+
+## 分位热度（Top3）
+
+{chr(10).join(pos_lines)}
+
+## 局限
+
+七星彩开奖结果具有随机性；以上统计仅用于历史描述，不构成中奖承诺或投资建议。
+"""
+
+
+def prediction_block_qxc(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW) -> str:
+    df = df.copy()
+    df["period_id"] = pd.to_numeric(df["period_id"], errors="coerce")
+    full = df.sort_values("period_id").reset_index(drop=True)
+    if len(full) == 0:
+        return "# 七星彩 — 统计型预测参考归档\n\n（无数据行）\n"
+    tail = full.tail(min(n_last, len(full))).reset_index(drop=True)
+    pmin, pmax = int(tail["period_id"].min()), int(tail["period_id"].max())
+    fcols = [f"d{i}" for i in range(1, 7)]
+    draws = tail[fcols].astype(int).values.tolist()
+    specials_all = full["special"].astype(int).tolist()
+    specials_win = tail["special"].astype(int).tolist()
+    n_win = len(draws)
+    pred_ts = now_cn_iso()
+
+    from .scoring import _qxc_position_scores
+    from .selection import _qxc_collect_five_tickets
+
+    scores_by_pos: list[np.ndarray] = []
+    mk_by_pos: list[np.ndarray] = []
+    for pos in range(6):
+        sc, mk = _qxc_position_scores(draws, pos, 10, 0.36, 0.30, 0.18, 0.16, PATTERN_RECENT_K)
+        scores_by_pos.append(sc)
+        mk_by_pos.append(mk)
+    sc_special, mk_special = _qxc_position_scores(
+        [[s] for s in specials_win], 0, 15, 0.36, 0.30, 0.18, 0.16, PATTERN_RECENT_K
+    )
+    scores_by_pos.append(sc_special)
+    mk_by_pos.append(mk_special)
+
+    tickets = _qxc_collect_five_tickets(scores_by_pos)
+
+    hot_lines: list[str] = []
+    for pos in range(6):
+        arr = scores_by_pos[pos]
+        best = int(np.argmax(arr))
+        hot_lines.append(
+            f"- 前区第{pos + 1}位：优先 `[{best}]`（综合分 {float(arr[best]):.3f}，马尔可夫P≈{float(mk_by_pos[pos][best]):.4f}）"
+        )
+    hot_lines.append(
+        f"- 后区：优先 `[{int(np.argmax(sc_special))}]`（综合分 {float(sc_special.max()):.3f}）"
+    )
+
+    numbers_md = []
+    for i, t in enumerate(tickets, 1):
+        front = ",".join(str(int(x)) for x in t[:6])
+        sp = int(t[6])
+        numbers_md.append(f"- 第{i}注：前区 **{front}** + 后区 `{sp}`（全码：`{front},{sp}`）")
+
+    pref_front = [int(np.argmax(scores_by_pos[i])) for i in range(6)]
+    pref_sp = int(np.argmax(sc_special))
+    qxc_pref_front = ",".join(str(d) for d in pref_front)
+    qxc_pref_full = f"{qxc_pref_front},{pref_sp}"
+    qxc_pref_tot = sum(float(scores_by_pos[i][pref_front[i]]) for i in range(6)) + float(sc_special[pref_sp])
+
+    mech_line = (
+        f"- **机械方案（{PREDICTION_SINGLE_LINES} 注单式）**：正文 {PREDICTION_SINGLE_LINES} 组「前 6+后 1」单式，"
+        f"每组按 **2 元**计，合计 **{PREDICTION_SINGLE_LINES * 2} 元**（落在 10～30 元带内）。"
+    )
+
+    return f"""# 七星彩 — 统计型预测参考归档
+
+> **最后更新**：{pred_ts}
+> **统计窗口**：近 **{n_win}** 期（至多 **{n_last}** 期，期末尾连续段）
+> **期号范围**：`{pmin}`–`{pmax}`
+> **所用数据路径**：`data/processed/qxc_draws.csv`
+> **随机种子**：`{_lottery_config._ACTIVE_RANDOM_SEED}`（同数据同种子可复现）
+
+---
+
+## 口径说明
+
+- 彩种：七星彩（前区 6 位 0–9 + 后区 1 位 0–14）
+- 窗口：近 **{n_win}** 期（至多 **{n_last}** 期）
+- 因子：分位频次、当前遗漏、近 **{PATTERN_RECENT_K}** 期密度、马尔可夫转移概率（基于全历史按相邻期重算）
+- 评分：按 `0.36×遗漏 + 0.30×频次 + 0.18×近端密度 + 0.16×马尔可夫` 合成分位综合分，5 注之间施加轻度去重惩罚。
+- 七星彩为按位匹配游戏，不适用「与历史开奖完全重合」或「与最新期 ≤3 重合」的防重合约束。
+
+## 结果摘要
+
+{chr(10).join(hot_lines)}
+
+- **去核心化**：已执行去核心化约束——各注在分位综合分与注间去重惩罚下生成，未直接采用「每位单纯 Top1 热号」拼成 5 注不变体。
+
+## 明确号码输出（强制，统计参考）
+
+{chr(10).join(numbers_md)}
+
+## 单式优选（强制）
+
+> **生成时间**：`{pred_ts}`（北京时间）。
+
+- **号码（7 位）**：**{qxc_pref_full}**（前区：`{qxc_pref_front}`，后区：`{pref_sp}`）
+- **总分（七位综合分之和）**：**{qxc_pref_tot:.3f}**
+- **关键因子**：遗漏、频次、近端密度、马尔可夫（见口径说明）。
+
+## 使用说明
+
+以上仅为历史统计参考，下一期开奖仍为独立随机事件，不构成中奖承诺或投资建议。
+
+---
+
+## 附录：预算与投注推荐（仓库默认）
+
+- **金额带（强制）**：统计规律输出完成后，至少提供一套 **10～30 元（含）** 的打票参考。
+{mech_line}
+- **说明**：本附录仅作金额示例；若用户指定其他预算或倍投口径，以用户要求为准。
+"""

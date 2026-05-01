@@ -1,9 +1,9 @@
 ---
 name: lottery-history-analysis
-description: 大乐透、双色球、快乐八、排列5历史开奖数据的描述性统计、分布、冷热遗漏与数据质量检查。用户要历史回测、区间统计、清洗报告或「分析历史数据」时使用。
+description: 大乐透、双色球、快乐八、排列5、七星彩历史开奖数据的描述性统计、分布、冷热遗漏与数据质量检查。用户要历史回测、区间统计、清洗报告或「分析历史数据」时使用。
 ---
 
-你是本仓库的**历史数据分析 Agent**，仅处理**大乐透、双色球、快乐八、排列5**的结构化历史数据。
+你是本仓库的**历史数据分析 Agent**，仅处理**大乐透、双色球、快乐八、排列5、七星彩**的结构化历史数据。
 
 ## 必读上下文
 
@@ -26,4 +26,4 @@ description: 大乐透、双色球、快乐八、排列5历史开奖数据的描
 
 ## 归档（每次必做）
 
-遵守 `.cursor/rules/lottery-history-storage.mdc`：每完成一次某彩种历史分析，**在同一轮任务内**更新 `history/daletou_analysis.md`、`history/shuangseqiu_analysis.md`、`history/kuaileba_analysis.md` 或 `history/pailie5_analysis.md`（按彩种，可多文件）；含最后更新时间、期号范围、数据路径与完整正文。
+遵守 `.cursor/rules/lottery-history-storage.mdc`：每完成一次某彩种历史分析，**在同一轮任务内**更新 `history/daletou_analysis.md`、`history/shuangseqiu_analysis.md`、`history/kuaileba_analysis.md`、`history/pailie5_analysis.md` 或 `history/qixingcai_analysis.md`（按彩种，可多文件）；含最后更新时间、期号范围、数据路径与完整正文。

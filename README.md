@@ -1,6 +1,6 @@
 # Lottery 工具与 Agent 配置
 
-本仓库用于 **大乐透、双色球、快乐八、排列5** 的数据采集、历史分析、统计型预测参考与投注组合优化，支持 **Cursor IDE**（`.cursor/`）与 **Claude Code**（`.claude/` + `CLAUDE.md`）双环境运行。
+本仓库用于 **大乐透、双色球、快乐八、排列5、七星彩** 的数据采集、历史分析、统计型预测参考与投注组合优化，支持 **Cursor IDE**（`.cursor/`）与 **Claude Code**（`.claude/` + `CLAUDE.md`）双环境运行。
 
 ## 重要说明
 
@@ -19,6 +19,7 @@
 - **大乐透、双色球**：以 `dlt_draws.csv` / `ssq_draws.csv` 与 `manifest.json` 为准；缺口由 `lottery-draw-*` 或手工补 CSV。
 - **快乐八**：以 `data/processed/kl8_draws.csv` 为准。
 - **排列5**：以 `data/processed/pl5_draws.csv` 为准（`d1`–`d5`，0–9，允许重复）；当前无专用 draw Agent，按规范手工补录。
+- **七星彩**：以 `data/processed/qxc_draws.csv` 为准（`d1`–`d6`，0–9，`special` 0–14，允许前区重复）。
 
 细则与流程图见 `[AGENTS.md](AGENTS.md)`。
 
@@ -35,9 +36,9 @@
 | `.claude/skills/*/SKILL.md` | **Claude Code 技能**：与 `.cursor/skills/` 内容同步，服务于 Claude Code 环境的 `/skill-name` 调用 |
 | `CLAUDE.md`                 | **Claude Code 全局规则**：与 `.cursor/rules/` 等效，含完整硬性规则、彩种定义、因子权重 |
 | `AGENTS.md`                 | **Agent 分工说明**：职责隔离表、标准流程、数据流、Python 协作方式 |
-| `data/`                     | `raw/` 原始抓取（可选）；`processed/` **主数据**（`dlt_draws.csv` / `ssq_draws.csv` / `kl8_draws.csv` / `pl5_draws.csv`，**不含开奖日期列**，仅期号+号码）                                                                                                     |
-| `history/`                  | 分析 / 预测：`daletou_*`、`shuangseqiu_*`、`kuaileba_*`、`pailie5_*`（可由 `regenerate-history` 按**四彩种同一默认窗口**批量刷新，或由对应 Agent 维护）                                                                               |
-| `src/scripts/`              | **`lottery.py`**：统一用 `regenerate-history` + `--only` 刷新 `history/`（`all` / `kl8` / `dlt-ssq` / `pl5`，默认近 30 期）；`regenerate-kl8-prediction` 为兼容别名；另保留 `regenerate_history_archives.py`                          |
+| `data/`                     | `raw/` 原始抓取（可选）；`processed/` **主数据**（`dlt_draws.csv` / `ssq_draws.csv` / `kl8_draws.csv` / `pl5_draws.csv` / `qxc_draws.csv`，**不含开奖日期列**，仅期号+号码）                                                                                                     |
+| `history/`                  | 分析 / 预测：`daletou_*`、`shuangseqiu_*`、`kuaileba_*`、`pailie5_*`、`qixingcai_*`（可由 `regenerate-history` 按**五彩种同一默认窗口**批量刷新，或由对应 Agent 维护）                                                                               |
+| `src/scripts/`              | **`lottery.py`**：统一用 `regenerate-history` + `--only` 刷新 `history/`（`all` / `kl8` / `dlt-ssq` / `pl5` / `qxc`，默认近 30 期）；`regenerate-kl8-prediction` 为兼容别名；另保留 `regenerate_history_archives.py`                          |
 | `src/lottery/`              | 盘点与校验逻辑（供 `lottery.py` 与后续测试复用）                          |
 | `requirements.txt`          | Python 依赖：`pandas`、`numpy`（用于 `regenerate_history_archives.py`）                                                                                                                                                        |
 
@@ -49,12 +50,12 @@
 
 | `name`                     | 用途简述                                               |
 | -------------------------- | -------------------------------------------------- |
-| `lottery-manager`          | 任务编排、目录约定、四彩种衔接                                    |
-| `lottery-history-analysis` | 四彩种历史开奖描述性统计与数据质量                                     |
-| `lottery-prediction`       | 基于明确统计口径的冷热 / 常见号参考（大乐透/双色球/快乐八/排列5，须声明随机性）                        |
-| `lottery-combo-optimize`   | 默认 **10～30 元/期** 组合；大乐透/双色球支持单式、复式、胆拖（倍投仅当用户要求）；快乐八 **仅选十 + 11 码复式**；排列5 以单式多注为主 |
+| `lottery-manager`          | 任务编排、目录约定、五彩种衔接                                    |
+| `lottery-history-analysis` | 五彩种历史开奖描述性统计与数据质量                                     |
+| `lottery-prediction`       | 基于明确统计口径的冷热 / 常见号参考（大乐透/双色球/快乐八/排列5/七星彩，须声明随机性）                        |
+| `lottery-combo-optimize`   | 默认 **10～30 元/期** 组合；大乐透/双色球支持单式、复式、胆拖（倍投仅当用户要求）；快乐八 **仅选十 + 11 码复式**；排列5/七星彩 以单式多注为主 |
 | `lottery-draw-dlt-ssq`     | **仅**大乐透 + 双色球开奖数据更新（`processed` CSV / manifest）   |
-| `lottery-draw-sync`        | **三彩种（含快乐八，当前不含排列5）**开奖数据采集、解析、校验与落盘                       |
+| `lottery-draw-sync`        | **三彩种（含快乐八，当前不含排列5、七星彩）**开奖数据采集、解析、校验与落盘                       |
 
 
 更完整的表格与使用建议见 `[AGENTS.md](AGENTS.md)`。

@@ -344,3 +344,68 @@ def _ssq_blue_scores(
     mean_hi = float(np.mean([1 if int(x) >= 9 else 0 for x in blues])) if blues else 0.5
     f_hi = _size_alignment_raw(n_ball, mean_hi, 1, lambda i: i >= 9)
     return _weighted_composite(f_miss, f_freq, f_zone, f_rec, f_odd, f_hi, f_med, markov_raw, n_ball)
+
+
+# ── 七星彩分位评分 ──────────────────────────────────────────────
+
+def _qxc_norm01(vals: np.ndarray) -> np.ndarray:
+    arr = vals.astype(float)
+    lo = float(arr.min())
+    hi = float(arr.max())
+    if hi <= lo:
+        return np.full_like(arr, 0.5, dtype=float)
+    return (arr - lo) / (hi - lo)
+
+
+def _qxc_markov_probs(draws: list[list[int]], pos: int, n_digits: int, laplace: float = 1.0) -> np.ndarray:
+    out = np.full(n_digits, 1.0 / n_digits, dtype=float)
+    if len(draws) < 2:
+        return out
+    trans = np.zeros((n_digits, n_digits), dtype=float)
+    for t in range(1, len(draws)):
+        prev = int(draws[t - 1][pos])
+        cur = int(draws[t][pos])
+        if 0 <= prev < n_digits and 0 <= cur < n_digits:
+            trans[prev, cur] += 1.0
+    latest = int(draws[-1][pos])
+    if 0 <= latest < n_digits:
+        row = trans[latest]
+        den = float(row.sum() + n_digits * laplace)
+        for d in range(n_digits):
+            out[d] = (float(row[d]) + laplace) / den
+    return out
+
+
+def _qxc_position_scores(
+    draws: list[list[int]],
+    pos: int,
+    n_digits: int,
+    w_miss: float,
+    w_freq: float,
+    w_recency: float,
+    w_markov: float,
+    recent_k: int = 5,
+) -> np.ndarray:
+    n_win = len(draws)
+    freq = np.zeros(n_digits, dtype=float)
+    miss = np.zeros(n_digits, dtype=float)
+    rec = np.zeros(n_digits, dtype=float)
+    for row in draws:
+        freq[int(row[pos])] += 1.0
+    for d in range(n_digits):
+        m = n_win
+        for k in range(n_win - 1, -1, -1):
+            if int(draws[k][pos]) == d:
+                m = n_win - 1 - k
+                break
+        miss[d] = float(m)
+    for row in draws[-min(recent_k, n_win):]:
+        rec[int(row[pos])] += 1.0
+    mk = _qxc_markov_probs(draws, pos, n_digits)
+    sc = (
+        w_miss    * _qxc_norm01(miss)
+        + w_freq  * _qxc_norm01(freq)
+        + w_recency * _qxc_norm01(rec)
+        + w_markov * _qxc_norm01(mk)
+    )
+    return sc, mk

@@ -38,7 +38,18 @@
       "Bash(curl -s --max-time 8 'https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry?gameNo=__TRACKED_VAR__&provinceId=0&pageSize=1&pageNo=1')",
       "Bash(python3 *)",
       "Bash(echo \"---exit: $?\")",
-      "Bash(pip install *)"
+      "Bash(pip install *)",
+      "Bash(git -C \"C:/Study/lottory\" ls-files --cached)",
+      "Bash(git *)",
+      "Bash(curl -sL --max-time 10 -H \"User-Agent: Mozilla/5.0 \\(Windows NT 10.0; Win64; x64\\) AppleWebKit/537.36\" \"https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry?gameNo=86&provinceId=0&pageSize=3&isVerity=1&pageNo=1\")",
+      "Bash(curl -sL --max-time 10 -v \"https://www.cwl.gov.cn/cwl_admin/front/cwlkj/search/kjxx/findDrawNotice?name=kl8&issueCount=3\")",
+      "Bash(curl -sL --max-time 10 -H \"User-Agent: Mozilla/5.0 \\(Windows NT 10.0; Win64; x64\\) AppleWebKit/537.36 \\(KHTML, like Gecko\\) Chrome/120.0.0.0 Safari/537.36\" \"https://www.cwl.gov.cn/cwl_admin/front/cwlkj/search/kjxx/findDrawNotice?name=kl8&issueCount=3\")",
+      "Bash(curl -sL --max-time 10 \"https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry?gameNo=86&provinceId=0&pageSize=1&pageNo=1\")",
+      "Bash(curl -sL --max-time 10 \"https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry?gameNo=85&provinceId=0&pageSize=1&pageNo=1\")",
+      "Bash(curl -sL --max-time 8 'https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry?gameNo=__TRACKED_VAR__&provinceId=0&pageSize=1&pageNo=1')",
+      "Bash(curl -sL --max-time 10 -H \"User-Agent: Mozilla/5.0 \\(Windows NT 10.0; Win64; x64\\) AppleWebKit/537.36 \\(KHTML, like Gecko\\) Chrome/130.0.0.0 Safari/537.36\" -H \"Accept: application/json, text/plain, */*\" -H \"Referer: https://www.cwl.gov.cn/ygkj/wqkjgg/kl8/\" \"https://www.cwl.gov.cn/cwl_admin/front/cwlkj/search/kjxx/findDrawNotice?name=kl8&issueCount=3\")",
+      "Bash(curl -s --max-time 10 \"https://cn.apihz.cn/api/caipiao/kuaile8.php?id=88888888&key=88888888\")",
+      "Bash(curl *)"
     ]
   },
   "mcpServers": {

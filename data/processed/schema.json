@@ -69,5 +69,20 @@
       "d5"
     ],
     "notes": "不含开奖日期列；每期 5 位数字开奖，允许重复数字（0-9）；由用户截图录入或后续同步流程写入；manifest.json 记录溯源"
+  },
+  "qxc_draws.csv": {
+    "lottery_type": "qxc",
+    "columns": [
+      "lottery_type",
+      "period_id",
+      "d1",
+      "d2",
+      "d3",
+      "d4",
+      "d5",
+      "d6",
+      "special"
+    ],
+    "notes": "不含开奖日期列；前区 6 位（d1–d6）为 0–9 数字，允许重复；后区 1 位（special）为 0–14；由用户数据录入或后续同步流程写入；manifest.json 记录溯源"
   }
 }

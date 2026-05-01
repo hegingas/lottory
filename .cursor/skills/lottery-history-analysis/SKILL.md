@@ -1,27 +1,28 @@
 ---
 name: lottery-history-analysis
-description: 对大乐透、双色球、快乐八、排列5历史开奖数据做描述性统计、分布、冷热、遗漏与数据质量检查。当用户要求历史回测、走势图思路、区间统计或数据清洗报告时使用。
+description: 对大乐透、双色球、快乐八、排列5、七星彩历史开奖数据做描述性统计、分布、冷热、遗漏与数据质量检查。当用户要求历史回测、走势图思路、区间统计或数据清洗报告时使用。
 ---
 
-# 历史数据分析（大乐透 / 双色球 / 快乐八 / 排列5）
+# 历史数据分析（大乐透 / 双色球 / 快乐八 / 排列5 / 七星彩）
 
 ## 数据前提
 
 - 输入为结构化历史表（每期一行）。缺失期号、重复期号、号码越界须先报告并处理策略。
 - 快乐八分析时默认关注 **选十** 相关统计（如 80 个号码在选十玩法下的出现频率），但若用户仅要「开奖号码集合」分析，需说明与玩法视角的差异。
-- **默认统计窗口**：用户未指定期数 N 时，四彩种**频率 / 冷热 / 遗漏等主体统计**默认仅针对 **`data/processed/` 按期号排序后的期末尾连续 30 期**（与 `.cursor/rules/lottery-core.mdc` 及 `src/lottery/config.py` 中 `DEFAULT_STATS_WINDOW` 一致）。若使用全表或其它 N，须在元数据与摘要中**显式写明**。
+- **默认统计窗口**：用户未指定期数 N 时，五彩种**频率 / 冷热 / 遗漏等主体统计**默认仅针对 **`data/processed/` 按期号排序后的期末尾连续 30 期**（与 `.cursor/rules/lottery-core.mdc` 及 `src/lottery/config.py` 中 `DEFAULT_STATS_WINDOW` 一致）。若使用全表或其它 N，须在元数据与摘要中**显式写明**。
 
 ## 数据来源优先级（推荐）
 
 1. **`data/processed/`** 下规范化文件（Parquet/CSV 等），若存在且字段齐全则 **优先** 使用。  
    - 大乐透默认：`data/processed/dlt_draws.csv`（由 `lottery-draw-dlt-ssq` / `lottery-draw-sync` 或仓库内直接维护生成）。  
    - 双色球默认：`data/processed/ssq_draws.csv`。  
-   - 排列5默认：`data/processed/pl5_draws.csv`（`d1`–`d5`，0-9，允许重复）。  
+  - 排列5默认：`data/processed/pl5_draws.csv`（`d1`–`d5`，0-9，允许重复）。  
+  - 七星彩默认：`data/processed/qxc_draws.csv`（`d1`–`d6` 为 0-9，`special` 为 0-14）。  
    - 元数据与剔除说明：`data/processed/manifest.json`。  
 2. 否则：`data/raw/` 或用户指定的其它结构化文件（本仓库不约定 xlsx）。  
 3. 必须在输出元数据中写明**实际采用的层级与路径**。若发现行级异常，按 `lottery-manager` 技能中的「异常数据闭环」移交修正后再重跑。  
 4. 开始深度统计前，可建议用户在仓库根执行 `python src/scripts/lottery.py validate`，以脚本结果作为数据质量门禁（与 Agent 文字结论相互印证）。  
-5. 若用户仅需将 `data/processed` 机械分析同步到 `history/*_analysis.md`：**统一**使用 `python src/scripts/lottery.py regenerate-history`，用 `--only all`（默认，含 kl8 时写 `kuaileba_analysis.md`）、`--only dlt-ssq`（仅大乐透+双色球）、`--only kl8`（仅快乐八分析+预测）或 `--only pl5`（仅排列5分析+预测）。脚本为**默认近 30 期**；人工深度解读仍由本 Agent 在对话中完成。
+5. 若用户仅需将 `data/processed` 机械分析同步到 `history/*_analysis.md`：**统一**使用 `python src/scripts/lottery.py regenerate-history`，用 `--only all`（默认，含 kl8 时写 `kuaileba_analysis.md`、含 qxc 时写 `qixingcai_analysis.md`）、`--only dlt-ssq`（仅大乐透+双色球）、`--only kl8`（仅快乐八分析+预测）、`--only pl5`（仅排列5分析+预测）或 `--only qxc`（仅七星彩分析+预测）。脚本为**默认近 30 期**；人工深度解读仍由本 Agent 在对话中完成。
 
 ## 彩种字段口径
 
@@ -31,6 +32,7 @@ description: 对大乐透、双色球、快乐八、排列5历史开奖数据做
 | 双色球 | 红球 6 枚，通常 01–33 | 蓝球 1 枚，通常 01–16 |
 | 快乐八 | 每期开出 20 个号码，01–80 | 无传统副区；选十为购彩者从 80 中选 10 |
 | 排列5 | 每期开出 5 位数字（`d1`–`d5`） | 0–9，允许重复 |
+| 七星彩 | 每期开出前区 6 位数字（`d1`–`d6`） | 后区 `special`（0–14），前区允许重复 |
 
 具体边界以国家体彩中心/福彩中心当期有效规则为准；实现时用配置常量集中管理。
 
@@ -67,6 +69,7 @@ description: 对大乐透、双色球、快乐八、排列5历史开奖数据做
 | 双色球 | `history/shuangseqiu_analysis.md` |
 | 快乐八 | `history/kuaileba_analysis.md` |
 | 排列5 | `history/pailie5_analysis.md` |
+| 七星彩 | `history/qixingcai_analysis.md` |
 
 **元数据块**（置于文件最上方，用引用块或二级标题均可）须包含：`最后更新`（ISO 8601 日期时间）、`数据期号范围`、`所用数据路径`（若使用 processed 须写明）。正文含本节「输出格式」三部分。若本次任务同时分析多彩种，须**分别更新**各自对应文件。对话中的用户可见回复可与归档内容一致或为其摘要，但**归档文件不可漏更**。
 

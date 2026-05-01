@@ -23,6 +23,33 @@ def _load_csv(path: Path) -> pd.DataFrame:
     return _norm_df(pd.read_csv(path, encoding="utf-8-sig"))
 
 
+def validate_qxc(df: pd.DataFrame) -> list[str]:
+    errs: list[str] = []
+    need = {"lottery_type", "period_id", "d1", "d2", "d3", "d4", "d5", "d6", "special"}
+    missing = need - set(df.columns)
+    if missing:
+        errs.append(f"qxc: 缺列 {sorted(missing)}")
+        return errs
+    if not (df["lottery_type"].astype(str).str.strip() == "qxc").all():
+        errs.append("qxc: lottery_type 须全为 qxc")
+    dup = df["period_id"].duplicated()
+    if dup.any():
+        errs.append(f"qxc: 重复 period_id 共 {int(dup.sum())} 行")
+    for _, row in df.iterrows():
+        if len(errs) >= VALIDATE_MAX_ERRORS:
+            errs.append("qxc: 错误过多，已截断")
+            break
+        pid = row["period_id"]
+        for i in range(1, 7):
+            x = int(row[f"d{i}"])
+            if not (0 <= x <= 9):
+                errs.append(f"qxc period {pid}: d{i} 越界 {x}")
+        sp = int(row["special"])
+        if not (0 <= sp <= 14):
+            errs.append(f"qxc period {pid}: special 越界 {sp}")
+    return errs
+
+
 def validate_dlt(df: pd.DataFrame) -> list[str]:
     errs: list[str] = []
     need = {
@@ -301,6 +328,7 @@ def run_validate() -> dict[str, Any]:
         kdf = _load_csv(kl8_p)
         latest_kl8 = int(pd.to_numeric(kdf["period_id"], errors="coerce").max())
     pl5_p = proc / "pl5_draws.csv"
+    qxc_p = proc / "qxc_draws.csv"
     if pl5_p.is_file():
         pdf = _load_csv(pl5_p)
         latest_pl5 = int(pd.to_numeric(pdf["period_id"], errors="coerce").max())
@@ -350,6 +378,21 @@ def run_validate() -> dict[str, Any]:
             all_errs.append(
                 f"history pailie5_analysis 末期={pl5_ana_max} 与 pl5_draws.csv 最新期 {latest_pl5} 不一致"
             )
+    latest_qxc = None
+    if qxc_p.is_file():
+        qdf = _load_csv(qxc_p)
+        latest_qxc = int(pd.to_numeric(qdf["period_id"], errors="coerce").max())
+    qxc_pred_max = _extract_period_max_from_history(hist / "qixingcai_prediction.md")
+    qxc_ana_max = _extract_period_max_from_history(hist / "qixingcai_analysis.md")
+    if latest_qxc is not None:
+        if qxc_pred_max is not None and qxc_pred_max != latest_qxc:
+            all_errs.append(
+                f"history qixingcai_prediction 末期={qxc_pred_max} 与 qxc_draws.csv 最新期 {latest_qxc} 不一致"
+            )
+        if qxc_ana_max is not None and qxc_ana_max != latest_qxc:
+            all_errs.append(
+                f"history qixingcai_analysis 末期={qxc_ana_max} 与 qxc_draws.csv 最新期 {latest_qxc} 不一致"
+            )
 
     if pl5_p.is_file():
         pl5 = _load_csv(pl5_p)
@@ -377,6 +420,36 @@ def run_validate() -> dict[str, Any]:
         ro = result["manifest_check"].get("pl5", {}).get("rows_out")
         if ro is not None and int(ro) != len(pl5):
             all_errs.append(f"manifest pl5 rows_out={ro} 与 CSV 行数 {len(pl5)} 不一致")
+
+    qxc_p = proc / "qxc_draws.csv"
+    if qxc_p.is_file():
+        qxc = _load_csv(qxc_p)
+        result["row_counts"]["qxc_csv"] = len(qxc)
+        qxc_pid = pd.to_numeric(qxc["period_id"], errors="coerce")
+        if qxc_pid.isna().any():
+            all_errs.append("qxc: period_id 含非数值")
+        else:
+            if not qxc_pid.is_monotonic_increasing:
+                all_errs.append("qxc: period_id 必须严格递增")
+            if qxc_pid.duplicated().any():
+                all_errs.append("qxc: period_id 出现重复（单调校验）")
+            m = result["manifest_check"].get("qxc", {})
+            pmin = m.get("period_id_min")
+            pmax = m.get("period_id_max")
+            if pmin is not None and int(pmin) != int(qxc_pid.min()):
+                all_errs.append(
+                    f"manifest qxc period_id_min={pmin} 与 CSV 最小期号 {int(qxc_pid.min())} 不一致"
+                )
+            if pmax is not None and int(pmax) != int(qxc_pid.max()):
+                all_errs.append(
+                    f"manifest qxc period_id_max={pmax} 与 CSV 最大期号 {int(qxc_pid.max())} 不一致"
+                )
+        all_errs.extend(validate_qxc(qxc))
+        ro = result["manifest_check"].get("qxc", {}).get("rows_out")
+        if ro is not None and int(ro) != len(qxc):
+            all_errs.append(f"manifest qxc rows_out={ro} 与 CSV 行数 {len(qxc)} 不一致")
+    else:
+        result["row_counts"]["qxc_csv"] = 0
 
     result["errors"] = all_errs
     result["ok"] = len(all_errs) == 0

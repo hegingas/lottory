@@ -64,6 +64,16 @@ TICKET_COLLECT_LATEST_SCORE_PENALTY = 0.28
 MARKOV_LAPLACE_ALPHA = 1.0
 KL8_ELEVEN_RANDOM_TRIES = 8000
 
+# ── 七星彩 ────────────────────────────────────────────────────
+QXC_FRONT_POSITIONS = 6
+QXC_FRONT_DIGITS = 10      # 每位 0–9
+QXC_BACK_MAX = 14           # 后区 0–14
+# 七星彩分位评分权重（与排列5一致）
+QXC_W_MISS = 0.36
+QXC_W_FREQ = 0.30
+QXC_W_RECENCY = 0.18
+QXC_W_MARKOV = 0.16
+
 # 校验错误截断阈值
 VALIDATE_MAX_ERRORS = 40
 

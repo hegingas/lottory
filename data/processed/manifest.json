@@ -106,6 +106,27 @@
           "official_verify": "建议与体彩官方公告核对"
         }
       }
+    },
+    {
+      "lottery_type": "qxc",
+      "output": "data/processed/qxc_draws.csv",
+      "source": "user_screenshot_qxc_batch_2026-05-01_v15_trim_lt_20100",
+      "rows_out": 865,
+      "period_id_min": 20100,
+      "period_id_max": 26047,
+      "generated_at": "2026-05-01T18:42:00+08:00",
+      "note": "第三方页面截图录入，建议与体彩官方公告抽样核对；字段口径：前区 6 位（d1–d6，0–9）+ 后区 1 位（special，0–14）",
+      "supplement": {
+        "recent_append": {
+          "rows_added": 865,
+          "period_ids": [
+            "20100",
+            "26047"
+          ],
+          "source_note": "trimmed_lt_20100_by_user_request_2026-05-01;user_provided_screenshot_2020-10-13_to_2026-04-28_batch_2026-05-01",
+          "official_verify": "建议与体彩官方公告核对"
+        }
+      }
     }
   ]
 }
