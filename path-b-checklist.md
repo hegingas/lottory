@@ -10,7 +10,7 @@
 
 | # | 任务 | 执行者 | 产出核对 |
 |---|------|--------|----------|
-| 0.1 | 确认彩种与范围：大乐透 / 双色球 / 快乐八；是否要预测、是否要 combo 附录 | 用户 / `lottery-manager` | ☐ |
+| 0.1 | 确认彩种与范围：大乐透 / 双色球 / 快乐八 / 排列5 / 七星彩；是否要预测、是否要 combo 附录 | 用户 / `lottery-manager` | ☐ |
 | 0.2 | 仓库根执行：`python src/scripts/lottery.py inventory` | 用户 / 终端 | ☐ 已保存或已查看 JSON 输出 |
 | 0.3 | 总控输出**移交清单**（下一步 Subagent、`name`、提示词要点） | `lottery-manager` | ☐ 清单已拿到 |
 
@@ -20,7 +20,7 @@
 
 | # | 任务 | 执行者 | 产出核对 |
 |---|------|--------|----------|
-| 1.1 | 仅大乐透+双色球补数 → `lottery-draw-dlt-ssq`；含快乐八 → `lottery-draw-sync` | 专精 Agent | ☐ `dlt_draws.csv` / `ssq_draws.csv` /（如需）`kl8_draws.csv` 已更新 |
+| 1.1 | 仅大乐透+双色球补数 → `lottery-draw-dlt-ssq`；含快乐八 → `lottery-draw-sync`；排列5/七星彩 → 按CSV规范手工补录（当前无专用draw Agent） | 专精 Agent | ☐ `dlt_draws.csv` / `ssq_draws.csv` /（如需）`kl8_draws.csv` / `pl5_draws.csv` / `qxc_draws.csv` 已更新 |
 | 1.2 | 同步更新 `data/processed/manifest.json`（溯源、rows_out、期号范围等） | 同上 | ☐ manifest 与 CSV 一致 |
 | 1.3 | 仓库根执行：`python src/scripts/lottery.py validate` | 用户 / 终端 | ☐ 退出码 **0**，JSON 中 `ok: true` |
 
@@ -34,6 +34,8 @@
 | 2.2 | 大乐透分析落盘 | 同上 | ☐ `history/daletou_analysis.md` 已整文件更新 |
 | 2.3 | 双色球分析落盘 | 同上 | ☐ `history/shuangseqiu_analysis.md` 已整文件更新 |
 | 2.4 | 快乐八分析落盘（若做快乐八） | 同上 | ☐ `history/kuaileba_analysis.md` 已整文件更新 |
+| 2.5 | 排列5分析落盘（若做排列5） | 同上 | ☐ `history/pailie5_analysis.md` 已整文件更新 |
+| 2.6 | 七星彩分析落盘（若做七星彩） | 同上 | ☐ `history/qixingcai_analysis.md` 已整文件更新 |
 
 ---
 
@@ -46,6 +48,8 @@
 | 3.3 | 大乐透：至少 **1 注** 前区 5 + 后区 2 | 同上 | ☐ `history/daletou_prediction.md` |
 | 3.4 | 双色球：至少 **1 注** 红 6 + 蓝 1 | 同上 | ☐ `history/shuangseqiu_prediction.md` |
 | 3.5 | 快乐八：至少 **选十参考 11 码（升序）** | 同上 | ☐ `history/kuaileba_prediction.md` |
+| 3.6 | 排列5：至少 **5 注单式** 五位号码（含生成时间+选号依据） | 同上 | ☐ `history/pailie5_prediction.md` |
+| 3.7 | 七星彩：至少 **5 注单式** 前6+后1（含生成时间+选号依据） | 同上 | ☐ `history/qixingcai_prediction.md` |
 
 ---
 
@@ -65,7 +69,7 @@
 
 | # | 任务 | 执行者 | 产出核对 |
 |---|------|--------|----------|
-| 4.1 | **统一命令**：`python src/scripts/lottery.py regenerate-history`，按任务加 `--only`：`all`（默认，含 kl8 时写满至多 6 个 md）、`kl8`（仅快乐八分析+预测）、`dlt-ssq`（仅大乐透+双色球四文件） | 用户 / 终端 | ☐ 终端 JSON `ok: true` 且 `wrote` 与预期一致 |
+| 4.1 | **统一命令**：`python src/scripts/lottery.py regenerate-history`，按任务加 `--only`：`all`（默认，含 kl8/qxc 时写满分至多 10 个 md）、`kl8`（仅快乐八）、`dlt-ssq`（仅大乐透+双色球）、`pl5`（仅排列5）、`qxc`（仅七星彩） | 用户 / 终端 | ☐ 终端 JSON `ok: true` 且 `wrote` 与预期一致 |
 | 4.1b | 若曾做 B.3：**重新粘贴/生成** 预测 md 的 combo 附录（DLT/SSQ/KL8 按需） | 用户 / combo Agent | ☐ 附录已恢复 |
 
 ---
@@ -83,8 +87,8 @@
 ```
 ☐ inventory
 ☐ validate（exit 0）
-☐ 三份 *_analysis.md（按彩种）
-☐ 三份 *_prediction.md（含明确号码）
+☐ 五彩种 *_analysis.md（按需）
+☐ 五彩种 *_prediction.md（含明确号码）
 ☐ （可选）combo 附录 + 投注原因
 ☐ （可选）`regenerate-history` 后预测附录已补回
 ```
