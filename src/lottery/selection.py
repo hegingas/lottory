@@ -550,23 +550,27 @@ def _qxc_collect_five_tickets(
 ) -> list[list[int]]:
     tickets: list[list[int]] = []
     n_pos = len(scores_by_pos)
-    used_pos_counts = np.zeros((n_pos, max(len(s) for s in scores_by_pos)), dtype=float)
+    pos_sizes = [len(s) for s in scores_by_pos]
+    max_size = max(pos_sizes)
+    used_full = np.zeros((n_pos, max_size), dtype=float)
     for _ in range(n_lines):
         ticket: list[int] = []
         for pos in range(n_pos):
-            adj = scores_by_pos[pos] - 0.08 * used_pos_counts[pos]
+            n_digits = pos_sizes[pos]
+            adj = scores_by_pos[pos] - 0.08 * used_full[pos, :n_digits]
             digit = int(np.argmax(adj))
             ticket.append(digit)
-            used_pos_counts[pos, digit] += 1.0
+            used_full[pos, digit] += 1.0
         if ticket in tickets:
             pos = n_pos - 1
-            adj = scores_by_pos[pos] - 0.08 * used_pos_counts[pos]
+            n_digits_last = pos_sizes[pos]
+            adj = scores_by_pos[pos] - 0.08 * used_full[pos, :n_digits_last]
             order = list(np.argsort(-adj))
             for d in order:
                 cand = ticket[:-1] + [int(d)]
                 if cand not in tickets:
                     ticket = cand
-                    used_pos_counts[pos, int(d)] += 1.0
+                    used_full[pos, int(d)] += 1.0
                     break
         tickets.append(ticket)
     return tickets

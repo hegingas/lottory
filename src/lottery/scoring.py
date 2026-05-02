@@ -128,7 +128,12 @@ def _markov_next_probabilities(
     n_ball: int,
     *,
     laplace_alpha: float = MARKOV_LAPLACE_ALPHA,
+    order: int = 0,
 ) -> np.ndarray:
+    """一阶马尔可夫：基于相邻期二状态（出现/未出现）转移矩阵 + 最新一期状态 → 下一期出现条件概率。
+
+    order=0 时由调用方自行混合一阶/二阶；传入``order``则仅返回对应阶结果。
+    """
     out = np.full(n_ball + 1, 0.5, dtype=float)
     if not draws:
         return out
@@ -157,6 +162,67 @@ def _markov_next_probabilities(
         c0 = trans[i, s, 0]
         c1 = trans[i, s, 1]
         out[i] = (c1 + a) / (c0 + c1 + 2.0 * a)
+    return out
+
+
+def _markov_2nd_order_probabilities(
+    draws: list[list[int]],
+    n_ball: int,
+    *,
+    laplace_alpha: float = MARKOV_LAPLACE_ALPHA,
+) -> np.ndarray:
+    """二阶马尔可夫：基于 (期_{t-2} 状态, 期_{t-1} 状态) → 期_t 状态 的转移矩阵。
+
+    状态为二值（出现=1 / 未出现=0），共 4 种前驱组合 (00,01,10,11)。
+    """
+    out = np.full(n_ball + 1, 0.5, dtype=float)
+    if len(draws) < 3:
+        return out
+
+    pres = np.zeros((len(draws), n_ball + 1), dtype=np.int8)
+    for t, d in enumerate(draws):
+        for x in d:
+            xi = int(x)
+            if 1 <= xi <= n_ball:
+                pres[t, xi] = 1
+
+    # trans[i, prev_code, cur]  where prev_code = prev2*2 + prev1
+    trans = np.zeros((n_ball + 1, 4, 2), dtype=np.float64)
+    for t in range(2, len(draws)):
+        prev2_row = pres[t - 2]
+        prev1_row = pres[t - 1]
+        cur_row = pres[t]
+        for i in range(1, n_ball + 1):
+            code = int(prev2_row[i]) * 2 + int(prev1_row[i])
+            trans[i, code, int(cur_row[i])] += 1.0
+
+    prev2_latest = pres[-2]
+    prev1_latest = pres[-1]
+    a = float(laplace_alpha)
+    for i in range(1, n_ball + 1):
+        code = int(prev2_latest[i]) * 2 + int(prev1_latest[i])
+        c0 = trans[i, code, 0]
+        c1 = trans[i, code, 1]
+        out[i] = (c1 + a) / (c0 + c1 + 2.0 * a)
+    return out
+
+
+def _markov_blended_probabilities(
+    draws: list[list[int]],
+    n_ball: int,
+    *,
+    laplace_alpha: float = MARKOV_LAPLACE_ALPHA,
+    w1: float = 0.40,
+    w2: float = 0.60,
+) -> np.ndarray:
+    """一阶 + 二阶马尔可夫混合概率（按 w1/w2 加权）。"""
+    if len(draws) < 3:
+        return _markov_next_probabilities(draws, n_ball, laplace_alpha=laplace_alpha)
+    p1 = _markov_next_probabilities(draws, n_ball, laplace_alpha=laplace_alpha)
+    p2 = _markov_2nd_order_probabilities(draws, n_ball, laplace_alpha=laplace_alpha)
+    out = np.zeros(n_ball + 1, dtype=float)
+    for i in range(1, n_ball + 1):
+        out[i] = w1 * p1[i] + w2 * p2[i]
     return out
 
 
@@ -358,6 +424,7 @@ def _qxc_norm01(vals: np.ndarray) -> np.ndarray:
 
 
 def _qxc_markov_probs(draws: list[list[int]], pos: int, n_digits: int, laplace: float = 1.0) -> np.ndarray:
+    """一阶马尔可夫（按位）：基于相邻期 digit 转移矩阵 + 最新一期 digit → 下一期各 digit 条件概率。"""
     out = np.full(n_digits, 1.0 / n_digits, dtype=float)
     if len(draws) < 2:
         return out
@@ -374,6 +441,39 @@ def _qxc_markov_probs(draws: list[list[int]], pos: int, n_digits: int, laplace: 
         for d in range(n_digits):
             out[d] = (float(row[d]) + laplace) / den
     return out
+
+
+def _qxc_markov_probs_2nd(draws: list[list[int]], pos: int, n_digits: int, laplace: float = 1.0) -> np.ndarray:
+    """二阶马尔可夫（按位）：基于 (digit_{t-2}, digit_{t-1}) → digit_t 转移矩阵。"""
+    out = np.full(n_digits, 1.0 / n_digits, dtype=float)
+    if len(draws) < 3:
+        return out
+    # trans[prev2, prev1, cur]
+    trans = np.zeros((n_digits, n_digits, n_digits), dtype=float)
+    for t in range(2, len(draws)):
+        prev2 = int(draws[t - 2][pos])
+        prev1 = int(draws[t - 1][pos])
+        cur = int(draws[t][pos])
+        if 0 <= prev2 < n_digits and 0 <= prev1 < n_digits and 0 <= cur < n_digits:
+            trans[prev2, prev1, cur] += 1.0
+    prev2_latest = int(draws[-2][pos])
+    prev1_latest = int(draws[-1][pos])
+    if 0 <= prev2_latest < n_digits and 0 <= prev1_latest < n_digits:
+        row = trans[prev2_latest, prev1_latest]
+        den = float(row.sum() + n_digits * laplace)
+        for d in range(n_digits):
+            out[d] = (float(row[d]) + laplace) / den
+    return out
+
+
+def _qxc_markov_blended(draws: list[list[int]], pos: int, n_digits: int, laplace: float = 1.0,
+                        w1: float = 0.40, w2: float = 0.60) -> np.ndarray:
+    """一阶 + 二阶马尔可夫混合概率（按位）。不足 3 期时退化为纯一阶。"""
+    p1 = _qxc_markov_probs(draws, pos, n_digits, laplace)
+    if len(draws) < 3:
+        return p1
+    p2 = _qxc_markov_probs_2nd(draws, pos, n_digits, laplace)
+    return w1 * p1 + w2 * p2
 
 
 def _qxc_position_scores(
@@ -401,7 +501,7 @@ def _qxc_position_scores(
         miss[d] = float(m)
     for row in draws[-min(recent_k, n_win):]:
         rec[int(row[pos])] += 1.0
-    mk = _qxc_markov_probs(draws, pos, n_digits)
+    mk = _qxc_markov_blended(draws, pos, n_digits)
     sc = (
         w_miss    * _qxc_norm01(miss)
         + w_freq  * _qxc_norm01(freq)

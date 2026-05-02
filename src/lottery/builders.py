@@ -32,6 +32,7 @@ from .scoring import (
     topk,
     _minmax01_ball,
     _markov_next_probabilities,
+    _markov_blended_probabilities,
     _recency_counts,
     _dlt_front_scores,
     _dlt_back_scores,
@@ -108,8 +109,8 @@ def dlt_explicit_from_patterns(
     bq: np.ndarray,
     bcur: np.ndarray,
 ) -> tuple[str, str]:
-    f_mk = _markov_next_probabilities(f_draws, 35)
-    b_mk = _markov_next_probabilities(b_draws, 12)
+    f_mk = _markov_blended_probabilities(f_draws, 35)
+    b_mk = _markov_blended_probabilities(b_draws, 12)
     fs = _dlt_front_scores(f_draws, fq, fcur, f_mk)
     bs = _dlt_back_scores(b_draws, bq, bcur, b_mk)
     f0, b0 = _dlt_collect_five_unique_tickets(fs, bs)[0]
@@ -124,8 +125,8 @@ def ssq_explicit_from_patterns(
     bq: np.ndarray,
     bcur: np.ndarray,
 ) -> tuple[str, str]:
-    r_mk = _markov_next_probabilities(r_draws, 33)
-    b_mk = _markov_next_probabilities([[int(x)] for x in blues], 16)
+    r_mk = _markov_blended_probabilities(r_draws, 33)
+    b_mk = _markov_blended_probabilities([[int(x)] for x in blues], 16)
     rs = _ssq_red_scores(r_draws, rq, rcur, r_mk)
     bs = _ssq_blue_scores(blues, bq, bcur, b_mk)
     r0, b0 = _ssq_collect_five_unique_tickets(rs, bs)[0]
@@ -529,8 +530,8 @@ def prediction_block_dlt(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW) -
     qsp = np.percentile(sp, [25, 50, 75])
     pred_ts = now_cn_iso()
     n_win = len(tail)
-    f_mk = _markov_next_probabilities([list(map(int, r)) for r in f_draws_all], 35)
-    b_mk = _markov_next_probabilities([list(map(int, r)) for r in b_draws_all], 12)
+    f_mk = _markov_blended_probabilities([list(map(int, r)) for r in f_draws_all], 35)
+    b_mk = _markov_blended_probabilities([list(map(int, r)) for r in b_draws_all], 12)
     f_mk_n = _minmax01_ball(f_mk, 35)
     b_mk_n = _minmax01_ball(b_mk, 12)
     fs = _dlt_front_scores(f_draws, fq, fcur, f_mk)
@@ -581,7 +582,7 @@ def prediction_block_dlt(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW) -
 - 彩种：大乐透
 - 窗口：近 **{n_win}** 期（至多 **{n_last}** 期）
 - 指标：热/冷号 = 窗口内出现次数；前区奇偶比、大小比（18–35 为大）；前区 5 码和值与跨度
-- **{PREDICTION_SINGLE_LINES} 注单式（机械）**：每注前区 5 + 后区 2；各号多因子原始分 **min-max 归一** 后按权重合成综合分，再按下述小区上限贪心取号（**同分随机**）。**前区**：**7** 段、每段连续 **5** 个号（**01–05 / 06–10 / 11–15 / 16–20 / 21–25 / 26–30 / 31–35**），每段至多 **{DLT_FRONT_MAX_PER_ZONE}** 个；**后区**：**3** 段、每段连续 **4** 个号（**01–04 / 05–08 / 09–12**），每段至多 **{DLT_BACK_MAX_PER_ZONE}** 个。**{PREDICTION_SINGLE_LINES} 注**之间对**已出现过的号码**在下一轮综合分上施加**递减惩罚**，以拉开互异组合；仍不足则换随机种子补全互异注。**权重**：**{_pattern_weight_md_line()}**；因子含 **近 {PATTERN_RECENT_K} 期密度、奇偶结构、大小（前≥18 / 后≥7）、和值带、区段划分**（区间热度与取号分区一致），并新增 **马尔可夫链转移因子**：基于**全历史**（非仅窗口）按相邻期重算二状态转移矩阵，取**最新一期状态**对应的下一期出现条件概率。
+- **{PREDICTION_SINGLE_LINES} 注单式（机械）**：每注前区 5 + 后区 2；各号多因子原始分 **min-max 归一** 后按权重合成综合分，再按下述小区上限贪心取号（**同分随机**）。**前区**：**7** 段、每段连续 **5** 个号（**01–05 / 06–10 / 11–15 / 16–20 / 21–25 / 26–30 / 31–35**），每段至多 **{DLT_FRONT_MAX_PER_ZONE}** 个；**后区**：**3** 段、每段连续 **4** 个号（**01–04 / 05–08 / 09–12**），每段至多 **{DLT_BACK_MAX_PER_ZONE}** 个。**{PREDICTION_SINGLE_LINES} 注**之间对**已出现过的号码**在下一轮综合分上施加**递减惩罚**，以拉开互异组合；仍不足则换随机种子补全互异注。**权重**：**{_pattern_weight_md_line()}**；因子含 **近 {PATTERN_RECENT_K} 期密度、奇偶结构、大小（前≥18 / 后≥7）、和值带、区段划分**（区间热度与取号分区一致），并新增 **马尔可夫链转移因子**（最大权重）：基于**全历史**（非仅窗口）同时计算**一阶**（相邻期）与**二阶**（间隔两期）二状态转移矩阵，按 **40% 一阶 + 60% 二阶** 混合后取最新状态对应的下一期出现条件概率。
 
 ## 结果摘要
 
@@ -648,8 +649,8 @@ def prediction_block_ssq(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW) -
     qsp = np.percentile(sp, [25, 50, 75])
     pred_ts = now_cn_iso()
     n_win = len(tail)
-    r_mk = _markov_next_probabilities([list(map(int, r)) for r in reds_all], 33)
-    b_mk = _markov_next_probabilities([[int(x)] for x in blues_all], 16)
+    r_mk = _markov_blended_probabilities([list(map(int, r)) for r in reds_all], 33)
+    b_mk = _markov_blended_probabilities([[int(x)] for x in blues_all], 16)
     r_mk_n = _minmax01_ball(r_mk, 33)
     b_mk_n = _minmax01_ball(b_mk, 16)
     rs = _ssq_red_scores(r_draws, rq, rcur, r_mk)
@@ -697,7 +698,7 @@ def prediction_block_ssq(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW) -
 - 彩种：双色球
 - 窗口：近 **{n_win}** 期（至多 **{n_last}** 期）
 - 指标：红球热/冷、蓝球热/冷；红球奇偶比；大小比（17–33 为大）；红球和值与跨度
-- **{PREDICTION_SINGLE_LINES} 注单式（机械）**：每注红球 6 + 蓝球 1；多因子 **min-max 归一** 后加权合成，再按下述小区上限贪心取号（**同分随机**）。**红球**：**7** 段、每段连续 **5** 个号（末段 **31–33** 仅 3 个号：**01–05 / 06–10 / 11–15 / 16–20 / 21–25 / 26–30 / 31–33**），每段至多 **{SSQ_RED_MAX_PER_ZONE}** 个；**蓝球**：**4** 段、每段连续 **4** 个号（**01–04 / 05–08 / 09–12 / 13–16**），每段至多 **{SSQ_BLUE_MAX_PER_ZONE}** 个（单码取蓝时自然满足）。**{PREDICTION_SINGLE_LINES} 注**间对**已出现过的号码**在下一轮综合分上施加**递减惩罚**以拉开互异组合；仍不足则换随机种子补全。**权重**：**{_pattern_weight_md_line()}**；红球另有 **近 {PATTERN_RECENT_K} 期密度、奇偶/大小（≥17）、和值带、五码段划分**；蓝球另有 **近 {PATTERN_RECENT_K} 期密度、奇偶、中位蓝贴近、大号占比（≥9）**，并新增 **马尔可夫链转移因子**：每次预测都基于**全历史**重算转移矩阵，按**最新一期状态**取下一期条件概率入权重。
+- **{PREDICTION_SINGLE_LINES} 注单式（机械）**：每注红球 6 + 蓝球 1；多因子 **min-max 归一** 后加权合成，再按下述小区上限贪心取号（**同分随机**）。**红球**：**7** 段、每段连续 **5** 个号（末段 **31–33** 仅 3 个号：**01–05 / 06–10 / 11–15 / 16–20 / 21–25 / 26–30 / 31–33**），每段至多 **{SSQ_RED_MAX_PER_ZONE}** 个；**蓝球**：**4** 段、每段连续 **4** 个号（**01–04 / 05–08 / 09–12 / 13–16**），每段至多 **{SSQ_BLUE_MAX_PER_ZONE}** 个（单码取蓝时自然满足）。**{PREDICTION_SINGLE_LINES} 注**间对**已出现过的号码**在下一轮综合分上施加**递减惩罚**以拉开互异组合；仍不足则换随机种子补全。**权重**：**{_pattern_weight_md_line()}**；红球另有 **近 {PATTERN_RECENT_K} 期密度、奇偶/大小（≥17）、和值带、五码段划分**；蓝球另有 **近 {PATTERN_RECENT_K} 期密度、奇偶、中位蓝贴近、大号占比（≥9）**，并新增 **马尔可夫链转移因子**（最大权重）：每次预测都基于**全历史**重算一阶与二阶转移矩阵，按 **40% 一阶 + 60% 二阶** 混合后取最新状态对应下一期条件概率入权重。
 
 ## 结果摘要
 
@@ -743,7 +744,7 @@ def prediction_block_kl8(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW) -
     hot5 = topk(fq, 5, high=True)
     low5 = topk(fq, 5, high=False)
     top_miss = sorted([(i, int(fcur[i])) for i in range(1, 81)], key=lambda t: -t[1])[:5]
-    markov_raw = _markov_next_probabilities(draws_all, 80)
+    markov_raw = _markov_blended_probabilities(draws_all, 80)
     markov_norm = _minmax01_ball(markov_raw, 80)
     twenty = _kl8_twenty_from_patterns(fq, fcur, draws, markov_raw)
     kl8_scores = _kl8_twenty_scores(fq, fcur, draws, markov_raw)
@@ -806,7 +807,7 @@ def prediction_block_kl8(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW) -
   - **出现次数（频次）**：在上述 **{n}** 期窗口内，该号码出现在每期 `n01`–`n20` 中的总次数（每期最多计 1 次）。
   - **当前遗漏（期）**：自该号码**最近一次**出现之后，至**最后一期 `{last_pid}`** 为止所经过的期数；若最后一期开出该号，则遗漏为 **0**。
 - **数据来源**：`data/processed/kl8_draws.csv`；溯源见 `manifest.json` 中 `kl8` 条目。
-- **「规律线」参考 20 码（脚本）**：对 01–80 各号计算 **8** 项原始分（全窗口频次、当前遗漏、近 **{PATTERN_RECENT_K}** 期出现密度、与窗口内「每期 20 码奇数个数均值」的奇偶对齐、**01–40 / 41–80** 半区占比对齐、**20 码和值**相对中位带的条件对齐、**四区** 01–20 / 21–40 / 41–60 / 61–80 区段热度、**马尔可夫链转移概率**）；其中马尔可夫项按**全历史开奖**每次重算转移矩阵，并基于**最新一期状态**计算下一期出现条件概率。**每项先 min-max 归一到 [0,1]**，再按权重 **{wline}** 合成，分高者优先（**同分随机**）；取号时按 **8 个十码段（01–10,…,71–80）每段至少 {KL8_MIN_PER_PICK_ZONE} 个且至多 {KL8_MAX_PER_PICK_ZONE} 个** 贪心取满 **20** 个互异号码后升序展示。**不是**从「最后一期已开出的 20 个号」里抽样，也**不是**单纯频次 Top20；仍属历史统计投影，**非**科学预测。
+- **「规律线」参考 20 码（脚本）**：对 01–80 各号计算 **8** 项原始分（全窗口频次、当前遗漏、近 **{PATTERN_RECENT_K}** 期出现密度、与窗口内「每期 20 码奇数个数均值」的奇偶对齐、**01–40 / 41–80** 半区占比对齐、**20 码和值**相对中位带的条件对齐、**四区** 01–20 / 21–40 / 41–60 / 61–80 区段热度、**马尔可夫链转移概率**）；其中马尔可夫项（最大权重）按**全历史开奖**每次重算一阶与二阶转移矩阵，按 **40% 一阶 + 60% 二阶** 混合后基于最新两期状态计算下一期出现条件概率。**每项先 min-max 归一到 [0,1]**，再按权重 **{wline}** 合成，分高者优先（**同分随机**）；取号时按 **8 个十码段（01–10,…,71–80）每段至少 {KL8_MIN_PER_PICK_ZONE} 个且至多 {KL8_MAX_PER_PICK_ZONE} 个** 贪心取满 **20** 个互异号码后升序展示。**不是**从「最后一期已开出的 20 个号」里抽样，也**不是**单纯频次 Top20；仍属历史统计投影，**非**科学预测。
 
 ---
 
@@ -880,6 +881,7 @@ def _pl5_norm01(vals: np.ndarray) -> np.ndarray:
 
 
 def _pl5_markov_probs(draws: list[list[int]], pos: int, laplace: float = 1.0) -> np.ndarray:
+    """一阶马尔可夫（按位）：基于相邻期 digit 转移矩阵 + 最新一期 digit → 下一期各 digit 条件概率。"""
     out = np.full(10, 0.1, dtype=float)
     if len(draws) < 2:
         return out
@@ -894,6 +896,36 @@ def _pl5_markov_probs(draws: list[list[int]], pos: int, laplace: float = 1.0) ->
     for d in range(10):
         out[d] = (float(row[d]) + laplace) / den
     return out
+
+
+def _pl5_markov_probs_2nd(draws: list[list[int]], pos: int, laplace: float = 1.0) -> np.ndarray:
+    """二阶马尔可夫（按位）：基于 (digit_{t-2}, digit_{t-1}) → digit_t 转移矩阵。"""
+    out = np.full(10, 0.1, dtype=float)
+    if len(draws) < 3:
+        return out
+    trans = np.zeros((10, 10, 10), dtype=float)
+    for t in range(2, len(draws)):
+        prev2 = int(draws[t - 2][pos])
+        prev1 = int(draws[t - 1][pos])
+        cur = int(draws[t][pos])
+        trans[prev2, prev1, cur] += 1.0
+    prev2_latest = int(draws[-2][pos])
+    prev1_latest = int(draws[-1][pos])
+    row = trans[prev2_latest, prev1_latest]
+    den = float(row.sum() + 10.0 * laplace)
+    for d in range(10):
+        out[d] = (float(row[d]) + laplace) / den
+    return out
+
+
+def _pl5_markov_blended(draws: list[list[int]], pos: int, laplace: float = 1.0,
+                        w1: float = 0.40, w2: float = 0.60) -> np.ndarray:
+    """一阶 + 二阶马尔可夫混合概率（按位）。不足 3 期时退化为纯一阶。"""
+    p1 = _pl5_markov_probs(draws, pos, laplace)
+    if len(draws) < 3:
+        return p1
+    p2 = _pl5_markov_probs_2nd(draws, pos, laplace)
+    return w1 * p1 + w2 * p2
 
 
 def build_pl5_analysis(df: pd.DataFrame, analysis_window: int = DEFAULT_STATS_WINDOW) -> str:
@@ -988,13 +1020,13 @@ def prediction_block_pl5(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW) -
             miss[d] = float(m)
         for row in draws[-min(PATTERN_RECENT_K, n_win):]:
             rec[int(row[pos])] += 1.0
-        mk = _pl5_markov_probs(draws_all, pos)
+        mk = _pl5_markov_blended(draws_all, pos)
         mk_by_pos.append(mk)
         sc = (
-            0.36 * _pl5_norm01(miss)
-            + 0.30 * _pl5_norm01(freq)
-            + 0.18 * _pl5_norm01(rec)
-            + 0.16 * _pl5_norm01(mk)
+            _lottery_config.QXC_W_MISS    * _pl5_norm01(miss)
+            + _lottery_config.QXC_W_FREQ  * _pl5_norm01(freq)
+            + _lottery_config.QXC_W_RECENCY * _pl5_norm01(rec)
+            + _lottery_config.QXC_W_MARKOV * _pl5_norm01(mk)
         )
         scores_by_pos.append(sc)
 
@@ -1057,8 +1089,8 @@ def prediction_block_pl5(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW) -
 
 - 彩种：排列5
 - 窗口：近 **{n_win}** 期（至多 **{n_last}** 期）
-- 因子：分位频次、当前遗漏、近 **{PATTERN_RECENT_K}** 期密度、马尔可夫转移概率（基于全历史按相邻期重算）
-- 评分：按 `0.36×遗漏 + 0.30×频次 + 0.18×近端密度 + 0.16×马尔可夫` 合成分位综合分，5注之间施加轻度去重惩罚。
+- 因子：分位频次、当前遗漏、近 **{PATTERN_RECENT_K}** 期密度、马尔可夫转移概率（一阶+二阶混合，基于全历史重算）
+- 评分：按 `0.40×马尔可夫（一阶+二阶混合） + 0.20×遗漏 + 0.20×频次 + 0.20×近端密度` 合成分位综合分，5注之间施加轻度去重惩罚。
 
 ## 结果摘要
 
@@ -1186,11 +1218,11 @@ def prediction_block_qxc(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW) -
     scores_by_pos: list[np.ndarray] = []
     mk_by_pos: list[np.ndarray] = []
     for pos in range(6):
-        sc, mk = _qxc_position_scores(draws, pos, 10, 0.36, 0.30, 0.18, 0.16, PATTERN_RECENT_K)
+        sc, mk = _qxc_position_scores(draws, pos, 10, _lottery_config.QXC_W_MISS, _lottery_config.QXC_W_FREQ, _lottery_config.QXC_W_RECENCY, _lottery_config.QXC_W_MARKOV, PATTERN_RECENT_K)
         scores_by_pos.append(sc)
         mk_by_pos.append(mk)
     sc_special, mk_special = _qxc_position_scores(
-        [[s] for s in specials_win], 0, 15, 0.36, 0.30, 0.18, 0.16, PATTERN_RECENT_K
+        [[s] for s in specials_win], 0, 15, _lottery_config.QXC_W_MISS, _lottery_config.QXC_W_FREQ, _lottery_config.QXC_W_RECENCY, _lottery_config.QXC_W_MARKOV, PATTERN_RECENT_K
     )
     scores_by_pos.append(sc_special)
     mk_by_pos.append(mk_special)
@@ -1239,8 +1271,8 @@ def prediction_block_qxc(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW) -
 
 - 彩种：七星彩（前区 6 位 0–9 + 后区 1 位 0–14）
 - 窗口：近 **{n_win}** 期（至多 **{n_last}** 期）
-- 因子：分位频次、当前遗漏、近 **{PATTERN_RECENT_K}** 期密度、马尔可夫转移概率（基于全历史按相邻期重算）
-- 评分：按 `0.36×遗漏 + 0.30×频次 + 0.18×近端密度 + 0.16×马尔可夫` 合成分位综合分，5 注之间施加轻度去重惩罚。
+- 因子：分位频次、当前遗漏、近 **{PATTERN_RECENT_K}** 期密度、马尔可夫转移概率（一阶+二阶混合，基于全历史重算）
+- 评分：按 `0.40×马尔可夫（一阶+二阶混合） + 0.20×遗漏 + 0.20×频次 + 0.20×近端密度` 合成分位综合分，5 注之间施加轻度去重惩罚。
 - 七星彩为按位匹配游戏，不适用「与历史开奖完全重合」或「与最新期 ≤3 重合」的防重合约束。
 
 ## 结果摘要
