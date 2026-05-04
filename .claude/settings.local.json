@@ -1,4 +1,7 @@
 {
+  "env": {
+    "PYTHONIOENCODING": "utf-8"
+  },
   "permissions": {
     "allow": [
       "Bash(claude:*)",
@@ -49,7 +52,12 @@
       "Bash(curl -sL --max-time 8 'https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry?gameNo=__TRACKED_VAR__&provinceId=0&pageSize=1&pageNo=1')",
       "Bash(curl -sL --max-time 10 -H \"User-Agent: Mozilla/5.0 \\(Windows NT 10.0; Win64; x64\\) AppleWebKit/537.36 \\(KHTML, like Gecko\\) Chrome/130.0.0.0 Safari/537.36\" -H \"Accept: application/json, text/plain, */*\" -H \"Referer: https://www.cwl.gov.cn/ygkj/wqkjgg/kl8/\" \"https://www.cwl.gov.cn/cwl_admin/front/cwlkj/search/kjxx/findDrawNotice?name=kl8&issueCount=3\")",
       "Bash(curl -s --max-time 10 \"https://cn.apihz.cn/api/caipiao/kuaile8.php?id=88888888&key=88888888\")",
-      "Bash(curl *)"
+      "Bash(curl *)",
+      "Bash(npm update *)",
+      "Bash(echo \"dlt,26047,9,20,21,23,28,6,11\")",
+      "Bash(echo \"kl8,2026112,10,12,23,27,36,38,41,45,47,50,53,58,61,62,65,67,69,72,75,76\")",
+      "Bash(echo \"pl5,26112,6,2,5,9,3\")",
+      "Bash(echo \"exit=$?\")"
     ]
   },
   "mcpServers": {

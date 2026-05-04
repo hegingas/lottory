@@ -7,14 +7,14 @@
       "lottery_type": "dlt",
       "output": "data/processed/dlt_draws.csv",
       "source": "maintained_processed_csv",
-      "rows_out": 2864,
+      "rows_out": 2865,
       "rows_in": 2855,
       "excluded": [],
       "period_id_min": 7001,
-      "period_id_max": 26046,
+      "period_id_max": 26047,
       "supplement": {
         "recent_append": {
-          "rows_added": 9,
+          "rows_added": 10,
           "period_ids": [
             "26038",
             "26039",
@@ -24,9 +24,10 @@
             "26043",
             "26044",
             "26045",
-            "26046"
+            "26046",
+            "26047"
           ],
-          "source_note": "user_screenshot_table_2026-04-18;26041_user_provided_numbers_2026-04-18;26042_user_provided_numbers_2026-04-21;26043_user_provided_numbers_2026-04-21;26044_user_provided_numbers_2026-04-25;26045_user_provided_numbers_2026-04-27;26046_user_provided_numbers_2026-04-30",
+          "source_note": "user_screenshot_table_2026-04-18;26041_user_provided_numbers_2026-04-18;26042_user_provided_numbers_2026-04-21;26043_user_provided_numbers_2026-04-21;26044_user_provided_numbers_2026-04-25;26045_user_provided_numbers_2026-04-27;26046_user_provided_numbers_2026-04-30;26047_user_provided_numbers_2026-05-03",
           "official_verify": "\u5efa\u8bae\u4e0e\u4f53\u5f69\u5b98\u65b9\u516c\u544a\u6838\u5bf9"
         },
         "gap_fill": [
@@ -43,13 +44,13 @@
       "lottery_type": "ssq",
       "output": "data/processed/ssq_draws.csv",
       "source": "maintained_processed_csv",
-      "rows_out": 3445,
-      "rows_in": 3437,
+      "rows_out": 3446,
+      "rows_in": 3438,
       "excluded": [],
       "period_id_min": 2003001,
-      "period_id_max": 2026048,
+      "period_id_max": 2026049,
       "supplement": {
-        "rows_added": 9,
+        "rows_added": 10,
         "period_ids": [
           "2026040",
           "2026041",
@@ -59,9 +60,10 @@
           "2026045",
           "2026046",
           "2026047",
-          "2026048"
+          "2026048",
+          "2026049"
         ],
-        "source_note": "user_screenshot_table_2026-04-18;2026043_user_provided_numbers_2026-04-19;2026044_user_provided_numbers_2026-04-21;2026045_user_provided_numbers_2026-04-21;2026046_user_provided_numbers_2026-04-27;2026047_user_provided_numbers_2026-04-30;2026048_user_provided_numbers_2026-04-30",
+        "source_note": "user_screenshot_table_2026-04-18;2026043_user_provided_numbers_2026-04-19;2026044_user_provided_numbers_2026-04-21;2026045_user_provided_numbers_2026-04-21;2026046_user_provided_numbers_2026-04-27;2026047_user_provided_numbers_2026-04-30;2026048_user_provided_numbers_2026-04-30;2026049_user_provided_numbers_2026-05-04",
         "official_verify": "\u5efa\u8bae\u4e0e\u798f\u5f69\u5b98\u65b9\u516c\u544a\u6838\u5bf9"
       }
     },
@@ -69,9 +71,9 @@
       "lottery_type": "kl8",
       "output": "data/processed/kl8_draws.csv",
       "source": "user_screenshots_917500.cn_batch_2026-05-01",
-      "rows_out": 1921,
+      "rows_out": 1923,
       "period_id_min": 2020012,
-      "period_id_max": 2026111,
+      "period_id_max": 2026113,
       "generated_at": "2026-05-02T09:00:00+08:00",
       "note": "\u7b2c\u4e09\u65b9\u9875\u9762\u622a\u56fe\u5f55\u5165\uff0c\u5efa\u8bae\u4e0e\u798f\u5f69\u5b98\u65b9\u516c\u544a\u62bd\u6837\u6838\u5bf9",
       "supplement": {
@@ -86,8 +88,9 @@
         },
         "new_period_append": {
           "rows_added": 1,
-          "period_ids": ["2026111"],
-          "source_note": "user_provided_numbers_2026-05-02"
+          "rows_added": 1,
+          "period_ids": ["2026111","2026112","2026113"],
+          "source_note": "user_provided_numbers_2026-05-02;2026112_user_provided_numbers_2026-05-03;2026113_user_provided_numbers_2026-05-04"
         }
       }
     },
@@ -95,19 +98,19 @@
       "lottery_type": "pl5",
       "output": "data/processed/pl5_draws.csv",
       "source": "user_screenshots_pailie5_batch_2026-05-01",
-      "rows_out": 7586,
+      "rows_out": 7588,
       "period_id_min": 4001,
-      "period_id_max": 26111,
+      "period_id_max": 26113,
       "generated_at": "2026-05-02T09:00:00+08:00",
       "note": "第三方页面截图录入，建议与体彩官方公告抽样核对",
       "supplement": {
         "recent_append": {
-          "rows_added": 7586,
+          "rows_added": 7588,
           "period_ids": [
             "4001",
-            "26111"
+            "26113"
           ],
-          "source_note": "user_provided_screenshots_2004-11-14_to_2026-04-30_batch_2026-05-01;26111_user_provided_numbers_2026-05-02",
+          "source_note": "user_provided_screenshots_2004-11-14_to_2026-04-30_batch_2026-05-01;26111_user_provided_numbers_2026-05-02;26112_user_provided_numbers_2026-05-03;26113_user_provided_numbers_2026-05-04",
           "official_verify": "建议与体彩官方公告核对"
         }
       }
@@ -116,19 +119,19 @@
       "lottery_type": "qxc",
       "output": "data/processed/qxc_draws.csv",
       "source": "user_screenshot_qxc_batch_2026-05-01_v15_trim_lt_20100",
-      "rows_out": 866,
+      "rows_out": 867,
       "period_id_min": 20100,
-      "period_id_max": 26048,
+      "period_id_max": 26049,
       "generated_at": "2026-05-02T09:00:00+08:00",
       "note": "第三方页面截图录入，建议与体彩官方公告抽样核对；字段口径：前区 6 位（d1–d6，0–9）+ 后区 1 位（special，0–14）",
       "supplement": {
         "recent_append": {
-          "rows_added": 866,
+          "rows_added": 867,
           "period_ids": [
             "20100",
-            "26048"
+            "26049"
           ],
-          "source_note": "trimmed_lt_20100_by_user_request_2026-05-01;user_provided_screenshot_2020-10-13_to_2026-04-28_batch_2026-05-01;26048_user_provided_numbers_2026-05-02",
+          "source_note": "trimmed_lt_20100_by_user_request_2026-05-01;user_provided_screenshot_2020-10-13_to_2026-04-28_batch_2026-05-01;26048_user_provided_numbers_2026-05-02;26049_user_provided_numbers_2026-05-04",
           "official_verify": "建议与体彩官方公告核对"
         }
       }
