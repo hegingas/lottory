@@ -262,6 +262,41 @@ def cmd_doctor(as_json: bool = False, auto_fix: bool = False) -> int:
     return 0 if out["ok"] else 1
 
 
+def cmd_migrate_to_db() -> int:
+    from lottery.db import migrate_csv_to_db, get_row_count
+
+    result = migrate_csv_to_db()
+    summary = {lt: get_row_count(lt) for lt in result}
+    print(json.dumps({"ok": True, "migrated": result, "db_row_counts": summary}, ensure_ascii=True, indent=2))
+    return 0
+
+
+def cmd_db_status(as_json: bool = False) -> int:
+    from lottery.db import verify_db_csv_consistency, get_row_count
+    from lottery.paths import db_path
+
+    db = db_path()
+    if not db.is_file():
+        print(json.dumps({"ok": False, "error": f"数据库文件不存在: {db}"}, ensure_ascii=True, indent=2))
+        return 1
+
+    status = verify_db_csv_consistency()
+    row_counts = {lt: get_row_count(lt) for lt in status if lt != "all_synced"}
+
+    if as_json:
+        print(json.dumps({**status, "db_path": db.as_posix(), "db_row_counts": row_counts}, ensure_ascii=True, indent=2))
+    else:
+        all_ok = status.get("all_synced", False)
+        print(f"DB path: {db}")
+        print(f"All synced: {all_ok}")
+        for lt in ["dlt", "ssq", "kl8", "pl5", "qxc"]:
+            if lt in status:
+                s = status[lt]
+                mark = "OK" if s["synced"] else "MISMATCH"
+                print(f"  {lt}: csv={s['csv_rows']} db={s['db_rows']} csv_max={s['csv_max_period']} db_max={s['db_max_period']} [{mark}]")
+    return 0 if status.get("all_synced", False) else 1
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description="彩票仓库统一 Python 工具（盘点 / 校验 / 重算 history）")
     sub = p.add_subparsers(dest="command", required=True)
@@ -298,6 +333,10 @@ def main() -> int:
 
     sub.add_parser("regenerate-kl8-prediction", help="[兼容] 等同 regenerate-history --only kl8")
 
+    sub.add_parser("migrate-to-db", help="一次性将全部 CSV 导入 SQLite 数据库")
+    p_dbs = sub.add_parser("db-status", help="显示数据库状态与 CSV 同步情况")
+    p_dbs.add_argument("--json", action="store_true", help="以 JSON 格式输出")
+
     args = p.parse_args()
     if args.command == "inventory":
         return cmd_inventory()
@@ -309,6 +348,10 @@ def main() -> int:
         return cmd_regenerate_history(args.only_scope, args.seed)
     if args.command == "regenerate-kl8-prediction":
         return cmd_regenerate_history("kl8", 20260430)
+    if args.command == "migrate-to-db":
+        return cmd_migrate_to_db()
+    if args.command == "db-status":
+        return cmd_db_status(as_json=args.json)
     return 1
 
 

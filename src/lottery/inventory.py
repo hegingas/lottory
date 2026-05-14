@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from .paths import data_dir, repo_root
+from .paths import data_dir, db_path, repo_root
 
 
 def run_inventory() -> dict:
@@ -16,6 +16,17 @@ def run_inventory() -> dict:
         "data_dir_exists": data.is_dir(),
         "files": [],
     }
+
+    db = db_path()
+    if db.is_file():
+        try:
+            st = db.stat()
+            out["database"] = {"path": db.relative_to(root).as_posix(), "size": int(st.st_size)}
+        except OSError:
+            out["database"] = {"path": db.relative_to(root).as_posix(), "size": None}
+    else:
+        out["database"] = None
+
     if not data.is_dir():
         return out
 

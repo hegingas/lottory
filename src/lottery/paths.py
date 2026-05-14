@@ -25,3 +25,7 @@ def manifest_path() -> Path:
 
 def schema_path() -> Path:
     return processed_dir() / "schema.json"
+
+
+def db_path() -> Path:
+    return data_dir() / "lottery.db"

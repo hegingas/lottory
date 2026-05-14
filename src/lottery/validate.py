@@ -451,6 +451,14 @@ def run_validate() -> dict[str, Any]:
     else:
         result["row_counts"]["qxc_csv"] = 0
 
+    # ── DB 一致性检查（非阻塞） ──
+    try:
+        from .db import verify_db_csv_consistency
+        db_check = verify_db_csv_consistency()
+        result["db_check"] = db_check
+    except Exception as e:
+        result["db_check"] = {"all_synced": False, "error": str(e)}
+
     result["errors"] = all_errs
     result["ok"] = len(all_errs) == 0
     return result

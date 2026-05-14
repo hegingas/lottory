@@ -37,6 +37,22 @@ from lottery.builders import (
 from lottery.paths import repo_root  # noqa: E402
 
 
+def _load_draws(lottery_type: str) -> "pd.DataFrame":
+    """从 DB 优先读取，若 DB 为空或不可用则回退 CSV。"""
+    import pandas as pd
+    try:
+        from lottery.db import get_draws
+        df = get_draws(lottery_type)
+        if len(df) > 0:
+            return df
+    except Exception:
+        pass
+    csv_path = PROC / f"{lottery_type}_draws.csv"
+    if not csv_path.exists():
+        raise SystemExit(f"缺少 data/processed/{lottery_type}_draws.csv")
+    return pd.read_csv(csv_path, encoding="utf-8-sig")
+
+
 def _normalize_only(only: str) -> str:
     o = (only or "all").strip().lower().replace("-", "_")
     if o == "dltssq":
@@ -85,10 +101,8 @@ def main(only: str = "all", seed: int | None = DEFAULT_RANDOM_SEED) -> int:
                 "缺少 data/processed/dlt_draws.csv 或 ssq_draws.csv；请补全 CSV 或使用 lottery-draw-dlt-ssq / lottery-draw-sync。"
             )
         try:
-            import pandas as pd
-
-            dlt = pd.read_csv(dlt_path, encoding="utf-8-sig")
-            ssq = pd.read_csv(ssq_path, encoding="utf-8-sig")
+            dlt = _load_draws("dlt")
+            ssq = _load_draws("ssq")
         except Exception as e:
             print(
                 json.dumps(
@@ -118,13 +132,11 @@ def main(only: str = "all", seed: int | None = DEFAULT_RANDOM_SEED) -> int:
                 raise SystemExit("缺少 data/processed/kl8_draws.csv；请先补数或使用 lottery-draw-sync。")
         else:
             try:
-                import pandas as pd
-
-                kl8 = pd.read_csv(kl8_path, encoding="utf-8-sig")
+                kl8 = _load_draws("kl8")
             except Exception as e:
                 print(
                     json.dumps(
-                        {"ok": False, "error": f"读取 KL8 CSV 失败：{e}"},
+                        {"ok": False, "error": f"读取 KL8 数据失败：{e}"},
                         ensure_ascii=True,
                     )
                 )
@@ -140,13 +152,11 @@ def main(only: str = "all", seed: int | None = DEFAULT_RANDOM_SEED) -> int:
                 raise SystemExit("缺少 data/processed/pl5_draws.csv；请先补数。")
         else:
             try:
-                import pandas as pd
-
-                pl5 = pd.read_csv(pl5_path, encoding="utf-8-sig")
+                pl5 = _load_draws("pl5")
             except Exception as e:
                 print(
                     json.dumps(
-                        {"ok": False, "error": f"读取 PL5 CSV 失败：{e}"},
+                        {"ok": False, "error": f"读取 PL5 数据失败：{e}"},
                         ensure_ascii=True,
                     )
                 )
@@ -162,13 +172,11 @@ def main(only: str = "all", seed: int | None = DEFAULT_RANDOM_SEED) -> int:
                 raise SystemExit("缺少 data/processed/qxc_draws.csv；请先补数。")
         else:
             try:
-                import pandas as pd
-
-                qxc = pd.read_csv(qxc_path, encoding="utf-8-sig")
+                qxc = _load_draws("qxc")
             except Exception as e:
                 print(
                     json.dumps(
-                        {"ok": False, "error": f"读取 QXC CSV 失败：{e}"},
+                        {"ok": False, "error": f"读取 QXC 数据失败：{e}"},
                         ensure_ascii=True,
                     )
                 )
