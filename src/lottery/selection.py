@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import random
+
 import numpy as np
 
 from .config import (
@@ -75,11 +76,16 @@ def _pick_top_indices_zone_capped(
     zones: list[tuple[int, int]],
     max_per_zone: int = 2,
     rng: random.Random | None = None,
+    allowed: set[int] | None = None,
 ) -> list[int]:
     rnd = rng if rng is not None else random
-    ix = list(range(i_lo, i_hi + 1))
+    ix = [i for i in range(i_lo, i_hi + 1) if allowed is None or i in allowed]
     rnd.shuffle(ix)
     ix.sort(key=lambda i: -scores[i])
+    if len(ix) < k:
+        raise ValueError(
+            f"候选号不足：allowed 与 [{i_lo},{i_hi}] 交集仅 {len(ix)} 个，需要 {k} 个"
+        )
     zc = [0] * len(zones)
     out: list[int] = []
     for i in ix:
@@ -122,7 +128,15 @@ def _pick_top_indices_zone_bounded(
         )
 
     rnd = rng if rng is not None else random
-    ix = list(range(i_lo, i_hi + 1))
+    ix = [
+        i
+        for i in range(i_lo, i_hi + 1)
+        if any(int(lo) <= i <= int(hi) for lo, hi in zones)
+    ]
+    if len(ix) < k:
+        raise ValueError(
+            f"zones 在 [{i_lo},{i_hi}] 内的并集仅有 {len(ix)} 个候选号，少于目标 {k} 个"
+        )
     rnd.shuffle(ix)
     ix.sort(key=lambda i: -scores[i])
 
@@ -188,33 +202,51 @@ def _dlt_draw_one_random_valid(
     rng: random.Random,
     hist_keys: set[tuple[tuple[int, ...], tuple[int, ...]]] | None,
     latest_seven: set[int] | None,
+    allowed_front: set[int] | None = None,
+    allowed_back: set[int] | None = None,
+    max_tries: int = 20000,
 ) -> tuple[list[int], list[int]] | None:
     """均匀随机一注单式，满足分区上限、历史不全重合、与最新期 7 码重合 ≤3。"""
-    f = sorted(rng.sample(range(1, 36), 5))
-    b = sorted(rng.sample(range(1, 13), 2))
-    if not _zone_max_cap_ok(f, DLT_FRONT_ZONES_CAP, DLT_FRONT_MAX_PER_ZONE):
+    pool_f = list(allowed_front) if allowed_front is not None else list(range(1, 36))
+    pool_b = list(allowed_back) if allowed_back is not None else list(range(1, 13))
+    if len(pool_f) < 5 or len(pool_b) < 2:
         return None
-    if not _zone_max_cap_ok(b, DLT_BACK_ZONES_CAP, DLT_BACK_MAX_PER_ZONE):
-        return None
-    if not _dlt_ticket_passes_history_rules(f, b, hist_keys, latest_seven):
-        return None
-    return (f, b)
+    for _ in range(max_tries):
+        f = sorted(rng.sample(pool_f, 5))
+        b = sorted(rng.sample(pool_b, 2))
+        if not _zone_max_cap_ok(f, DLT_FRONT_ZONES_CAP, DLT_FRONT_MAX_PER_ZONE):
+            continue
+        if not _zone_max_cap_ok(b, DLT_BACK_ZONES_CAP, DLT_BACK_MAX_PER_ZONE):
+            continue
+        if not _dlt_ticket_passes_history_rules(f, b, hist_keys, latest_seven):
+            continue
+        return (f, b)
+    return None
 
 
 def _ssq_draw_one_random_valid(
     rng: random.Random,
     hist_keys: set[tuple[tuple[int, ...], int]] | None,
     latest_seven: set[int] | None,
+    allowed_red: set[int] | None = None,
+    allowed_blue: set[int] | None = None,
+    max_tries: int = 20000,
 ) -> tuple[list[int], int] | None:
-    reds = sorted(rng.sample(range(1, 34), 6))
-    blue = int(rng.randint(1, 16))
-    if not _zone_max_cap_ok(reds, SSQ_RED_ZONES_CAP, SSQ_RED_MAX_PER_ZONE):
+    pool_r = list(allowed_red) if allowed_red is not None else list(range(1, 34))
+    pool_b = list(allowed_blue) if allowed_blue is not None else list(range(1, 17))
+    if len(pool_r) < 6 or len(pool_b) < 1:
         return None
-    if not _zone_max_cap_ok([blue], SSQ_BLUE_ZONES_CAP, SSQ_BLUE_MAX_PER_ZONE):
-        return None
-    if not _ssq_ticket_passes_history_rules(reds, blue, hist_keys, latest_seven):
-        return None
-    return (reds, blue)
+    for _ in range(max_tries):
+        reds = sorted(rng.sample(pool_r, 6))
+        blue = int(rng.choice(pool_b))
+        if not _zone_max_cap_ok(reds, SSQ_RED_ZONES_CAP, SSQ_RED_MAX_PER_ZONE):
+            continue
+        if not _zone_max_cap_ok([blue], SSQ_BLUE_ZONES_CAP, SSQ_BLUE_MAX_PER_ZONE):
+            continue
+        if not _ssq_ticket_passes_history_rules(reds, blue, hist_keys, latest_seven):
+            continue
+        return (reds, blue)
+    return None
 
 
 def _dlt_ticket_passes_history_rules(
@@ -254,6 +286,8 @@ def _dlt_collect_five_unique_tickets(
     penalty0: float = TICKET_COLLECT_PENALTY_INIT,
     hist_keys: set[tuple[tuple[int, ...], tuple[int, ...]]] | None = None,
     latest_seven: set[int] | None = None,
+    allowed_front: set[int] | None = None,
+    allowed_back: set[int] | None = None,
 ) -> list[tuple[list[int], list[int]]]:
     pick_cf = np.zeros(36, dtype=np.float64)
     pick_cb = np.zeros(13, dtype=np.float64)
@@ -277,10 +311,22 @@ def _dlt_collect_five_unique_tickets(
                     bs_adj[xi] -= lp
         try:
             fi = _pick_top_indices_zone_capped(
-                fs_adj, 1, 35, 5, DLT_FRONT_ZONES_CAP, DLT_FRONT_MAX_PER_ZONE
+                fs_adj,
+                1,
+                35,
+                5,
+                DLT_FRONT_ZONES_CAP,
+                DLT_FRONT_MAX_PER_ZONE,
+                allowed=allowed_front,
             )
             bi = _pick_top_indices_zone_capped(
-                bs_adj, 1, 12, 2, DLT_BACK_ZONES_CAP, DLT_BACK_MAX_PER_ZONE
+                bs_adj,
+                1,
+                12,
+                2,
+                DLT_BACK_ZONES_CAP,
+                DLT_BACK_MAX_PER_ZONE,
+                allowed=allowed_back,
             )
         except ValueError:
             penalty *= 0.88
@@ -305,10 +351,24 @@ def _dlt_collect_five_unique_tickets(
             rng = random.Random(seed + 17)
             try:
                 fi = _pick_top_indices_zone_capped(
-                    fs, 1, 35, 5, DLT_FRONT_ZONES_CAP, DLT_FRONT_MAX_PER_ZONE, rng=rng
+                    fs,
+                    1,
+                    35,
+                    5,
+                    DLT_FRONT_ZONES_CAP,
+                    DLT_FRONT_MAX_PER_ZONE,
+                    rng=rng,
+                    allowed=allowed_front,
                 )
                 bi = _pick_top_indices_zone_capped(
-                    bs, 1, 12, 2, DLT_BACK_ZONES_CAP, DLT_BACK_MAX_PER_ZONE, rng=rng
+                    bs,
+                    1,
+                    12,
+                    2,
+                    DLT_BACK_ZONES_CAP,
+                    DLT_BACK_MAX_PER_ZONE,
+                    rng=rng,
+                    allowed=allowed_back,
                 )
             except ValueError:
                 continue
@@ -327,7 +387,9 @@ def _dlt_collect_five_unique_tickets(
         for _ in range(TICKET_COLLECT_RANDOM_PHASE_MAX):
             if len(out) >= n_lines:
                 break
-            one = _dlt_draw_one_random_valid(rng_r, hist_keys, latest_seven)
+            one = _dlt_draw_one_random_valid(
+                rng_r, hist_keys, latest_seven, allowed_front, allowed_back
+            )
             if one is None:
                 continue
             fi, bi = one
@@ -350,6 +412,8 @@ def _ssq_collect_five_unique_tickets(
     penalty0: float = TICKET_COLLECT_PENALTY_INIT,
     hist_keys: set[tuple[tuple[int, ...], int]] | None = None,
     latest_seven: set[int] | None = None,
+    allowed_red: set[int] | None = None,
+    allowed_blue: set[int] | None = None,
 ) -> list[tuple[list[int], int]]:
     pick_cr = np.zeros(34, dtype=np.float64)
     pick_cb = np.zeros(17, dtype=np.float64)
@@ -373,10 +437,22 @@ def _ssq_collect_five_unique_tickets(
                     bs_adj[xi] -= lp
         try:
             fi = _pick_top_indices_zone_capped(
-                rs_adj, 1, 33, 6, SSQ_RED_ZONES_CAP, SSQ_RED_MAX_PER_ZONE
+                rs_adj,
+                1,
+                33,
+                6,
+                SSQ_RED_ZONES_CAP,
+                SSQ_RED_MAX_PER_ZONE,
+                allowed=allowed_red,
             )
             bi = _pick_top_indices_zone_capped(
-                bs_adj, 1, 16, 1, SSQ_BLUE_ZONES_CAP, SSQ_BLUE_MAX_PER_ZONE
+                bs_adj,
+                1,
+                16,
+                1,
+                SSQ_BLUE_ZONES_CAP,
+                SSQ_BLUE_MAX_PER_ZONE,
+                allowed=allowed_blue,
             )
         except ValueError:
             penalty *= 0.88
@@ -401,10 +477,24 @@ def _ssq_collect_five_unique_tickets(
             rng = random.Random(seed + 29)
             try:
                 fi = _pick_top_indices_zone_capped(
-                    rs, 1, 33, 6, SSQ_RED_ZONES_CAP, SSQ_RED_MAX_PER_ZONE, rng=rng
+                    rs,
+                    1,
+                    33,
+                    6,
+                    SSQ_RED_ZONES_CAP,
+                    SSQ_RED_MAX_PER_ZONE,
+                    rng=rng,
+                    allowed=allowed_red,
                 )
                 bi = _pick_top_indices_zone_capped(
-                    bs, 1, 16, 1, SSQ_BLUE_ZONES_CAP, SSQ_BLUE_MAX_PER_ZONE, rng=rng
+                    bs,
+                    1,
+                    16,
+                    1,
+                    SSQ_BLUE_ZONES_CAP,
+                    SSQ_BLUE_MAX_PER_ZONE,
+                    rng=rng,
+                    allowed=allowed_blue,
                 )
             except ValueError:
                 continue
@@ -424,7 +514,9 @@ def _ssq_collect_five_unique_tickets(
         for _ in range(TICKET_COLLECT_RANDOM_PHASE_MAX):
             if len(out) >= n_lines:
                 break
-            one = _ssq_draw_one_random_valid(rng_r, hist_keys, latest_seven)
+            one = _ssq_draw_one_random_valid(
+                rng_r, hist_keys, latest_seven, allowed_red, allowed_blue
+            )
             if one is None:
                 continue
             fi, bl = one
@@ -441,29 +533,77 @@ def _ssq_collect_five_unique_tickets(
 
 # ── 快乐八 20/11 选号 ──────────────────────────────────────────
 
+def _kl8_decadic_zone_totals(draws: list[list[int]]) -> list[int]:
+    """窗口内每期 20 码在各十码段上的出现次数之和（每期一球最多计 1 次）。"""
+    counts = [0] * len(KL8_PICK_ZONES_CAP)
+    for d in draws:
+        for x in d:
+            xi = int(x)
+            zi = _zone_index_for_ball(xi, KL8_PICK_ZONES_CAP)
+            counts[zi] += 1
+    return counts
+
+
+def _kl8_active_ball_set(active_zones: list[tuple[int, int]]) -> set[int]:
+    s: set[int] = set()
+    for lo, hi in active_zones:
+        s.update(range(int(lo), int(hi) + 1))
+    return s
+
+
+def _kl8_scores_masked_to_active_zones(
+    scores: np.ndarray, active_zones: list[tuple[int, int]]
+) -> np.ndarray:
+    allow = _kl8_active_ball_set(active_zones)
+    out = scores.astype(np.float64).copy()
+    for i in range(1, 81):
+        if i not in allow:
+            out[i] = -1e18
+    return out
+
+
+def _kl8_active_zone_pick_policy_ok(balls: list[int], active_zones: list[tuple[int, int]]) -> bool:
+    """未选用的十码段须 0 个；选用的各段在 [KL8_MIN_PER_PICK_ZONE, KL8_MAX_PER_PICK_ZONE]。"""
+    active_set = set(active_zones)
+    zc = _counts_per_zone_for_balls(balls, KL8_PICK_ZONES_CAP)
+    for zi, c in enumerate(zc):
+        ztup = KL8_PICK_ZONES_CAP[zi]
+        if ztup in active_set:
+            if c < KL8_MIN_PER_PICK_ZONE or c > KL8_MAX_PER_PICK_ZONE:
+                return False
+        elif c != 0:
+            return False
+    return True
+
+
 def _kl8_twenty_from_patterns(
     freq: np.ndarray,
     cur_miss: np.ndarray,
     draws: list[list[int]],
     markov_raw: np.ndarray,
-) -> list[int]:
+    active_zones: list[tuple[int, int]] | None = None,
+) -> tuple[list[int], list[tuple[int, int]]]:
+    if active_zones is None:
+        active_zones = list(KL8_PICK_ZONES_CAP)
     scores = _kl8_twenty_scores(freq, cur_miss, draws, markov_raw)
+    scores_use = _kl8_scores_masked_to_active_zones(scores, active_zones)
     ranked = _pick_top_indices_zone_bounded(
-        scores,
+        scores_use,
         1,
         80,
         20,
-        KL8_PICK_ZONES_CAP,
+        active_zones,
         KL8_MIN_PER_PICK_ZONE,
         KL8_MAX_PER_PICK_ZONE,
     )
-    return sorted(ranked)
+    return sorted(ranked), active_zones
 
 
 def _kl8_twenty_cap_overlap_latest(
     twenty: list[int],
     latest20: set[int],
     scores: np.ndarray,
+    active_zones: list[tuple[int, int]],
     max_overlap: int = 6,
     max_rounds: int = 500,
 ) -> list[int]:
@@ -472,6 +612,7 @@ def _kl8_twenty_cap_overlap_latest(
     if len(cur) != 20 or len(set(cur)) != 20:
         return cur
     latest_set = set(latest20)
+    allowed = _kl8_active_ball_set(active_zones)
     rnd = 0
     while rnd < max_rounds:
         rnd += 1
@@ -481,13 +622,12 @@ def _kl8_twenty_cap_overlap_latest(
             return sorted(cur)
         victim = min(inter, key=lambda x: float(scores[int(x)]))
         s_cur.remove(victim)
-        candidates = [i for i in range(1, 81) if i not in s_cur]
+        candidates = [i for i in range(1, 81) if i not in s_cur and i in allowed]
         candidates.sort(key=lambda i: -float(scores[int(i)]))
         added = False
         for c in candidates:
             trial = sorted(s_cur | {c})
-            zc = _counts_per_zone_for_balls(trial, KL8_PICK_ZONES_CAP)
-            if all(KL8_MIN_PER_PICK_ZONE <= z <= KL8_MAX_PER_PICK_ZONE for z in zc):
+            if _kl8_active_zone_pick_policy_ok(trial, active_zones):
                 cur = trial
                 added = True
                 break
@@ -496,48 +636,69 @@ def _kl8_twenty_cap_overlap_latest(
     return sorted(cur)
 
 
-def _kl8_eleven_zone_capped_from_twenty(twenty: list[int]) -> list[int]:
+def _kl8_eleven_zone_capped_from_twenty(
+    twenty: list[int], active_zones: list[tuple[int, int]]
+) -> list[int]:
     if len(twenty) != 20 or len(set(twenty)) != 20:
         raise ValueError("twenty 须为 20 个互异号码")
-    zones = KL8_PICK_ZONES_CAP
     for _ in range(KL8_ELEVEN_RANDOM_TRIES):
         s = random.sample(twenty, 11)
-        zc_try = _counts_per_zone_for_balls(s, zones)
-        if all(KL8_MIN_PER_PICK_ZONE <= c <= KL8_MAX_PER_PICK_ZONE for c in zc_try):
+        if _kl8_active_zone_pick_policy_ok(s, active_zones):
             return sorted(s)
     aux_scores = np.zeros(81, dtype=float)
     for rank, x in enumerate(sorted(twenty)):
         aux_scores[int(x)] = float(len(twenty) - rank)
+    aux_use = _kl8_scores_masked_to_active_zones(aux_scores, active_zones)
     out = _pick_top_indices_zone_bounded(
-        aux_scores,
+        aux_use,
         1,
         80,
         11,
-        zones,
+        active_zones,
         KL8_MIN_PER_PICK_ZONE,
         KL8_MAX_PER_PICK_ZONE,
     )
     if len(out) < 11:
         raise ValueError(
-            f"20 码在十码段每区[{KL8_MIN_PER_PICK_ZONE},{KL8_MAX_PER_PICK_ZONE}]约束下无法凑满11码"
+            f"20 码在「活跃十码段」每区[{KL8_MIN_PER_PICK_ZONE},{KL8_MAX_PER_PICK_ZONE}]约束下无法凑满11码"
         )
     return sorted(out)
 
 
-def _kl8_eleven_random_from_twenty(twenty: list[int]) -> list[int]:
-    return _kl8_eleven_zone_capped_from_twenty(twenty)
+def _kl8_eleven_random_from_twenty(
+    twenty: list[int], active_zones: list[tuple[int, int]]
+) -> list[int]:
+    return _kl8_eleven_zone_capped_from_twenty(twenty, active_zones)
 
 
-def _assert_kl8_zone_bounds(nums: list[int], label: str) -> list[int]:
+def _assert_kl8_zone_bounds(
+    nums: list[int], label: str, active_zones: list[tuple[int, int]] | None = None
+) -> list[int]:
     zc = _counts_per_zone_for_balls(nums, KL8_PICK_ZONES_CAP)
-    bad = []
-    for zi, c in enumerate(zc, 1):
-        if c < KL8_MIN_PER_PICK_ZONE or c > KL8_MAX_PER_PICK_ZONE:
+    if active_zones is None:
+        bad = []
+        for zi, c in enumerate(zc, 1):
+            if c < KL8_MIN_PER_PICK_ZONE or c > KL8_MAX_PER_PICK_ZONE:
+                lo, hi = KL8_PICK_ZONES_CAP[zi - 1]
+                bad.append(f"zone{zi}({_fmt2(lo)}-{_fmt2(hi)}):{c}")
+        if bad:
+            raise ValueError(
+                f"{label} 分区校验失败：要求每小区[{KL8_MIN_PER_PICK_ZONE},{KL8_MAX_PER_PICK_ZONE}]，实际 {', '.join(bad)}；全量计数={zc}"
+            )
+        return zc
+    if not _kl8_active_zone_pick_policy_ok(nums, active_zones):
+        active_set = set(active_zones)
+        bad = []
+        for zi, c in enumerate(zc, 1):
             lo, hi = KL8_PICK_ZONES_CAP[zi - 1]
-            bad.append(f"zone{zi}({_fmt2(lo)}-{_fmt2(hi)}):{c}")
-    if bad:
+            ztup = KL8_PICK_ZONES_CAP[zi - 1]
+            if ztup in active_set:
+                if c < KL8_MIN_PER_PICK_ZONE or c > KL8_MAX_PER_PICK_ZONE:
+                    bad.append(f"active zone{zi}({_fmt2(lo)}-{_fmt2(hi)}):{c}")
+            elif c != 0:
+                bad.append(f"inactive zone{zi}({_fmt2(lo)}-{_fmt2(hi)}):{c}")
         raise ValueError(
-            f"{label} 分区校验失败：要求每小区[{KL8_MIN_PER_PICK_ZONE},{KL8_MAX_PER_PICK_ZONE}]，实际 {', '.join(bad)}；全量计数={zc}"
+            f"{label} 分区校验失败（仅允许在活跃十码段内出号）：{', '.join(bad)}；全量计数={zc}"
         )
     return zc
 

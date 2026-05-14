@@ -341,8 +341,15 @@ def _prediction_md_appendix_budget_rules(lottery_cn: str, mechanical_example_lin
 """
 
 
-def _prediction_md_appendix_kl8_bet(eleven_fmt: str) -> str:
+def _prediction_md_appendix_kl8_bet(
+    eleven_fmt_window: str, eleven_fmt_markov: str | None = None
+) -> str:
     lo, hi = DEFAULT_COMBO_BUDGET_MIN_YUAN, DEFAULT_COMBO_BUDGET_MAX_YUAN
+    line_a = f"- **本文件机械推荐（选十 11 码复式）**：号码（升序）**{eleven_fmt_window}**；注数 **C(11,10)=11**；金额 **11×2=22 元**（落在 **{lo}～{hi} 元** 内；单价以福彩官方为准）。"
+    if eleven_fmt_markov is None or eleven_fmt_markov == eleven_fmt_window:
+        extra = ""
+    else:
+        extra = f"\n- **本文件机械推荐（选十 11 码复式，备选路径）**：号码（升序）**{eleven_fmt_markov}**；注数 **C(11,10)=11**；金额 **11×2=22 元**（落在 **{lo}～{hi} 元** 内；单价以福彩官方为准）。"
     return f"""
 
 ---
@@ -350,6 +357,6 @@ def _prediction_md_appendix_kl8_bet(eleven_fmt: str) -> str:
 ## 附录：预算与投注推荐（仓库默认）
 
 - **金额带（强制）**：统计规律输出完成后，须配套至少一套 **合计 {lo}～{hi} 元（含端点）** 的投注推荐。
-- **本文件机械推荐（选十 11 码复式）**：号码（升序）**{eleven_fmt}**；注数 **C(11,10)=11**；金额 **11×2=22 元**（落在 **{lo}～{hi} 元** 内；单价以福彩官方为准）。
+{line_a}{extra}
 - 若需换号、多方案或与其他约束混合，请用 **`lottery-combo-optimize`** 仍控制在 **{lo}～{hi} 元**，并写清投注原因。
 """

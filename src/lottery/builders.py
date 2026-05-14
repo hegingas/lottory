@@ -25,6 +25,16 @@ from .config import (
     PATTERN_W_MARKOV,
     KL8_MIN_PER_PICK_ZONE,
     KL8_MAX_PER_PICK_ZONE,
+    KL8_PICK_ZONES_CAP,
+    MARKOV_LAPLACE_ALPHA,
+)
+from .interval_markov import (
+    expand_kl8_decadic_mask,
+    expand_mask_until_pickable,
+    format_mask_zones,
+    markov_next_bitmap,
+    mask_to_active_zone_ranges,
+    mask_to_allowed_balls,
 )
 from .scoring import (
     ac_value,
@@ -47,6 +57,8 @@ from .selection import (
     _kl8_twenty_cap_overlap_latest,
     _kl8_eleven_random_from_twenty,
     _assert_kl8_zone_bounds,
+    _kl8_decadic_zone_totals,
+    _zone_index_for_ball,
 )
 from .markdown_utils import (
     _fmt2,
@@ -113,7 +125,19 @@ def dlt_explicit_from_patterns(
     b_mk = _markov_blended_probabilities(b_draws, 12)
     fs = _dlt_front_scores(f_draws, fq, fcur, f_mk)
     bs = _dlt_back_scores(b_draws, bq, bcur, b_mk)
-    f0, b0 = _dlt_collect_five_unique_tickets(fs, bs)[0]
+    fa = [list(map(int, row)) for row in f_draws]
+    ba = [list(map(int, row)) for row in b_draws]
+    _, mf, _, _, _ = markov_next_bitmap(fa, DLT_FRONT_ZONES_CAP)
+    af = mask_to_allowed_balls(
+        expand_mask_until_pickable(mf, DLT_FRONT_ZONES_CAP, DLT_FRONT_MAX_PER_ZONE, 5),
+        DLT_FRONT_ZONES_CAP,
+    )
+    _, mb, _, _, _ = markov_next_bitmap(ba, DLT_BACK_ZONES_CAP)
+    ab = mask_to_allowed_balls(
+        expand_mask_until_pickable(mb, DLT_BACK_ZONES_CAP, DLT_BACK_MAX_PER_ZONE, 2),
+        DLT_BACK_ZONES_CAP,
+    )
+    f0, b0 = _dlt_collect_five_unique_tickets(fs, bs, allowed_front=af, allowed_back=ab)[0]
     return ",".join(_fmt2(x) for x in f0), ",".join(_fmt2(x) for x in b0)
 
 
@@ -129,7 +153,19 @@ def ssq_explicit_from_patterns(
     b_mk = _markov_blended_probabilities([[int(x)] for x in blues], 16)
     rs = _ssq_red_scores(r_draws, rq, rcur, r_mk)
     bs = _ssq_blue_scores(blues, bq, bcur, b_mk)
-    r0, b0 = _ssq_collect_five_unique_tickets(rs, bs)[0]
+    ra = [list(map(int, row)) for row in r_draws]
+    ba = [[int(b)] for b in blues]
+    _, mr, _, _, _ = markov_next_bitmap(ra, SSQ_RED_ZONES_CAP)
+    ar = mask_to_allowed_balls(
+        expand_mask_until_pickable(mr, SSQ_RED_ZONES_CAP, SSQ_RED_MAX_PER_ZONE, 6),
+        SSQ_RED_ZONES_CAP,
+    )
+    _, mbl, _, _, _ = markov_next_bitmap(ba, SSQ_BLUE_ZONES_CAP)
+    abl = mask_to_allowed_balls(
+        expand_mask_until_pickable(mbl, SSQ_BLUE_ZONES_CAP, SSQ_BLUE_MAX_PER_ZONE, 1),
+        SSQ_BLUE_ZONES_CAP,
+    )
+    r0, b0 = _ssq_collect_five_unique_tickets(rs, bs, allowed_red=ar, allowed_blue=abl)[0]
     return ",".join(_fmt2(x) for x in r0), _fmt2(b0)
 
 
@@ -546,8 +582,25 @@ def prediction_block_dlt(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW) -
         int(lr_d["back_1"]),
         int(lr_d["back_2"]),
     }
+    f_all_rows = [list(map(int, r)) for r in f_draws_all]
+    b_all_rows = [list(map(int, r)) for r in b_draws_all]
+    _, m_front, _, _, _ = markov_next_bitmap(f_all_rows, DLT_FRONT_ZONES_CAP)
+    m_front_e = expand_mask_until_pickable(
+        m_front, DLT_FRONT_ZONES_CAP, DLT_FRONT_MAX_PER_ZONE, 5
+    )
+    allowed_front_dlt = mask_to_allowed_balls(m_front_e, DLT_FRONT_ZONES_CAP)
+    _, m_back, _, _, _ = markov_next_bitmap(b_all_rows, DLT_BACK_ZONES_CAP)
+    m_back_e = expand_mask_until_pickable(
+        m_back, DLT_BACK_ZONES_CAP, DLT_BACK_MAX_PER_ZONE, 2
+    )
+    allowed_back_dlt = mask_to_allowed_balls(m_back_e, DLT_BACK_ZONES_CAP)
     five = _dlt_collect_five_unique_tickets(
-        fs, bs, hist_keys=hist_keys_dlt, latest_seven=latest_dlt_seven
+        fs,
+        bs,
+        hist_keys=hist_keys_dlt,
+        latest_seven=latest_dlt_seven,
+        allowed_front=allowed_front_dlt,
+        allowed_back=allowed_back_dlt,
     )
     numbers_md = _build_dlt_five_numbers_md(
         five,
@@ -582,7 +635,7 @@ def prediction_block_dlt(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW) -
 - 彩种：大乐透
 - 窗口：近 **{n_win}** 期（至多 **{n_last}** 期）
 - 指标：热/冷号 = 窗口内出现次数；前区奇偶比、大小比（18–35 为大）；前区 5 码和值与跨度
-- **{PREDICTION_SINGLE_LINES} 注单式（机械）**：每注前区 5 + 后区 2；各号多因子原始分 **min-max 归一** 后按权重合成综合分，再按下述小区上限贪心取号（**同分随机**）。**前区**：**7** 段、每段连续 **5** 个号（**01–05 / 06–10 / 11–15 / 16–20 / 21–25 / 26–30 / 31–35**），每段至多 **{DLT_FRONT_MAX_PER_ZONE}** 个；**后区**：**3** 段、每段连续 **4** 个号（**01–04 / 05–08 / 09–12**），每段至多 **{DLT_BACK_MAX_PER_ZONE}** 个。**{PREDICTION_SINGLE_LINES} 注**之间对**已出现过的号码**在下一轮综合分上施加**递减惩罚**，以拉开互异组合；仍不足则换随机种子补全互异注。**权重**：**{_pattern_weight_md_line()}**；因子含 **近 {PATTERN_RECENT_K} 期密度、奇偶结构、大小（前≥18 / 后≥7）、和值带、区段划分**（区间热度与取号分区一致），并新增 **马尔可夫链转移因子**（最大权重）：基于**全历史**（非仅窗口）同时计算**一阶**（相邻期）与**二阶**（间隔两期）二状态转移矩阵，按 **40% 一阶 + 60% 二阶** 混合后取最新状态对应的下一期出现条件概率。
+- **{PREDICTION_SINGLE_LINES} 注单式（机械）**：每注前区 5 + 后区 2；各号多因子原始分 **min-max 归一** 后按权重合成综合分，再按下述小区上限贪心取号（**同分随机**）。**前区**：**7** 段、每段连续 **5** 个号（**01–05 / 06–10 / 11–15 / 16–20 / 21–25 / 26–30 / 31–35**），每段至多 **{DLT_FRONT_MAX_PER_ZONE}** 个；**后区**：**4** 段（**01–03 / 04–06 / 07–09 / 10–12**），每段至多 **{DLT_BACK_MAX_PER_ZONE}** 个。**选号域**：对**全表**每期前区 5 码、后区 2 码分别计算「各小区是否至少出过 1 球」的 **7/4 位二进制掩码**，在全历史上做相邻期一阶马尔可夫 + 拉普拉斯平滑，取末态条件下概率最大的下一掩码；再按段序扩展掩码直至在「每区至多 {DLT_FRONT_MAX_PER_ZONE} / {DLT_BACK_MAX_PER_ZONE}」下分别至少能取满 **5 / 2** 个号（仍不足则该球区全开），**仅在该掩码并集号码内**用综合分取号。**{PREDICTION_SINGLE_LINES} 注**之间对**已出现过的号码**在下一轮综合分上施加**递减惩罚**，以拉开互异组合；仍不足则换随机种子补全互异注。**权重**：**{_pattern_weight_md_line()}**；因子含 **近 {PATTERN_RECENT_K} 期密度、奇偶结构、大小（前≥18 / 后≥7）、和值带、区段划分**（区间热度与取号分区一致），并含 **马尔可夫链转移因子**（最大权重）：基于**全历史**同时计算**一阶**与**二阶**二状态转移矩阵，按 **40% 一阶 + 60% 二阶** 混合后取最新状态对应的下一期出现条件概率（与上文「区间掩码马尔可夫」为不同层次：前者约束候选球集合，后者进入按号评分）。
 
 ## 结果摘要
 
@@ -662,8 +715,25 @@ def prediction_block_ssq(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW) -
         hist_keys_ssq.add((r_t, b_t))
     lr_s = full.iloc[-1]
     latest_ssq_seven = set(int(lr_s[f"red_{i}"]) for i in range(1, 7)) | {int(lr_s["blue"])}
+    r_all_rows = [list(map(int, r)) for r in reds_all]
+    b_all_rows = [[int(x)] for x in blues_all]
+    _, m_red, _, _, _ = markov_next_bitmap(r_all_rows, SSQ_RED_ZONES_CAP)
+    m_red_e = expand_mask_until_pickable(
+        m_red, SSQ_RED_ZONES_CAP, SSQ_RED_MAX_PER_ZONE, 6
+    )
+    allowed_red_ssq = mask_to_allowed_balls(m_red_e, SSQ_RED_ZONES_CAP)
+    _, m_blue, _, _, _ = markov_next_bitmap(b_all_rows, SSQ_BLUE_ZONES_CAP)
+    m_blue_e = expand_mask_until_pickable(
+        m_blue, SSQ_BLUE_ZONES_CAP, SSQ_BLUE_MAX_PER_ZONE, 1
+    )
+    allowed_blue_ssq = mask_to_allowed_balls(m_blue_e, SSQ_BLUE_ZONES_CAP)
     five = _ssq_collect_five_unique_tickets(
-        rs, bs_sc, hist_keys=hist_keys_ssq, latest_seven=latest_ssq_seven
+        rs,
+        bs_sc,
+        hist_keys=hist_keys_ssq,
+        latest_seven=latest_ssq_seven,
+        allowed_red=allowed_red_ssq,
+        allowed_blue=allowed_blue_ssq,
     )
     numbers_md = _build_ssq_five_numbers_md(
         five,
@@ -698,7 +768,7 @@ def prediction_block_ssq(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW) -
 - 彩种：双色球
 - 窗口：近 **{n_win}** 期（至多 **{n_last}** 期）
 - 指标：红球热/冷、蓝球热/冷；红球奇偶比；大小比（17–33 为大）；红球和值与跨度
-- **{PREDICTION_SINGLE_LINES} 注单式（机械）**：每注红球 6 + 蓝球 1；多因子 **min-max 归一** 后加权合成，再按下述小区上限贪心取号（**同分随机**）。**红球**：**7** 段、每段连续 **5** 个号（末段 **31–33** 仅 3 个号：**01–05 / 06–10 / 11–15 / 16–20 / 21–25 / 26–30 / 31–33**），每段至多 **{SSQ_RED_MAX_PER_ZONE}** 个；**蓝球**：**4** 段、每段连续 **4** 个号（**01–04 / 05–08 / 09–12 / 13–16**），每段至多 **{SSQ_BLUE_MAX_PER_ZONE}** 个（单码取蓝时自然满足）。**{PREDICTION_SINGLE_LINES} 注**间对**已出现过的号码**在下一轮综合分上施加**递减惩罚**以拉开互异组合；仍不足则换随机种子补全。**权重**：**{_pattern_weight_md_line()}**；红球另有 **近 {PATTERN_RECENT_K} 期密度、奇偶/大小（≥17）、和值带、五码段划分**；蓝球另有 **近 {PATTERN_RECENT_K} 期密度、奇偶、中位蓝贴近、大号占比（≥9）**，并新增 **马尔可夫链转移因子**（最大权重）：每次预测都基于**全历史**重算一阶与二阶转移矩阵，按 **40% 一阶 + 60% 二阶** 混合后取最新状态对应下一期条件概率入权重。
+- **{PREDICTION_SINGLE_LINES} 注单式（机械）**：每注红球 6 + 蓝球 1；多因子 **min-max 归一** 后加权合成，再按下述小区上限贪心取号（**同分随机**）。**红球**：**7** 段、每段连续 **5** 个号（末段 **31–33** 仅 3 个号：**01–05 / 06–10 / 11–15 / 16–20 / 21–25 / 26–30 / 31–33**），每段至多 **{SSQ_RED_MAX_PER_ZONE}** 个；**蓝球**：**4** 段、每段连续 **4** 个号（**01–04 / 05–08 / 09–12 / 13–16**），每段至多 **{SSQ_BLUE_MAX_PER_ZONE}** 个（单码取蓝时自然满足）。**选号域**：对**全表**每期红球 6 码、蓝球 1 码分别计算 **7/4 位二进制掩码**（各区是否至少 1 球），在全历史上做相邻期一阶马尔可夫 + 拉普拉斯平滑并扩展掩码，直至在分区上限下分别至少能取满 **6 / 1** 个号（仍不足则该球区全开），**仅在该掩码并集号码内**用综合分取号。**{PREDICTION_SINGLE_LINES} 注**间对**已出现过的号码**在下一轮综合分上施加**递减惩罚**以拉开互异组合；仍不足则换随机种子补全。**权重**：**{_pattern_weight_md_line()}**；红球另有 **近 {PATTERN_RECENT_K} 期密度、奇偶/大小（≥17）、和值带、五码段划分**；蓝球另有 **近 {PATTERN_RECENT_K} 期密度、奇偶、中位蓝贴近、大号占比（≥9）**，并含 **马尔可夫链转移因子**（最大权重）：每次预测都基于**全历史**重算一阶与二阶转移矩阵，按 **40% 一阶 + 60% 二阶** 混合后取最新状态对应下一期条件概率入权重（与「区间掩码马尔可夫」层次区分同大乐透口径）。
 
 ## 结果摘要
 
@@ -724,6 +794,50 @@ def prediction_block_ssq(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW) -
 """
 
 
+def _kl8_collect_one_path_outputs(
+    fq: np.ndarray,
+    fcur: np.ndarray,
+    draws: list[list[int]],
+    markov_raw: np.ndarray,
+    active_zones: list[tuple[int, int]],
+    kl8_scores: np.ndarray,
+    latest20_set: set[int],
+    markov_norm: np.ndarray,
+) -> dict[str, object]:
+    """单路径：给定活跃十码段，生成 20/11 码、分区校验与马尔可夫因子明细。"""
+    twenty, _ = _kl8_twenty_from_patterns(fq, fcur, draws, markov_raw, active_zones)
+    twenty = _kl8_twenty_cap_overlap_latest(twenty, latest20_set, kl8_scores, active_zones)
+    olap = len(set(twenty) & latest20_set)
+    twenty_zone_counts = _assert_kl8_zone_bounds(twenty, "参考开奖20码", active_zones)
+    twenty_fmt = ",".join(_fmt2(x) for x in twenty)
+    eleven = _kl8_eleven_random_from_twenty(twenty, active_zones)
+    eleven_zone_counts = _assert_kl8_zone_bounds(eleven, "选十参考11码", active_zones)
+    eleven_fmt = ",".join(_fmt2(x) for x in eleven)
+    pref11_score = sum(float(kl8_scores[int(x)]) for x in eleven)
+    twenty_markov_detail = "；".join(
+        [
+            f"{_fmt2(x)}:P={float(markov_raw[x]):.4f},N={float(markov_norm[x]):.3f},C≈{PATTERN_W_MARKOV * float(markov_norm[x]):.3f}"
+            for x in twenty
+        ]
+    )
+    eleven_markov_detail = "；".join(
+        [
+            f"{_fmt2(x)}:P={float(markov_raw[x]):.4f},N={float(markov_norm[x]):.3f},C≈{PATTERN_W_MARKOV * float(markov_norm[x]):.3f}"
+            for x in eleven
+        ]
+    )
+    return {
+        "olap": olap,
+        "twenty_zone_counts": twenty_zone_counts,
+        "twenty_fmt": twenty_fmt,
+        "eleven_zone_counts": eleven_zone_counts,
+        "eleven_fmt": eleven_fmt,
+        "pref11_score": pref11_score,
+        "twenty_markov_detail": twenty_markov_detail,
+        "eleven_markov_detail": eleven_markov_detail,
+    }
+
+
 # ── 快乐八预测 ────────────────────────────────────────────────
 
 def prediction_block_kl8(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW) -> str:
@@ -746,29 +860,49 @@ def prediction_block_kl8(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW) -
     top_miss = sorted([(i, int(fcur[i])) for i in range(1, 81)], key=lambda t: -t[1])[:5]
     markov_raw = _markov_blended_probabilities(draws_all, 80)
     markov_norm = _minmax01_ball(markov_raw, 80)
-    twenty = _kl8_twenty_from_patterns(fq, fcur, draws, markov_raw)
     kl8_scores = _kl8_twenty_scores(fq, fcur, draws, markov_raw)
     latest20_set = set(int(x) for x in draws_all[-1])
-    twenty = _kl8_twenty_cap_overlap_latest(twenty, latest20_set, kl8_scores)
-    olap_kl8 = len(set(twenty) & latest20_set)
-    twenty_zone_counts = _assert_kl8_zone_bounds(twenty, "参考开奖20码")
-    twenty_fmt = ",".join(_fmt2(x) for x in twenty)
-    eleven = _kl8_eleven_random_from_twenty(twenty)
-    eleven_zone_counts = _assert_kl8_zone_bounds(eleven, "选十参考11码")
-    eleven_fmt = ",".join(_fmt2(x) for x in eleven)
-    pref11_score = sum(float(kl8_scores[int(x)]) for x in eleven)
-    twenty_markov_detail = "；".join(
-        [
-            f"{_fmt2(x)}:P={float(markov_raw[x]):.4f},N={float(markov_norm[x]):.3f},C≈{PATTERN_W_MARKOV * float(markov_norm[x]):.3f}"
-            for x in twenty
-        ]
+
+    pred_ts = now_cn_iso()
+
+    s_last_k, s_pred_k, p_pred_k, row_total_k, short_fb_k = markov_next_bitmap(
+        draws_all, KL8_PICK_ZONES_CAP
     )
-    eleven_markov_detail = "；".join(
-        [
-            f"{_fmt2(x)}:P={float(markov_raw[x]):.4f},N={float(markov_norm[x]):.3f},C≈{PATTERN_W_MARKOV * float(markov_norm[x]):.3f}"
-            for x in eleven
-        ]
+    m_exp_k = expand_kl8_decadic_mask(
+        s_pred_k, KL8_PICK_ZONES_CAP, 20, KL8_MAX_PER_PICK_ZONE
     )
+    active_zones = mask_to_active_zone_ranges(m_exp_k, KL8_PICK_ZONES_CAP)
+    w = _kl8_collect_one_path_outputs(
+        fq, fcur, draws, markov_raw, active_zones, kl8_scores, latest20_set, markov_norm
+    )
+
+    totals8w = _kl8_decadic_zone_totals(draws)
+    active_zone_choice_md = "；".join(
+        f"`{_fmt2(lo)}–{_fmt2(hi)}`（该十码段在窗口内累计 **{totals8w[_zone_index_for_ball(lo, KL8_PICK_ZONES_CAP)]}** 次）"
+        for lo, hi in active_zones
+    )
+
+    markov_path_bullet = (
+        f"对**全表 {full_n} 期**：将每期开奖 **20** 码映射到 **8** 个十码段，若某段至少出现 **1** 球则对应位为 **1**，按段序拼成 **8** 位二进制掩码；"
+        f"统计相邻期掩码的一阶转移并对条件行施加拉普拉斯 **α={MARKOV_LAPLACE_ALPHA}**。以最后一期 **`{last_pid}`** 的掩码 **{format_mask_zones(s_last_k, KL8_PICK_ZONES_CAP)}**（`{s_last_k}`）为条件，"
+        f"取平滑后概率最大的下一掩码 **{format_mask_zones(s_pred_k, KL8_PICK_ZONES_CAP)}**（`{s_pred_k}`，平滑概率 **{p_pred_k:.4f}**；该条件行历史转移条数 **{row_total_k}**）。"
+        f"再按快乐八规则将掩码扩展至至少 **4** 个活跃段且在「每段至多 **{KL8_MAX_PER_PICK_ZONE}** 个」下可凑满 **20** 码（仍不足则全开）；展开后为 **{format_mask_zones(m_exp_k, KL8_PICK_ZONES_CAP)}**（`{m_exp_k}`）。"
+    )
+    if short_fb_k:
+        markov_path_bullet += " **说明**：全表不足 **2** 期时条件不足，展开掩码退化为全开。"
+    elif row_total_k == 0 and full_n >= 2:
+        markov_path_bullet += (
+            " **说明**：末态在全表除最后一期外的历史中从未作为某期前一状态出现，下一掩码主要由平滑先验在全部候选间竞争决定。"
+        )
+
+    olap = int(w["olap"])
+    twenty_fmt = str(w["twenty_fmt"])
+    eleven_fmt = str(w["eleven_fmt"])
+    twenty_zone_counts = w["twenty_zone_counts"]
+    eleven_zone_counts = w["eleven_zone_counts"]
+    twenty_markov_detail = str(w["twenty_markov_detail"])
+    eleven_markov_detail = str(w["eleven_markov_detail"])
+    pref11 = float(w["pref11_score"])
 
     hot_line = "；".join([f"`{a}`（**{b}** 次）" for a, b in hot5])
     low_line = "；".join([f"`{a}`（**{b}** 次）" for a, b in low5])
@@ -777,7 +911,7 @@ def prediction_block_kl8(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW) -
 
     return f"""# 快乐八 — 统计型预测参考归档
 
-> **最后更新**：{now_cn_iso()}
+> **最后更新**：{pred_ts}
 > **统计窗口（默认）**：近 **{n}** 期，期号 **`{pid_min}`–`{pid_max}`**（期末尾连续段，至多 **{n_last}** 期）。
 > **随机种子**：`{_lottery_config._ACTIVE_RANDOM_SEED}`（同数据同种子可复现）。
 > **全表收录**：`kl8_draws.csv` 共 **{full_n}** 行，期号 **`{pid_full_min}`–`{pid_full_max}`**（见 `data/processed/manifest.json` 中 `lottery_type` 为 `kl8` 的条目）
@@ -807,7 +941,8 @@ def prediction_block_kl8(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW) -
   - **出现次数（频次）**：在上述 **{n}** 期窗口内，该号码出现在每期 `n01`–`n20` 中的总次数（每期最多计 1 次）。
   - **当前遗漏（期）**：自该号码**最近一次**出现之后，至**最后一期 `{last_pid}`** 为止所经过的期数；若最后一期开出该号，则遗漏为 **0**。
 - **数据来源**：`data/processed/kl8_draws.csv`；溯源见 `manifest.json` 中 `kl8` 条目。
-- **「规律线」参考 20 码（脚本）**：对 01–80 各号计算 **8** 项原始分（全窗口频次、当前遗漏、近 **{PATTERN_RECENT_K}** 期出现密度、与窗口内「每期 20 码奇数个数均值」的奇偶对齐、**01–40 / 41–80** 半区占比对齐、**20 码和值**相对中位带的条件对齐、**四区** 01–20 / 21–40 / 41–60 / 61–80 区段热度、**马尔可夫链转移概率**）；其中马尔可夫项（最大权重）按**全历史开奖**每次重算一阶与二阶转移矩阵，按 **40% 一阶 + 60% 二阶** 混合后基于最新两期状态计算下一期出现条件概率。**每项先 min-max 归一到 [0,1]**，再按权重 **{wline}** 合成，分高者优先（**同分随机**）；取号时按 **8 个十码段（01–10,…,71–80）每段至少 {KL8_MIN_PER_PICK_ZONE} 个且至多 {KL8_MAX_PER_PICK_ZONE} 个** 贪心取满 **20** 个互异号码后升序展示。**不是**从「最后一期已开出的 20 个号」里抽样，也**不是**单纯频次 Top20；仍属历史统计投影，**非**科学预测。
+- **「规律线」综合分**：对 01–80 各号计算 **8** 项原始分（全窗口频次、当前遗漏、近 **{PATTERN_RECENT_K}** 期出现密度、与窗口内「每期 20 码奇数个数均值」的奇偶对齐、**01–40 / 41–80** 半区占比对齐、**20 码和值**相对中位带的条件对齐、**四区** 01–20 / 21–40 / 41–60 / 61–80 区段热度、**马尔可夫链转移概率**）；其中马尔可夫项（最大权重）按**全历史开奖**每次重算一阶与二阶转移矩阵，按 **40% 一阶 + 60% 二阶** 混合后基于最新两期状态计算下一期出现条件概率。**每项先 min-max 归一到 [0,1]**，再按权重 **{wline}** 合成，分高者优先（**同分随机**）。**不是**从「最后一期已开出的 20 个号」里抽样，也**不是**单纯频次 Top20；仍属历史统计投影，**非**科学预测。
+- **活跃十码段（区间二进制掩码 → 一阶马尔可夫 → 展开）**：{markov_path_bullet}在展开后的活跃十码段并集内取满 **20** 码：各段 **{KL8_MIN_PER_PICK_ZONE}–{KL8_MAX_PER_PICK_ZONE}** 个，非活跃段 **0** 个。本窗口各活跃段频次摘要：{active_zone_choice_md}。
 
 ---
 
@@ -827,35 +962,35 @@ def prediction_block_kl8(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW) -
 
 ### 合规与去核心化（仓库硬规则）
 
-- **去核心化**：已执行去核心化约束——20 码在多因子与十码段上下限内取号，**不是**单纯频次 Top20，也**不是**从上一期 20 码中抽样。
-- **重合约束**：参考 20 码与**最新一期 `{last_pid}`** 真实开奖 20 码重合 **{olap_kl8}** 个（目标 **≤6**；脚本对超出部分按「重合球中综合分从低到高」优先替换并校验十码段约束；仍建议与官方公告核对）。
+- **去核心化**：在多因子与**马尔可夫展开后的活跃十码段**上下限内取号，**不是**单纯频次 Top20，也**不是**从上一期 20 码中抽样。
+- **重合约束**：与**最新一期 `{last_pid}`** 真实开奖 20 码重合 **{olap}** 个（目标 **≤6**；超出时按「重合球中综合分从低到高」替换，且替换号**仍须落在活跃段并集内**；仍建议与官方公告核对）。
 
 ---
 
-## 参考开奖 20 码（规律线 → 模拟一期 20 个开奖号）
+## 参考开奖 20 码（规律线 → 区间马尔可夫活跃段）
 
-> 基于**当前 {n} 期窗口**的统计规律（**非**从最后一期已开 20 码中随机）：对每号 **8** 项因子 min-max 归一后按权重 **{wline}** 合成综合分，在 **8 个十码段每段至少 {KL8_MIN_PER_PICK_ZONE} 个且至多 {KL8_MAX_PER_PICK_ZONE} 个** 约束下贪心取满 **20** 个互异号码（**同分随机**，每次运行可不同），升序排列，作为「下一期可参考的一注 20 码开奖形态」的**机械候选**；**非**官方开奖预告、**非**必中依据。
+> 在近 **{n}** 期窗口综合分下，**仅在**上文马尔可夫展开后的活跃十码段并集内贪心取 **20** 个互异号码（**同分随机**），并执行重合上限修正。
 
 - **参考开奖 20 码（升序）**：**{twenty_fmt}**
-- **分区计数校验（01-10..71-80）**：`{twenty_zone_counts}`（每区至少 {KL8_MIN_PER_PICK_ZONE}、至多 {KL8_MAX_PER_PICK_ZONE}）
-- **马尔可夫因子明细（P=原始概率, N=归一值, C=权重贡献）**：{twenty_markov_detail}
+- **活跃十码段**：{active_zone_choice_md}
+- **分区计数（8 段，非活跃段须为 0）**：`{twenty_zone_counts}`（活跃段每段 {KL8_MIN_PER_PICK_ZONE}–{KL8_MAX_PER_PICK_ZONE} 个）
+- **马尔可夫因子明细（球号位，P/N/C）**：{twenty_markov_detail}
 
 ---
 
 ## 明确号码输出（强制，选十视角统计参考）
 
-> 在上一节由**规律线综合分**得到的 **20 个参考开奖号码**中，**无放回随机抽取 11 个**，且满足 **8 个十码段每段至少 {KL8_MIN_PER_PICK_ZONE} 个且至多 {KL8_MAX_PER_PICK_ZONE} 个**（与 20 码同一分段），升序排列，供选十 **11 码复式**或裁剪为 10 码参考。**每次重新运行**生成脚本，**11 码可能与上次不同**（**20 码**在相同数据与常量下不变，但同分边界仍受随机影响时可变）；仍属娱乐向统计参考，**非**必中依据。
+> 在参考 **20** 码中无放回随机抽 **11** 码，满足与 20 码相同的活跃段约束。
 
 - **选十参考 11 码（升序）**：**{eleven_fmt}**
-- **分区计数校验（01-10..71-80）**：`{eleven_zone_counts}`（每区至少 {KL8_MIN_PER_PICK_ZONE}、至多 {KL8_MAX_PER_PICK_ZONE}）
-- **马尔可夫因子明细（P=原始概率, N=归一值, C=权重贡献）**：{eleven_markov_detail}
+- **分区计数**：`{eleven_zone_counts}`
+- **马尔可夫因子明细**：{eleven_markov_detail}
 
 ## 单式优选（强制，选十 11 码复式参考）
 
-> **生成时间**：`{now_cn_iso()}`（北京时间）。
+> **生成时间**：`{pred_ts}`（北京时间）。
 
-- **11 码（升序，同正文选十参考，用于 C(11,10) 复式）**：**{eleven_fmt}**
-- **11 码综合分之和（各号取与 20 码相同口径的 KL8 综合分）**：**{pref11_score:.3f}**
+- **11 码（C(11,10) 复式）**：**{eleven_fmt}**；综合分之和 **{pref11:.3f}**
 - **关键因子**：与 20 码口径一致（频次、遗漏、近端密度、奇偶/半区/和值带、区段热度、马尔可夫等，见上文权重）。
 
 ## 使用说明

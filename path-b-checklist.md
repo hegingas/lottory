@@ -47,7 +47,7 @@
 | 3.2 | 正文须含：**口径说明 → 结果摘要 → 明确号码输出（强制）→ 使用说明/随机性声明** | 同上 | ☐ 三节齐全，**非**仅热冷文字 |
 | 3.3 | 大乐透：至少 **1 注** 前区 5 + 后区 2 | 同上 | ☐ `history/daletou_prediction.md` |
 | 3.4 | 双色球：至少 **1 注** 红 6 + 蓝 1 | 同上 | ☐ `history/shuangseqiu_prediction.md` |
-| 3.5 | 快乐八：至少 **选十参考 11 码（升序）** | 同上 | ☐ `history/kuaileba_prediction.md` |
+| 3.5 | 快乐八：**参考开奖 20 码（升序）** + **选十参考 11 码（升序）**（机械口径为**区间掩码马尔可夫单一路径**，见 `interval_markov.py` / `prediction_block_kl8`） | 同上 | ☐ `history/kuaileba_prediction.md` |
 | 3.6 | 排列5：至少 **5 注单式** 五位号码（含生成时间+选号依据） | 同上 | ☐ `history/pailie5_prediction.md` |
 | 3.7 | 七星彩：至少 **5 注单式** 前6+后1（含生成时间+选号依据） | 同上 | ☐ `history/qixingcai_prediction.md` |
 

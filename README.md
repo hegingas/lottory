@@ -39,7 +39,7 @@
 | `data/`                     | `raw/` 原始抓取（可选）；`processed/` **主数据**（`dlt_draws.csv` / `ssq_draws.csv` / `kl8_draws.csv` / `pl5_draws.csv` / `qxc_draws.csv`，**不含开奖日期列**，仅期号+号码）                                                                                                     |
 | `history/`                  | 分析 / 预测：`daletou_*`、`shuangseqiu_*`、`kuaileba_*`、`pailie5_*`、`qixingcai_*`（可由 `regenerate-history` 按**五彩种同一默认窗口**批量刷新，或由对应 Agent 维护）                                                                               |
 | `src/scripts/`              | **`lottery.py`**：统一用 `regenerate-history` + `--only` 刷新 `history/`（`all` / `kl8` / `dlt-ssq` / `pl5` / `qxc`，默认近 30 期）；`regenerate-kl8-prediction` 为兼容别名；另保留 `regenerate_history_archives.py`                          |
-| `src/lottery/`              | 盘点与校验逻辑（供 `lottery.py` 与后续测试复用）                          |
+| `src/lottery/`              | 配置、评分、**区间掩码马尔可夫**（`interval_markov.py`）、选号、构建 `history` 正文、校验等 |
 | `requirements.txt`          | Python 依赖：`pandas`、`numpy`（用于 `regenerate_history_archives.py`）                                                                                                                                                        |
 
 
@@ -83,3 +83,7 @@
 ## 扩展本项目
 
 新增脚本或数据管道时，尽量保持与 `lottery-manager` 技能中的目录约定一致，并更新相关 Skill 中的口径说明，避免 Agent 与文档脱节。
+
+## 机械预测口径（摘要）
+
+`regenerate-history` 生成大乐透 / 双色球 / 快乐八预测时：先做**全表**「小区是否出球」**二进制掩码**的相邻期一阶马尔可夫 + 拉普拉斯平滑，再**扩展掩码**得到允许选号集合，最后在集合内按多因子与分区上限取号（`src/lottery/interval_markov.py`、`builders.prediction_block_*`、`selection`）。快乐八为**单一路径**活跃十码段，**非**旧版「窗口 Top4 + Top4 状态马尔可夫」并列。细则见 `AGENTS.md`（「机械预测口径」）、`CLAUDE.md` 与 `.cursor/rules/lottery-core.mdc`。
