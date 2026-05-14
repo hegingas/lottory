@@ -92,12 +92,24 @@ def mask_to_active_zone_ranges(mask: int, zones: list[tuple[int, int]]) -> list[
     return sorted(out, key=lambda t: t[0])
 
 
+def valid_mask_set(n_zones: int, max_active: int) -> set[int]:
+    """返回活跃段数 ≤ max_active 的所有掩码集合（排除全零）。"""
+    valid: set[int] = set()
+    for m in range(1, 1 << n_zones):
+        if m.bit_count() <= max_active:
+            valid.add(m)
+    return valid
+
+
 def markov_next_bitmap(
     draws_balls: list[list[int]],
     zones: list[tuple[int, int]],
     laplace: float | None = None,
+    valid_set: set[int] | None = None,
 ) -> tuple[int, int, float, int, bool]:
     """全历史相邻期区间命中图的一阶马尔可夫 + 拉普拉斯平滑，预测下一期掩码。
+
+    若提供 valid_set，Laplace 平滑仅在这些数学上可能的掩码内分配概率质量。
 
     Returns:
         s_last, s_pred, p_pred, row_total_from_s_last, short_history_fallback
@@ -118,11 +130,13 @@ def markov_next_bitmap(
     row = trans[s_last]
     row_total = int(sum(row.values()))
 
+    candidates = valid_set if valid_set is not None else set(range(n_states))
+    n_valid = len(candidates)
     best_s = 0
     best_p = -1.0
-    for s2 in range(n_states):
+    for s2 in candidates:
         c = int(row.get(s2, 0))
-        p = (c + alpha) / (row_total + alpha * n_states)
+        p = (c + alpha) / (row_total + alpha * n_valid)
         if best_p < 0 or p > best_p + 1e-18:
             best_p = p
             best_s = s2

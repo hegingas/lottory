@@ -20,6 +20,11 @@ from .config import (
     SSQ_RED_MAX_PER_ZONE,
     SSQ_BLUE_ZONES_CAP,
     SSQ_BLUE_MAX_PER_ZONE,
+    DLT_FRONT_MAX_ACTIVE_ZONES,
+    DLT_BACK_MAX_ACTIVE_ZONES,
+    SSQ_RED_MAX_ACTIVE_ZONES,
+    SSQ_BLUE_MAX_ACTIVE_ZONES,
+    KL8_MAX_ACTIVE_ZONES,
     PREDICTION_SINGLE_LINES,
     PATTERN_RECENT_K,
     PATTERN_W_MARKOV,
@@ -35,6 +40,7 @@ from .interval_markov import (
     markov_next_bitmap,
     mask_to_active_zone_ranges,
     mask_to_allowed_balls,
+    valid_mask_set,
 )
 from .scoring import (
     ac_value,
@@ -127,12 +133,12 @@ def dlt_explicit_from_patterns(
     bs = _dlt_back_scores(b_draws, bq, bcur, b_mk)
     fa = [list(map(int, row)) for row in f_draws]
     ba = [list(map(int, row)) for row in b_draws]
-    _, mf, _, _, _ = markov_next_bitmap(fa, DLT_FRONT_ZONES_CAP)
+    _, mf, _, _, _ = markov_next_bitmap(fa, DLT_FRONT_ZONES_CAP, valid_set=valid_mask_set(7, DLT_FRONT_MAX_ACTIVE_ZONES))
     af = mask_to_allowed_balls(
         expand_mask_until_pickable(mf, DLT_FRONT_ZONES_CAP, DLT_FRONT_MAX_PER_ZONE, 5),
         DLT_FRONT_ZONES_CAP,
     )
-    _, mb, _, _, _ = markov_next_bitmap(ba, DLT_BACK_ZONES_CAP)
+    _, mb, _, _, _ = markov_next_bitmap(ba, DLT_BACK_ZONES_CAP, valid_set=valid_mask_set(4, DLT_BACK_MAX_ACTIVE_ZONES))
     ab = mask_to_allowed_balls(
         expand_mask_until_pickable(mb, DLT_BACK_ZONES_CAP, DLT_BACK_MAX_PER_ZONE, 2),
         DLT_BACK_ZONES_CAP,
@@ -155,12 +161,12 @@ def ssq_explicit_from_patterns(
     bs = _ssq_blue_scores(blues, bq, bcur, b_mk)
     ra = [list(map(int, row)) for row in r_draws]
     ba = [[int(b)] for b in blues]
-    _, mr, _, _, _ = markov_next_bitmap(ra, SSQ_RED_ZONES_CAP)
+    _, mr, _, _, _ = markov_next_bitmap(ra, SSQ_RED_ZONES_CAP, valid_set=valid_mask_set(7, SSQ_RED_MAX_ACTIVE_ZONES))
     ar = mask_to_allowed_balls(
         expand_mask_until_pickable(mr, SSQ_RED_ZONES_CAP, SSQ_RED_MAX_PER_ZONE, 6),
         SSQ_RED_ZONES_CAP,
     )
-    _, mbl, _, _, _ = markov_next_bitmap(ba, SSQ_BLUE_ZONES_CAP)
+    _, mbl, _, _, _ = markov_next_bitmap(ba, SSQ_BLUE_ZONES_CAP, valid_set=valid_mask_set(4, SSQ_BLUE_MAX_ACTIVE_ZONES))
     abl = mask_to_allowed_balls(
         expand_mask_until_pickable(mbl, SSQ_BLUE_ZONES_CAP, SSQ_BLUE_MAX_PER_ZONE, 1),
         SSQ_BLUE_ZONES_CAP,
@@ -584,12 +590,12 @@ def prediction_block_dlt(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW) -
     }
     f_all_rows = [list(map(int, r)) for r in f_draws_all]
     b_all_rows = [list(map(int, r)) for r in b_draws_all]
-    _, m_front, _, _, _ = markov_next_bitmap(f_all_rows, DLT_FRONT_ZONES_CAP)
+    _, m_front, _, _, _ = markov_next_bitmap(f_all_rows, DLT_FRONT_ZONES_CAP, valid_set=valid_mask_set(7, DLT_FRONT_MAX_ACTIVE_ZONES))
     m_front_e = expand_mask_until_pickable(
         m_front, DLT_FRONT_ZONES_CAP, DLT_FRONT_MAX_PER_ZONE, 5
     )
     allowed_front_dlt = mask_to_allowed_balls(m_front_e, DLT_FRONT_ZONES_CAP)
-    _, m_back, _, _, _ = markov_next_bitmap(b_all_rows, DLT_BACK_ZONES_CAP)
+    _, m_back, _, _, _ = markov_next_bitmap(b_all_rows, DLT_BACK_ZONES_CAP, valid_set=valid_mask_set(4, DLT_BACK_MAX_ACTIVE_ZONES))
     m_back_e = expand_mask_until_pickable(
         m_back, DLT_BACK_ZONES_CAP, DLT_BACK_MAX_PER_ZONE, 2
     )
@@ -717,12 +723,12 @@ def prediction_block_ssq(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW) -
     latest_ssq_seven = set(int(lr_s[f"red_{i}"]) for i in range(1, 7)) | {int(lr_s["blue"])}
     r_all_rows = [list(map(int, r)) for r in reds_all]
     b_all_rows = [[int(x)] for x in blues_all]
-    _, m_red, _, _, _ = markov_next_bitmap(r_all_rows, SSQ_RED_ZONES_CAP)
+    _, m_red, _, _, _ = markov_next_bitmap(r_all_rows, SSQ_RED_ZONES_CAP, valid_set=valid_mask_set(7, SSQ_RED_MAX_ACTIVE_ZONES))
     m_red_e = expand_mask_until_pickable(
         m_red, SSQ_RED_ZONES_CAP, SSQ_RED_MAX_PER_ZONE, 6
     )
     allowed_red_ssq = mask_to_allowed_balls(m_red_e, SSQ_RED_ZONES_CAP)
-    _, m_blue, _, _, _ = markov_next_bitmap(b_all_rows, SSQ_BLUE_ZONES_CAP)
+    _, m_blue, _, _, _ = markov_next_bitmap(b_all_rows, SSQ_BLUE_ZONES_CAP, valid_set=valid_mask_set(4, SSQ_BLUE_MAX_ACTIVE_ZONES))
     m_blue_e = expand_mask_until_pickable(
         m_blue, SSQ_BLUE_ZONES_CAP, SSQ_BLUE_MAX_PER_ZONE, 1
     )
@@ -866,7 +872,7 @@ def prediction_block_kl8(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW) -
     pred_ts = now_cn_iso()
 
     s_last_k, s_pred_k, p_pred_k, row_total_k, short_fb_k = markov_next_bitmap(
-        draws_all, KL8_PICK_ZONES_CAP
+        draws_all, KL8_PICK_ZONES_CAP, valid_set=valid_mask_set(8, KL8_MAX_ACTIVE_ZONES)
     )
     m_exp_k = expand_kl8_decadic_mask(
         s_pred_k, KL8_PICK_ZONES_CAP, 20, KL8_MAX_PER_PICK_ZONE

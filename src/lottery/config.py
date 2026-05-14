@@ -49,6 +49,13 @@ SSQ_RED_MAX_PER_ZONE = 2
 SSQ_BLUE_ZONES_CAP = [(1, 4), (5, 8), (9, 12), (13, 16)]
 SSQ_BLUE_MAX_PER_ZONE = 2
 
+# 掩码活跃段上限（球数有限，不可能 n 个球覆盖 >n 个区段）
+DLT_FRONT_MAX_ACTIVE_ZONES = 5   # 前区 5 球
+DLT_BACK_MAX_ACTIVE_ZONES = 2    # 后区 2 球
+SSQ_RED_MAX_ACTIVE_ZONES = 6     # 红球 6 球
+SSQ_BLUE_MAX_ACTIVE_ZONES = 1    # 蓝球 1 球
+KL8_MAX_ACTIVE_ZONES = 8         # 20 球远超 8 段，无上限约束
+
 # 预算带
 DEFAULT_COMBO_BUDGET_MIN_YUAN = 10
 DEFAULT_COMBO_BUDGET_MAX_YUAN = 30
