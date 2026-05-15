@@ -25,6 +25,7 @@ from .config import (
     TICKET_COLLECT_RANDOM_PHASE_MAX,
     TICKET_COLLECT_LATEST_SCORE_PENALTY,
     KL8_ELEVEN_RANDOM_TRIES,
+    KL8_ELEVEN_OVERLAP_MAX,
     _fmt2,
 )
 from . import config as _lottery_config
@@ -610,6 +611,67 @@ def _kl8_twenty_cap_overlap_latest(
     """参考 20 码与最新一期真实 20 码重合数压至 ≤ max_overlap（优先去掉重合中综合分最低者并补分最高且满足十码段约束的号）。"""
     cur = sorted(twenty)
     if len(cur) != 20 or len(set(cur)) != 20:
+        return cur
+    latest_set = set(latest20)
+    allowed = _kl8_active_ball_set(active_zones)
+    rnd = 0
+    while rnd < max_rounds:
+        rnd += 1
+        s_cur = set(cur)
+        inter = s_cur & latest_set
+        if len(inter) <= max_overlap:
+            return sorted(cur)
+        victim = min(inter, key=lambda x: float(scores[int(x)]))
+        s_cur.remove(victim)
+        candidates = [i for i in range(1, 81) if i not in s_cur and i in allowed]
+        candidates.sort(key=lambda i: -float(scores[int(i)]))
+        added = False
+        for c in candidates:
+            trial = sorted(s_cur | {c})
+            if _kl8_active_zone_pick_policy_ok(trial, active_zones):
+                cur = trial
+                added = True
+                break
+        if not added:
+            break
+    return sorted(cur)
+
+
+def _kl8_eleven_from_patterns(
+    freq: np.ndarray,
+    cur_miss: np.ndarray,
+    draws: list[list[int]],
+    markov_raw: np.ndarray,
+    active_zones: list[tuple[int, int]] | None = None,
+) -> tuple[list[int], list[tuple[int, int]]]:
+    """直接在活跃十码段并集内贪心取 11 码（跳过 20 码中间层）。"""
+    if active_zones is None:
+        active_zones = list(KL8_PICK_ZONES_CAP)
+    scores = _kl8_twenty_scores(freq, cur_miss, draws, markov_raw)
+    scores_use = _kl8_scores_masked_to_active_zones(scores, active_zones)
+    ranked = _pick_top_indices_zone_bounded(
+        scores_use,
+        1,
+        80,
+        11,
+        active_zones,
+        KL8_MIN_PER_PICK_ZONE,
+        KL8_MAX_PER_PICK_ZONE,
+    )
+    return sorted(ranked), active_zones
+
+
+def _kl8_eleven_cap_overlap_latest(
+    eleven: list[int],
+    latest20: set[int],
+    scores: np.ndarray,
+    active_zones: list[tuple[int, int]],
+    max_overlap: int = KL8_ELEVEN_OVERLAP_MAX,
+    max_rounds: int = 500,
+) -> list[int]:
+    """直选 11 码与最新一期真实 20 码重合数压至 ≤ max_overlap。"""
+    cur = sorted(eleven)
+    if len(cur) != 11 or len(set(cur)) != 11:
         return cur
     latest_set = set(latest20)
     allowed = _kl8_active_ball_set(active_zones)

@@ -1,0 +1,207 @@
+{% extends "base.html" %}
+{% block title %}{{ meta.name }} · 走势图{% endblock %}
+
+{% block content %}
+<nav aria-label="breadcrumb">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="/">首页</a></li>
+    <li class="breadcrumb-item active">{{ meta.name }}</li>
+  </ol>
+</nav>
+
+<!-- 最新开奖 -->
+<div class="card shadow-sm mb-4">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center">
+    <h4 class="mb-0 fw-bold">{{ meta.name }} · 最新开奖</h4>
+    {% if last_period %}
+    <span class="badge bg-primary fs-6">第 {{ last_period }} 期</span>
+    {% endif %}
+  </div>
+  <div class="card-body text-center py-3">
+    {% if last_main %}
+    <p class="text-muted mb-2">共收录 <strong>{{ total }}</strong> 期开奖数据</p>
+    <div class="d-flex flex-wrap justify-content-center align-items-center gap-2 mb-2">
+      <span class="text-muted me-1">{{ meta.main_label }}：</span>
+      {% for n in last_main %}
+      <span class="ball ball-{{ lt }}-main">{{ "%02d" % n }}</span>
+      {% endfor %}
+    </div>
+    {% if last_sub %}
+    <div class="d-flex flex-wrap justify-content-center align-items-center gap-2">
+      <span class="text-muted me-1">{{ meta.sub_label }}：</span>
+      {% for n in last_sub %}
+      <span class="ball ball-{{ lt }}-sub">{{ "%02d" % n }}</span>
+      {% endfor %}
+    </div>
+    {% endif %}
+    {% else %}
+    <p class="text-muted mb-0">暂无开奖数据</p>
+    {% endif %}
+  </div>
+</div>
+
+<!-- 走势图 -->
+<div class="card shadow-sm mb-4">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center">
+    <h5 class="mb-0 fw-bold">走势图</h5>
+    <div class="d-flex align-items-center gap-2">
+      <label class="form-label mb-0 small">窗口期数：</label>
+      <select id="trend-window" class="form-select form-select-sm" style="width:auto" onchange="loadTrendTable()">
+        <option value="30" selected>30期</option>
+        <option value="50">50期</option>
+        <option value="100">100期</option>
+        <option value="200">200期</option>
+        <option value="300">300期</option>
+      </select>
+    </div>
+  </div>
+  <div class="card-body p-2" id="trend-table-container">
+    <div class="text-center py-5"><div class="spinner-border text-primary"></div><p class="mt-2 text-muted">加载走势数据...</p></div>
+  </div>
+</div>
+
+<!-- 模拟选号 -->
+<div class="card shadow-sm mb-4" id="sim-panel" style="display:none">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center">
+    <h6 class="mb-0 fw-bold">模拟选号</h6>
+    <div class="d-flex gap-2">
+      <button class="btn btn-sm btn-outline-primary" onclick="addSimRow()">+ 添加行</button>
+      <button class="btn btn-sm btn-outline-danger" onclick="clearAllSimRows()">清空全部</button>
+    </div>
+  </div>
+  <div class="card-body p-2" id="sim-rows-container">
+    <p class="text-muted small mb-0">暂无模拟选号数据</p>
+  </div>
+</div>
+
+<!-- 连线图例 -->
+<div class="card shadow-sm mb-4" id="line-legend-panel" style="display:none">
+  <div class="line-legend">
+    <span><span class="legend-dot" style="background:#e74c3c"></span> 同注连号</span>
+    <span><span class="legend-dot" style="background:#3498db"></span> 斜连号</span>
+    <span><span class="legend-dot" style="background:#e67e22"></span> 连续多期开出</span>
+  </div>
+</div>
+
+<!-- 历史开奖表 -->
+<div class="card shadow-sm mb-4">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center">
+    <h5 class="mb-0 fw-bold">历史开奖</h5>
+    <div class="d-flex gap-2">
+      <input type="text" id="history-search" class="form-control form-control-sm" placeholder="搜索期号..." style="width:150px" onkeyup="loadHistory()">
+    </div>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover table-striped mb-0">
+        <thead class="table-light">
+          <tr>
+            <th class="text-center">期号</th>
+            <th class="text-center">{{ meta.main_label }}号码</th>
+            {% if meta.sub_label %}<th class="text-center">{{ meta.sub_label }}号码</th>{% endif %}
+            {% if meta.has_ac %}<th class="text-center">和值</th><th class="text-center">跨度</th><th class="text-center">AC值</th>{% endif %}
+          </tr>
+        </thead>
+        <tbody id="history-tbody"></tbody>
+      </table>
+    </div>
+    <div class="d-flex justify-content-between align-items-center p-3" id="history-pager"></div>
+  </div>
+</div>
+
+<!-- 预测参考 -->
+<div class="card shadow-sm mb-4">
+  <div class="card-header bg-white"><h5 class="mb-0 fw-bold">预测参考</h5></div>
+  <div class="card-body" id="prediction-content">
+    <div class="text-center py-3"><div class="spinner-border spinner-border-sm text-primary"></div> 加载中...</div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/trend_table.js') }}"></script>
+<script>
+const LT = "{{ lt }}";
+const META = {{ meta | tojson }};
+
+document.addEventListener("DOMContentLoaded", () => {
+  loadTrendTable();
+  loadHistory();
+  loadPrediction();
+});
+
+// ── 历史表格 ──
+let historyPage = 1;
+async function loadHistory(page = 1) {
+  historyPage = page;
+  const search = document.getElementById("history-search").value;
+  const resp = await fetch(`/api/${LT}/history?page=${page}&per_page=50&search=${encodeURIComponent(search)}`);
+  const result = await resp.json();
+  renderHistoryTable(result);
+}
+
+function renderHistoryTable(result) {
+  const tbody = document.getElementById("history-tbody");
+  const pager = document.getElementById("history-pager");
+  const {data, total, page, per_page} = result;
+  const totalPages = Math.ceil(total / per_page);
+  tbody.innerHTML = data.map(r => {
+    let row = `<tr>
+      <td class="text-center fw-bold">${r.period}</td>
+      <td class="text-center">${r.main_nums.map(n => `<span class="ball ball-${LT}-main ball-sm">${String(n).padStart(2,'0')}</span>`).join(' ')}</td>`;
+    if (META.sub_cols && META.sub_cols.length > 0) {
+      row += `<td class="text-center">${r.sub_nums.map(n => `<span class="ball ball-${LT}-sub ball-sm">${String(n).padStart(2,'0')}</span>`).join(' ')}</td>`;
+    }
+    if (META.has_ac) {
+      const s = r.main_nums.reduce((a,b)=>a+b,0);
+      const sp = Math.max(...r.main_nums) - Math.min(...r.main_nums);
+      const diffs = new Set();
+      const sn = [...r.main_nums].sort((a,b)=>a-b);
+      for(let i=0;i<sn.length;i++) for(let j=i+1;j<sn.length;j++) diffs.add(sn[j]-sn[i]);
+      const ac = diffs.size - (sn.length - 1);
+      row += `<td class="text-center">${s}</td><td class="text-center">${sp}</td><td class="text-center">${ac}</td>`;
+    }
+    row += '</tr>';
+    return row;
+  }).join('');
+  let ph = `<span class="small text-muted">共 ${total} 期</span><div>`;
+  ph += `<button class="btn btn-sm btn-outline-primary me-1" ${page<=1?'disabled':''} onclick="loadHistory(${page-1})">上一页</button>`;
+  ph += `<span class="small mx-2">${page} / ${totalPages}</span>`;
+  ph += `<button class="btn btn-sm btn-outline-primary" ${page>=totalPages?'disabled':''} onclick="loadHistory(${page+1})">下一页</button></div>`;
+  pager.innerHTML = ph;
+}
+
+// ── 预测 ──
+async function loadPrediction() {
+  const resp = await fetch(`/api/${LT}/prediction`);
+  const data = await resp.json();
+  const c = document.getElementById("prediction-content");
+  if (data.error) { c.innerHTML = `<p class="text-muted">${data.error}</p>`; return; }
+  let h = '';
+  if (data.last_update) h += `<p class="small text-muted">更新：${data.last_update} · 期号：${data.period_range || '—'}</p>`;
+  if (data.hot_main || data.cold_main) {
+    h += '<div class="row g-2 mb-2"><div class="col-md-6"><div class="card bg-light"><div class="card-body py-1"><strong>热号</strong><br><small>'+eh(data.hot_main)+'</small></div></div></div>';
+    h += '<div class="col-md-6"><div class="card bg-light"><div class="card-body py-1"><strong>冷号</strong><br><small>'+eh(data.cold_main)+'</small></div></div></div></div>';
+  }
+  if (data.methodology) {
+    const mid = 'method-' + LT;
+    h += '<div class="card bg-light mb-2"><div class="card-body py-1">';
+    h += `<a class="text-decoration-none fw-bold d-block" data-bs-toggle="collapse" href="#${mid}" role="button" aria-expanded="false" onclick="this.querySelector('small').textContent = this.querySelector('small').textContent.includes('展开') ? '收起' : '展开'">区间选择原因 <small class="text-muted">展开</small></a>`;
+    h += `<div class="collapse mt-2" id="${mid}"><small>${eh(data.methodology)}</small></div>`;
+    h += '</div></div>';
+  }
+  if (data.summary) h += '<div class="card bg-light mb-2"><div class="card-body py-1"><strong>摘要</strong><br><small>'+eh(data.summary)+'</small></div></div>';
+  if (data.kl8_ref20) h += `<div class="mb-1"><strong>20码：</strong><code>${eh(data.kl8_ref20)}</code></div>`;
+  if (data.kl8_ref11) h += `<div class="mb-1"><strong>11码：</strong><code>${eh(data.kl8_ref11)}</code></div>`;
+  if (data.tickets && data.tickets.length > 0) {
+    h += '<h6 class="mt-2">预测单式</h6><div class="table-responsive"><table class="table table-sm"><thead class="table-light"><tr><th>#</th><th>号码</th></tr></thead><tbody>';
+    data.tickets.forEach(t => { h += `<tr><td>第${t.index}注</td><td><code>${eh(t.numbers)}</code></td></tr>`; });
+    h += '</tbody></table></div>';
+  }
+  if (data.best_ticket) h += `<h6 class="mt-2">单式优选</h6><p><code>${eh(data.best_ticket.numbers)}</code> · 总分 <strong>${data.best_ticket.score}</strong></p>`;
+  h += '<p class="small text-muted mt-2 mb-0">彩票为随机游戏，预测仅供娱乐参考。</p>';
+  c.innerHTML = h;
+}
+function eh(s) { const d=document.createElement('div'); d.textContent=(s||''); return d.innerHTML.replace(/\n/g,'<br>'); }
+</script>
+{% endblock %}
