@@ -327,11 +327,16 @@ def parse_prediction_md(lt: str) -> dict[str, Any]:
         for m in re.finditer(r"- 第(\d+)注[：:]\s*(.+?)(?:\n|$)", text):
             result["tickets"].append({"index": m.group(1), "numbers": _strip_md(m.group(2).strip())})
     elif lt == "kl8":
-        # KL8: 参考开奖 20 码行 + 选十参考 11 码行
-        for m in re.finditer(r"参考开奖\s*20\s*码[：:]\s*(.+?)(?:\n|$)", text):
-            result["kl8_ref20"] = _strip_md(m.group(1).strip())
-        for m in re.finditer(r"选十.*?11\s*码[：:]\s*(.+?)(?:\n|$)", text):
-            result["kl8_ref11"] = _strip_md(m.group(1).strip())
+        # KL8: 参考开奖 20 码行 + 选十参考 11 码行（兼容 markdown 粗体与括号）
+        for m in re.finditer(r"参考开奖\s*20\s*码[^：:\n]*[：:]\**\s*([\d,\s]+)\**", text):
+            nums = ",".join(re.findall(r"\d+", m.group(1)))
+            result["kl8_ref20"] = nums
+            result["tickets"].append({"index": "20码", "numbers": nums})
+        # 明确号码输出 中的 "选十参考 11 码"（不在单式优选节中重复匹配）
+        for m in re.finditer(r"-\s*\*{0,2}选十参考\s*11\s*码[^：:\n]*[：:]\**\s*([\d,\s]+)\**", text):
+            nums = ",".join(re.findall(r"\d+", m.group(1)))
+            result["kl8_ref11"] = nums
+            result["tickets"].append({"index": "11码", "numbers": nums})
 
     # ── 单式优选 ──
     # 统一策略：匹配 "## 单式优选" 到下一个 "## " 标题之间的内容
@@ -829,6 +834,80 @@ def _pos_stats(label: str, window_draws: list[int], lo: int, hi: int, df: pd.Dat
 # ── Flask 应用 ────────────────────────────────────────────────────
 
 
+# ── 号码解析（预测文本 → 结构化） ────────────────────────────────
+
+
+def _parse_dlt_ssq_numbers(raw: str, lt: str) -> dict | None:
+    """解析 DLT/SSQ 预测号码文本。
+
+    期望格式： "前区 01 02 03 04 05；后区 06 07" 或 "红球 01 ...；蓝球 ..."
+    """
+    text = raw.replace("；", ";").replace("，", ",").replace("：", ":")
+    # 分离主区/副区
+    main_part = ""
+    sub_part = ""
+    if ";" in text:
+        parts = text.split(";")
+        main_part = parts[0]
+        sub_part = parts[1] if len(parts) > 1 else ""
+    elif "后区" in text or "蓝球" in text:
+        # "前区 ... 后区 ..." or "红球 ... 蓝球 ..."
+        for sep in ["后区", "蓝球"]:
+            if sep in text:
+                idx = text.index(sep)
+                main_part = text[:idx]
+                sub_part = text[idx:]
+                break
+    else:
+        main_part = text
+
+    # 提取数字
+    main_str = re.sub(r"前区|红球|主区|号码", "", main_part)
+    sub_str = re.sub(r"后区|蓝球|副区", "", sub_part)
+    main_nums = [int(m) for m in re.findall(r"\d+", main_str)]
+    sub_nums = [int(m) for m in re.findall(r"\d+", sub_str)]
+
+    meta = LOTTERY_META[lt]
+    if len(main_nums) < meta["main_count"]:
+        return None
+    main_nums = main_nums[: meta["main_count"]]
+    if meta["sub_count"] > 0 and len(sub_nums) < meta["sub_count"]:
+        return None
+    sub_nums = sub_nums[: meta["sub_count"]] if meta["sub_count"] > 0 else []
+
+    return {"main": sorted(main_nums), "sub": sorted(sub_nums)}
+
+
+def _parse_kl8_numbers(raw: str) -> dict | None:
+    """解析 KL8 11 码文本。"""
+    nums = [int(m) for m in re.findall(r"\d+", raw)]
+    # 取前 11 或 20 个（去重排序）
+    nums = sorted(set(nums))
+    if len(nums) < 5:
+        return None
+    return {"candidates": nums}
+
+
+def _parse_pl5_numbers(raw: str) -> dict | None:
+    """解析排列5 5 位数字文本。"""
+    digits_str = re.sub(r"\D", "", raw)
+    if len(digits_str) < 5:
+        return None
+    return {"digits": [int(d) for d in digits_str[:5]]}
+
+
+def _parse_qxc_numbers(raw: str) -> dict | None:
+    """解析七星彩前6+后1 文本。"""
+    # 提取全部数字
+    nums = [int(m) for m in re.findall(r"\d+", raw)]
+    if len(nums) < 7:
+        return None
+    return {"front": nums[:6], "special": nums[6]}
+
+
+# ── Flask 应用 ────────────────────────────────────────────────────
+
+
 def create_app() -> Flask:
     app = Flask(
         __name__,
@@ -970,6 +1049,134 @@ def create_app() -> Flask:
             return jsonify({"error": "彩种不存在"}), 404
         data = parse_prediction_md(lt)
         return jsonify(data)
+
+    @app.route("/api/<lt>/check-wins", methods=["POST"])
+    def api_check_wins(lt: str):
+        if lt not in LOTTERY_META:
+            return jsonify({"error": "彩种不存在"}), 404
+        meta = LOTTERY_META[lt]
+        df = _load_csv(lt)
+        if df.empty:
+            return jsonify({"error": "无数据"}), 404
+
+        body = request.get_json(silent=True) or {}
+        raw = body.get("numbers", "")
+        if not raw:
+            return jsonify({"error": "未提供号码"}), 400
+
+        # ── 解析号码 ──
+        parsed = None
+        if lt in ("dlt", "ssq"):
+            parsed = _parse_dlt_ssq_numbers(raw, lt)
+            if parsed is None:
+                return jsonify({"error": "无法解析号码，期望格式：前区 xx xx xx xx xx；后区 xx xx"}), 400
+        elif lt == "kl8":
+            parsed = _parse_kl8_numbers(raw)
+            if parsed is None:
+                return jsonify({"error": "无法解析号码"}), 400
+        elif lt == "pl5":
+            parsed = _parse_pl5_numbers(raw)
+            if parsed is None:
+                return jsonify({"error": "无法解析号码，期望 5 位数字"}), 400
+        elif lt == "qxc":
+            parsed = _parse_qxc_numbers(raw)
+            if parsed is None:
+                return jsonify({"error": "无法解析号码，期望前 6 + 后 1 共 7 个数字"}), 400
+
+        # ── 逐期匹配 ──
+        matches = []
+        if lt in ("dlt", "ssq"):
+            main_set = set(parsed["main"])
+            sub_set = set(parsed["sub"])
+            threshold_main = 3
+            threshold_sub = 1
+
+            for _, row in df.iterrows():
+                row_main = {int(row[c]) for c in meta["main_cols"]}
+                row_sub = {int(row[c]) for c in meta["sub_cols"]} if meta["sub_cols"] else set()
+                main_hit = len(main_set & row_main)
+                sub_hit = len(sub_set & row_sub) if row_sub else 0
+                # 阈值过滤
+                if main_hit >= threshold_main or (main_hit >= 2 and sub_hit >= threshold_sub):
+                    matches.append({
+                        "period": int(row["period_id"]),
+                        "main_hit": main_hit,
+                        "sub_hit": sub_hit,
+                        "main_hit_nums": sorted(main_set & row_main),
+                        "sub_hit_nums": sorted(sub_set & row_sub) if row_sub else [],
+                        "main_drawn": sorted(row_main),
+                        "sub_drawn": sorted(row_sub) if row_sub else [],
+                    })
+
+        elif lt == "kl8":
+            cand_set = set(parsed["candidates"])
+            threshold = 4
+            for _, row in df.iterrows():
+                drawn = {int(row[c]) for c in meta["main_cols"]}
+                hit = len(cand_set & drawn)
+                if hit >= threshold:
+                    matches.append({
+                        "period": int(row["period_id"]),
+                        "hit_count": hit,
+                        "hit_nums": sorted(cand_set & drawn),
+                        "drawn_nums": sorted(drawn),
+                    })
+
+        elif lt == "pl5":
+            digits = parsed["digits"]
+            threshold = 3
+            for _, row in df.iterrows():
+                drawn = [int(row[c]) for c in meta["main_cols"]]
+                pos_hits = [digits[i] == drawn[i] for i in range(5)]
+                hit_count = sum(pos_hits)
+                if hit_count >= threshold:
+                    matches.append({
+                        "period": int(row["period_id"]),
+                        "pos_hits": pos_hits,
+                        "hit_count": hit_count,
+                        "drawn_digits": drawn,
+                    })
+
+        elif lt == "qxc":
+            front = parsed["front"]
+            special = parsed["special"]
+            threshold = 3
+            for _, row in df.iterrows():
+                drawn_front = [int(row[c]) for c in meta["main_cols"]]
+                drawn_special = int(row[meta["sub_cols"][0]]) if meta["sub_cols"] else None
+                front_hits = [front[i] == drawn_front[i] for i in range(6)]
+                special_hit = (special == drawn_special) if drawn_special is not None else False
+                total_hit = sum(front_hits) + (1 if special_hit else 0)
+                if total_hit >= threshold:
+                    matches.append({
+                        "period": int(row["period_id"]),
+                        "front_pos_hits": front_hits,
+                        "special_hit": special_hit,
+                        "hit_count": total_hit,
+                        "drawn_front": drawn_front,
+                        "drawn_special": drawn_special,
+                    })
+
+        # ── 排序 & 截断 ──
+        if lt in ("dlt", "ssq"):
+            matches.sort(key=lambda m: (m["main_hit"], m["sub_hit"]), reverse=True)
+        elif lt in ("pl5", "qxc"):
+            matches.sort(key=lambda m: m["hit_count"], reverse=True)
+        else:
+            matches.sort(key=lambda m: m["hit_count"], reverse=True)
+
+        best = matches[0] if matches else None
+        matches = matches[:50]
+
+        result = {
+            "lottery_type": lt,
+            "input": parsed,
+            "total_checked": len(df),
+            "match_count": len(matches),
+            "matches": matches,
+            "best_match": best,
+        }
+        return jsonify(result)
 
     @app.route("/api/meta")
     def api_meta():

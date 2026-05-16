@@ -21,6 +21,11 @@ async function loadTrendTable() {
   document.getElementById('sim-panel').style.display = '';
   document.getElementById('line-legend-panel').style.display = '';
   renderSimPanel();
+  // 走势连线（位式型 or 数池型副区）
+  if (data.positions || data.sub_zone) {
+    _bindLineDrawEvents();
+    setTimeout(drawPositionLines, 100);
+  }
 }
 
 // ═══════════════════════════════════════════════════
@@ -208,6 +213,7 @@ function buildNumberPoolTrendHTML(data) {
     html += '</tr>';
   });
   html += '</tfoot></table>';
+  html += '<canvas id="trend-line-canvas" style="position:absolute;top:0;left:0;pointer-events:none;z-index:0"></canvas>';
   html += '</div>';
   return html;
 }
@@ -227,6 +233,20 @@ function buildPositionTrendHTML(data) {
     pr.repeats.forEach(r => {
       posRepeatMap[`${pr.pos}:${r.period_idx}`] = r.digit;
     });
+  });
+
+  // 连线模式查找表 key: "period_idx:pos:digit"
+  const patterns = data.patterns || {};
+  const diagonalMap = {};
+  (patterns.diagonal_pairs || []).forEach(p => {
+    diagonalMap[`${p.period_idx1}:${p.pos}:${p.digit1}`] = true;
+    diagonalMap[`${p.period_idx2}:${p.pos}:${p.digit2}`] = true;
+  });
+  const streakMap = {};
+  (patterns.streaks || []).forEach(s => {
+    for (let pi = s.start; pi <= s.end; pi++) {
+      streakMap[`${pi}:${s.pos}:${s.digit}`] = true;
+    }
   });
 
   let html = '<div class="trend-scroll" id="trend-scroll"><table class="trend-table ' + data.lottery_type + '">';
@@ -255,16 +275,24 @@ function buildPositionTrendHTML(data) {
     positions.forEach((p, pi) => {
       const z = posZones[pi] || { lo: p.lo, hi: p.hi };
       const hitVal = p.draws[i];
+      // QXC 前区=main-pos, 后区=sub-pos; PL5 全部 main-pos
+      const isSub = data.lottery_type === 'qxc' && pi === positions.length - 1;
+      const posCls = isSub ? 'sub-pos' : 'main-pos';
       for (let d = p.lo; d <= p.hi; d++) {
         const zi = getPosZoneIdx(pi, d, posZones);
-        let cls = 'data-cell zone-' + (zi % 8);
+        let cls = `data-cell zone-${zi % 8} ${posCls}`;
         // 重号检测
         const rptDigit = posRepeatMap[`${pi}:${i}`];
         if (rptDigit !== undefined && d === rptDigit) {
           cls += ' repeat-hit';
         }
         if (d === hitVal) {
-          html += `<td class="${cls}" data-zone="P${pi}" data-num="${d}" data-row="${i}"><span class="num-mark">${d}</span></td>`;
+          const pKey = `${i}:${pi}:${d}`;
+          const patCls = [
+            diagonalMap[pKey] ? 'diagonal-cell' : '',
+            streakMap[pKey] ? 'streak-cell' : ''
+          ].filter(Boolean).join(' ');
+          html += `<td class="${cls} ${patCls}" data-zone="P${pi}" data-num="${d}" data-row="${i}"><span class="num-mark">${d}</span></td>`;
         } else {
           html += `<td class="${cls}" data-zone="P${pi}" data-num="${d}" data-row="${i}"></td>`;
         }
@@ -325,6 +353,7 @@ function buildPositionTrendHTML(data) {
     html += '</tr>';
   });
   html += '</tfoot></table>';
+  html += '<canvas id="trend-line-canvas" style="position:absolute;top:0;left:0;pointer-events:none;z-index:0"></canvas>';
   html += '</div>';
   return html;
 }
@@ -363,6 +392,139 @@ function getPosZoneIdx(pi, d, posZones) {
     }
   }
   return base;
+}
+
+// ═══════════════════════════════════════════════════
+// 位式走势连线 (Canvas 叠加层)
+// ═══════════════════════════════════════════════════
+
+let _lineDrawPending = false;
+
+function drawPositionLines() {
+  const container = document.getElementById('trend-scroll');
+  if (!container) return;
+  const canvas = document.getElementById('trend-line-canvas');
+  if (!canvas) return;
+
+  canvas.width = container.scrollWidth;
+  canvas.height = container.scrollHeight;
+  canvas.style.width = container.scrollWidth + 'px';
+  canvas.style.height = container.scrollHeight + 'px';
+
+  const ctx = canvas.getContext('2d');
+  const cRect = container.getBoundingClientRect();
+  const sl = container.scrollLeft;
+  const st = container.scrollTop;
+  const colors = ['#e74c3c', '#3498db', '#27ae60', '#f39c12', '#8e44ad', '#1abc9c', '#e67e22'];
+
+  function getCenter(span) {
+    const r = span.getBoundingClientRect();
+    return {
+      x: r.left + r.width / 2 - cRect.left + sl,
+      y: r.top + r.height / 2 - cRect.top + st,
+    };
+  }
+
+  // ── 位式型连线 (PL5/QXC) ──
+  const posSpans = container.querySelectorAll('td[data-zone^="P"] .num-mark');
+  if (posSpans.length > 0) {
+    const posGroups = {};
+    posSpans.forEach(span => {
+      const td = span.parentElement;
+      const zone = td.getAttribute('data-zone');
+      const row = parseInt(td.getAttribute('data-row'));
+      if (isNaN(row)) return;
+      if (!posGroups[zone]) posGroups[zone] = [];
+      posGroups[zone].push({ row, span });
+    });
+
+    Object.entries(posGroups).forEach(([zone, cells]) => {
+      const gi = parseInt((zone || 'P0').replace('P', '')) || 0;
+      cells.sort((a, b) => a.row - b.row);
+
+      ctx.strokeStyle = colors[gi % colors.length];
+      ctx.lineWidth = 2.2;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+
+      for (let i = 0; i < cells.length - 1; i++) {
+        const a = cells[i];
+        const b = cells[i + 1];
+        if (b.row !== a.row + 1) continue;
+        const p1 = getCenter(a.span);
+        const p2 = getCenter(b.span);
+        ctx.moveTo(p1.x, p1.y);
+        ctx.lineTo(p2.x, p2.y);
+      }
+      ctx.stroke();
+    });
+  }
+
+  // ── 数池型副区连线 ──
+  // SSQ: 蓝球每期1球，直接向下串联
+  // DLT: 后区每期2球，Z字形折线（同行左→右，行末→下行首）
+  const subSpans = container.querySelectorAll('td.sub-cell[data-zone="S"] .num-mark');
+  if (subSpans.length > 0) {
+    // 按行号分组，行内按 x 坐标排序（左→右）
+    const rowGroups = {};
+    subSpans.forEach(span => {
+      const row = parseInt(span.parentElement.getAttribute('data-row'));
+      if (isNaN(row)) return;
+      if (!rowGroups[row]) rowGroups[row] = [];
+      rowGroups[row].push(span);
+    });
+
+    // 每行内按 x 坐标排序
+    Object.values(rowGroups).forEach(spans => {
+      spans.sort((a, b) => a.getBoundingClientRect().left - b.getBoundingClientRect().left);
+    });
+
+    const rows = Object.keys(rowGroups).map(Number).sort((a, b) => a - b);
+
+    // 拼接全部有序点：行内左→右，行尾接下行首
+    const ordered = [];
+    for (let ri = 0; ri < rows.length; ri++) {
+      const r = rows[ri];
+      if (ri > 0 && rows[ri] !== rows[ri - 1] + 1) continue;  // 跳过不连续行
+      ordered.push(...rowGroups[r]);
+    }
+
+    ctx.strokeStyle = 'rgba(52, 152, 219, 0.7)';
+    ctx.lineWidth = 1.8;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+
+    for (let i = 0; i < ordered.length - 1; i++) {
+      const r1 = parseInt(ordered[i].parentElement.getAttribute('data-row'));
+      const r2 = parseInt(ordered[i + 1].parentElement.getAttribute('data-row'));
+      if (r2 > r1 + 1) continue;  // 只连相邻行
+
+      const p1 = getCenter(ordered[i]);
+      const p2 = getCenter(ordered[i + 1]);
+      ctx.moveTo(p1.x, p1.y);
+      ctx.lineTo(p2.x, p2.y);
+    }
+    ctx.stroke();
+  }
+}
+
+function _scheduleLineDraw() {
+  if (_lineDrawPending) return;
+  _lineDrawPending = true;
+  requestAnimationFrame(() => {
+    _lineDrawPending = false;
+    drawPositionLines();
+  });
+}
+
+function _bindLineDrawEvents() {
+  const container = document.getElementById('trend-scroll');
+  if (!container || container._lineDrawBound) return;
+  container._lineDrawBound = true;
+  container.addEventListener('scroll', _scheduleLineDraw);
+  window.addEventListener('resize', _scheduleLineDraw);
 }
 
 // ═══════════════════════════════════════════════════

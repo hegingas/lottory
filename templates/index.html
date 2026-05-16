@@ -2,10 +2,30 @@
 {% block title %}首页 · 彩票数据分析{% endblock %}
 
 {% block content %}
+<!-- Hero 统计横幅 -->
+<div class="hero-banner">
+  <h2>彩票数据分析</h2>
+  <p class="hero-subtitle">大乐透 · 双色球 · 快乐八 · 排列5 · 七星彩</p>
+  <div class="hero-stats">
+    {% for lt, data in latest.items() %}
+    <div class="hero-stat">
+      <div class="hs-label">{{ meta[lt].name }}</div>
+      {% if data %}
+      <div class="hs-value">{{ data.period }}</div>
+      <div class="hs-period">第 {{ data.period }} 期 · {{ data.total }} 期数据</div>
+      {% else %}
+      <div class="hs-value" style="opacity:.4">—</div>
+      <div class="hs-period">暂无数据</div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
 <div class="row mb-4">
   <div class="col">
-    <h2 class="fw-bold">最新开奖结果</h2>
-    <p class="text-muted">数据来源：data/processed/ · 点击彩种卡片进入详情</p>
+    <h5 class="fw-bold">最新开奖结果</h5>
+    <p class="text-muted small">点击彩种卡片进入走势图与预测详情</p>
   </div>
 </div>
 

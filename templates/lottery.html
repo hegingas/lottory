@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}{{ meta.name }} · 走势图{% endblock %}
+{% block title %}{{ meta.name }}{% endblock %}
 
 {% block content %}
 <nav aria-label="breadcrumb">
@@ -10,7 +10,7 @@
 </nav>
 
 <!-- 最新开奖 -->
-<div class="card shadow-sm mb-4">
+<div class="card shadow mb-4">
   <div class="card-header bg-white d-flex justify-content-between align-items-center">
     <h4 class="mb-0 fw-bold">{{ meta.name }} · 最新开奖</h4>
     {% if last_period %}
@@ -23,14 +23,14 @@
     <div class="d-flex flex-wrap justify-content-center align-items-center gap-2 mb-2">
       <span class="text-muted me-1">{{ meta.main_label }}：</span>
       {% for n in last_main %}
-      <span class="ball ball-{{ lt }}-main">{{ "%02d" % n }}</span>
+      <span class="ball ball-{{ lt }}-main ball-pop" style="animation-delay:{{ loop.index0 * 0.06 }}s">{{ "%02d" % n }}</span>
       {% endfor %}
     </div>
     {% if last_sub %}
     <div class="d-flex flex-wrap justify-content-center align-items-center gap-2">
       <span class="text-muted me-1">{{ meta.sub_label }}：</span>
       {% for n in last_sub %}
-      <span class="ball ball-{{ lt }}-sub">{{ "%02d" % n }}</span>
+      <span class="ball ball-{{ lt }}-sub ball-pop" style="animation-delay:{{ loop.index0 * 0.06 }}s">{{ "%02d" % n }}</span>
       {% endfor %}
     </div>
     {% endif %}
@@ -40,80 +40,116 @@
   </div>
 </div>
 
-<!-- 走势图 -->
-<div class="card shadow-sm mb-4">
-  <div class="card-header bg-white d-flex justify-content-between align-items-center">
-    <h5 class="mb-0 fw-bold">走势图</h5>
-    <div class="d-flex align-items-center gap-2">
-      <label class="form-label mb-0 small">窗口期数：</label>
-      <select id="trend-window" class="form-select form-select-sm" style="width:auto" onchange="loadTrendTable()">
-        <option value="30" selected>30期</option>
-        <option value="50">50期</option>
-        <option value="100">100期</option>
-        <option value="200">200期</option>
-        <option value="300">300期</option>
-      </select>
+<!-- ═══════════ Tab 二级导航 ═══════════ -->
+<ul class="nav nav-tabs lottery-tabs sticky-tabs mb-0" id="detail-tabs" role="tablist">
+  <li class="nav-item" role="presentation">
+    <button class="nav-link active" id="tab-trend-btn" data-bs-toggle="tab" data-bs-target="#pane-trend" type="button" role="tab" aria-selected="true">走势图</button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="tab-history-btn" data-bs-toggle="tab" data-bs-target="#pane-history" type="button" role="tab" aria-selected="false">
+      历史开奖<span class="tab-badge badge bg-secondary ms-2 d-none" id="history-count-badge"></span>
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="tab-prediction-btn" data-bs-toggle="tab" data-bs-target="#pane-prediction" type="button" role="tab" aria-selected="false">预测参考</button>
+  </li>
+</ul>
+
+<div class="tab-content">
+  <!-- ═══ 走势图 Pane ═══ -->
+  <div class="tab-pane fade show active" id="pane-trend" role="tabpanel">
+    <div class="card shadow-sm mb-4" style="border-top:none; border-top-left-radius:0; border-top-right-radius:0">
+      <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0 fw-bold">走势图</h5>
+        <div class="d-flex align-items-center gap-2">
+          <div class="btn-group btn-group-sm" role="group">
+            <button type="button" class="btn btn-outline-primary active" id="btn-view-table" onclick="switchTrendView('table')">表格</button>
+            <button type="button" class="btn btn-outline-primary" id="btn-view-chart" onclick="switchTrendView('chart')">图表</button>
+          </div>
+          <label class="form-label mb-0 small ms-2">窗口期数：</label>
+          <select id="trend-window" class="form-select form-select-sm" style="width:auto" onchange="loadTrendData()">
+            <option value="30" selected>30期</option>
+            <option value="50">50期</option>
+            <option value="100">100期</option>
+            <option value="200">200期</option>
+            <option value="300">300期</option>
+          </select>
+          <span id="pos-chart-toggle" style="display:none" class="ms-1">
+            <button type="button" class="btn btn-sm btn-outline-secondary active" id="btn-chart-digits" onclick="switchPosChart('digits')">号码走势</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-chart-omission" onclick="switchPosChart('omission')">遗漏值</button>
+          </span>
+        </div>
+      </div>
+      <div class="card-body p-2" id="trend-table-container">
+        <div class="text-center py-5"><div class="spinner-border text-primary"></div><p class="mt-2 text-muted">加载走势数据...</p></div>
+      </div>
+      <div class="card-body p-3" id="trend-chart-container" style="display:none">
+        <canvas id="trend-chart" style="height:380px; max-height:420px"></canvas>
+      </div>
+    </div>
+
+    <!-- 模拟选号 -->
+    <div class="card shadow-sm mb-4" id="sim-panel" style="display:none">
+      <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <h6 class="mb-0 fw-bold">模拟选号</h6>
+        <div class="d-flex gap-2">
+          <button class="btn btn-sm btn-outline-primary" onclick="addSimRow()">+ 添加行</button>
+          <button class="btn btn-sm btn-outline-danger" onclick="clearAllSimRows()">清空全部</button>
+        </div>
+      </div>
+      <div class="card-body p-2" id="sim-rows-container">
+        <p class="text-muted small mb-0">暂无模拟选号数据</p>
+      </div>
+    </div>
+
+    <!-- 连线图例 -->
+    <div class="card shadow-sm mb-4" id="line-legend-panel" style="display:none">
+      <div class="line-legend">
+        <span><span class="legend-dot" style="background:#e74c3c"></span> 同注连号</span>
+        <span><span class="legend-dot" style="background:#3498db"></span> 斜连号</span>
+        <span><span class="legend-dot" style="background:#e67e22"></span> 连续多期开出</span>
+      </div>
     </div>
   </div>
-  <div class="card-body p-2" id="trend-table-container">
-    <div class="text-center py-5"><div class="spinner-border text-primary"></div><p class="mt-2 text-muted">加载走势数据...</p></div>
-  </div>
-</div>
 
-<!-- 模拟选号 -->
-<div class="card shadow-sm mb-4" id="sim-panel" style="display:none">
-  <div class="card-header bg-white d-flex justify-content-between align-items-center">
-    <h6 class="mb-0 fw-bold">模拟选号</h6>
-    <div class="d-flex gap-2">
-      <button class="btn btn-sm btn-outline-primary" onclick="addSimRow()">+ 添加行</button>
-      <button class="btn btn-sm btn-outline-danger" onclick="clearAllSimRows()">清空全部</button>
+  <!-- ═══ 历史开奖 Pane ═══ -->
+  <div class="tab-pane fade" id="pane-history" role="tabpanel">
+    <div class="card shadow-sm mb-4" style="border-top:none; border-top-left-radius:0; border-top-right-radius:0">
+      <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0 fw-bold">历史开奖</h5>
+        <div class="d-flex gap-2">
+          <input type="text" id="history-search" class="form-control form-control-sm" placeholder="搜索期号..." style="width:150px" onkeyup="loadHistory()">
+        </div>
+      </div>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-hover table-striped mb-0">
+            <thead class="table-light">
+              <tr>
+                <th class="text-center">期号</th>
+                <th class="text-center">{{ meta.main_label }}号码</th>
+                {% if meta.sub_label %}<th class="text-center">{{ meta.sub_label }}号码</th>{% endif %}
+                {% if meta.has_ac %}<th class="text-center">和值</th><th class="text-center">跨度</th><th class="text-center">AC值</th>{% endif %}
+              </tr>
+            </thead>
+            <tbody id="history-tbody">
+              <tr><td colspan="6" class="text-center py-5"><div class="spinner-border text-primary"></div><p class="mt-2 text-muted mb-0">加载中...</p></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="d-flex justify-content-between align-items-center p-3" id="history-pager"></div>
+      </div>
     </div>
   </div>
-  <div class="card-body p-2" id="sim-rows-container">
-    <p class="text-muted small mb-0">暂无模拟选号数据</p>
-  </div>
-</div>
 
-<!-- 连线图例 -->
-<div class="card shadow-sm mb-4" id="line-legend-panel" style="display:none">
-  <div class="line-legend">
-    <span><span class="legend-dot" style="background:#e74c3c"></span> 同注连号</span>
-    <span><span class="legend-dot" style="background:#3498db"></span> 斜连号</span>
-    <span><span class="legend-dot" style="background:#e67e22"></span> 连续多期开出</span>
-  </div>
-</div>
-
-<!-- 历史开奖表 -->
-<div class="card shadow-sm mb-4">
-  <div class="card-header bg-white d-flex justify-content-between align-items-center">
-    <h5 class="mb-0 fw-bold">历史开奖</h5>
-    <div class="d-flex gap-2">
-      <input type="text" id="history-search" class="form-control form-control-sm" placeholder="搜索期号..." style="width:150px" onkeyup="loadHistory()">
+  <!-- ═══ 预测参考 Pane ═══ -->
+  <div class="tab-pane fade" id="pane-prediction" role="tabpanel">
+    <div class="card shadow-sm mb-4" style="border-top:none; border-top-left-radius:0; border-top-right-radius:0">
+      <div class="card-header bg-white"><h5 class="mb-0 fw-bold">预测参考</h5></div>
+      <div class="card-body" id="prediction-content">
+        <div class="text-center py-3"><div class="spinner-border spinner-border-sm text-primary"></div> 加载中...</div>
+      </div>
     </div>
-  </div>
-  <div class="card-body p-0">
-    <div class="table-responsive">
-      <table class="table table-hover table-striped mb-0">
-        <thead class="table-light">
-          <tr>
-            <th class="text-center">期号</th>
-            <th class="text-center">{{ meta.main_label }}号码</th>
-            {% if meta.sub_label %}<th class="text-center">{{ meta.sub_label }}号码</th>{% endif %}
-            {% if meta.has_ac %}<th class="text-center">和值</th><th class="text-center">跨度</th><th class="text-center">AC值</th>{% endif %}
-          </tr>
-        </thead>
-        <tbody id="history-tbody"></tbody>
-      </table>
-    </div>
-    <div class="d-flex justify-content-between align-items-center p-3" id="history-pager"></div>
-  </div>
-</div>
-
-<!-- 预测参考 -->
-<div class="card shadow-sm mb-4">
-  <div class="card-header bg-white"><h5 class="mb-0 fw-bold">预测参考</h5></div>
-  <div class="card-body" id="prediction-content">
-    <div class="text-center py-3"><div class="spinner-border spinner-border-sm text-primary"></div> 加载中...</div>
   </div>
 </div>
 {% endblock %}
@@ -124,11 +160,240 @@
 const LT = "{{ lt }}";
 const META = {{ meta | tojson }};
 
+let trendView = 'table';
+let posChartType = 'digits';
+let trendChart = null;
+const loadedTabs = { trend: false, history: false, prediction: false };
+
+// ── URL hash 管理 ──
+function hashToTab(hash) {
+  if (hash === '#history') return 'history';
+  if (hash === '#prediction') return 'prediction';
+  return 'trend';
+}
+function tabToHash(tab) { return tab === 'trend' ? '#trend' : '#' + tab; }
+
+function ensureTabLoaded(tab) {
+  if (loadedTabs[tab]) return;
+  loadedTabs[tab] = true;
+  if (tab === 'trend') loadTrendData();
+  else if (tab === 'history') loadHistory();
+  else if (tab === 'prediction') loadPrediction();
+}
+
 document.addEventListener("DOMContentLoaded", () => {
-  loadTrendTable();
-  loadHistory();
-  loadPrediction();
+  const activeTab = hashToTab(window.location.hash);
+
+  // 监听 Bootstrap tab 切换
+  document.querySelectorAll('#detail-tabs button[data-bs-toggle="tab"]').forEach(btn => {
+    btn.addEventListener('shown.bs.tab', e => {
+      const target = e.target.getAttribute('data-bs-target');
+      let tab = 'trend';
+      if (target === '#pane-history') tab = 'history';
+      else if (target === '#pane-prediction') tab = 'prediction';
+      history.replaceState(null, '', tabToHash(tab));
+      ensureTabLoaded(tab);
+      if (tab === 'trend') {
+        if (trendChart) trendChart.resize();
+        if (typeof drawPositionLines === 'function') setTimeout(drawPositionLines, 150);
+      }
+      // 滚动到 tab 内容区
+      document.getElementById('detail-tabs').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  });
+
+  // 激活对应 tab
+  const btnId = activeTab === 'history' ? 'tab-history-btn' :
+                activeTab === 'prediction' ? 'tab-prediction-btn' : 'tab-trend-btn';
+  const tabBtn = document.getElementById(btnId);
+  if (tabBtn) new bootstrap.Tab(tabBtn).show();
+
+  // 加载当前 tab 内容
+  ensureTabLoaded(activeTab);
 });
+
+// ── 视图切换 ──
+function switchTrendView(view) {
+  trendView = view;
+  document.getElementById('btn-view-table').classList.toggle('active', view === 'table');
+  document.getElementById('btn-view-chart').classList.toggle('active', view === 'chart');
+  document.getElementById('trend-table-container').style.display = view === 'table' ? '' : 'none';
+  document.getElementById('trend-chart-container').style.display = view === 'chart' ? '' : 'none';
+  // 位式型彩种显示号码走势/遗漏值子切换
+  const toggle = document.getElementById('pos-chart-toggle');
+  if (toggle) toggle.style.display = (view === 'chart' && (LT === 'pl5' || LT === 'qxc')) ? '' : 'none';
+  if (view === 'chart' && currentTrendData) renderTrendChart(currentTrendData);
+}
+
+function switchPosChart(type) {
+  posChartType = type;
+  document.getElementById('btn-chart-digits').classList.toggle('active', type === 'digits');
+  document.getElementById('btn-chart-omission').classList.toggle('active', type === 'omission');
+  if (currentTrendData) renderTrendChart(currentTrendData);
+}
+
+async function loadTrendData() {
+  await loadTrendTable();
+  if (trendView === 'chart' && currentTrendData) renderTrendChart(currentTrendData);
+}
+
+// ── 遗漏值折线图 ──
+function renderTrendChart(data) {
+  if (trendChart) { trendChart.destroy(); trendChart = null; }
+  const ctx = document.getElementById('trend-chart').getContext('2d');
+  if (data.positions) return renderPositionChart(ctx, data);
+  return renderNumberPoolChart(ctx, data);
+}
+
+function renderNumberPoolChart(ctx, data) {
+  const periods = data.periods;
+  const labels = periods.map(p => String(p).slice(-4));
+  const mGrid = data.omission_grid || [];
+  const avgLine = mGrid.map(row => {
+    if (!row || (Array.isArray(row) && row.length === 0)) return null;
+    const vals = Array.isArray(row) ? row.filter(v => typeof v === 'number') : Object.values(row).filter(v => typeof v === 'number');
+    return vals.length ? (vals.reduce((a,b)=>a+b,0) / vals.length).toFixed(1) : null;
+  });
+  const maxLine = mGrid.map(row => {
+    if (!row || (Array.isArray(row) && row.length === 0)) return null;
+    const vals = Array.isArray(row) ? row.filter(v => typeof v === 'number') : Object.values(row).filter(v => typeof v === 'number');
+    return vals.length ? Math.max(...vals) : null;
+  });
+
+  const datasets = [{
+    label: '平均遗漏',
+    data: avgLine,
+    borderColor: '#e74c3c',
+    backgroundColor: 'rgba(231,76,60,.08)',
+    fill: true,
+    tension: .3,
+    pointRadius: 1.5,
+    borderWidth: 2,
+  }];
+  if (maxLine.some(v => v !== null)) {
+    datasets.push({
+      label: '最大遗漏',
+      data: maxLine,
+      borderColor: '#f39c12',
+      backgroundColor: 'transparent',
+      fill: false,
+      tension: .3,
+      pointRadius: 0,
+      borderWidth: 1,
+      borderDash: [4, 3],
+    });
+  }
+
+  trendChart = new Chart(ctx, {
+    type: 'line',
+    data: { labels, datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { intersect: false, mode: 'index' },
+      plugins: {
+        legend: { position: 'top', labels: { usePointStyle: true, padding: 20 } },
+        tooltip: { mode: 'index', intersect: false },
+      },
+      scales: {
+        x: { title: { display: true, text: '期号（后4位）' }, ticks: { maxTicksLimit: 20, font: { size: 10 } }, grid: { color: 'rgba(0,0,0,.04)' } },
+        y: { title: { display: true, text: '遗漏值（期）' }, beginAtZero: true, grid: { color: 'rgba(0,0,0,.04)' } },
+      },
+    },
+  });
+}
+
+function renderPositionChart(ctx, data) {
+  const periods = data.periods;
+  const labels = periods.map(p => String(p).slice(-4));
+  const posList = data.positions || [];
+  const colors = ['#e74c3c', '#3498db', '#27ae60', '#f39c12', '#8e44ad', '#1abc9c', '#e67e22'];
+
+  if (posChartType === 'digits') {
+    // ── 号码值折线图 ──
+    const yMax = LT === 'qxc' ? 14 : 9;
+    const datasets = posList.map((p, i) => ({
+      label: p.label,
+      data: p.draws,
+      borderColor: colors[i % colors.length],
+      backgroundColor: 'transparent',
+      fill: false,
+      tension: 0.15,
+      pointRadius: 2,
+      pointHoverRadius: 5,
+      borderWidth: 1.6,
+      stepped: 'middle',
+    }));
+
+    trendChart = new Chart(ctx, {
+      type: 'line',
+      data: { labels, datasets },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { intersect: false, mode: 'index' },
+        plugins: {
+          legend: { position: 'top', labels: { usePointStyle: true, padding: 16, font: { size: 11 } } },
+          tooltip: { mode: 'index', intersect: false },
+        },
+        scales: {
+          x: { title: { display: true, text: '期号（后4位）' }, ticks: { maxTicksLimit: 20, font: { size: 10 } }, grid: { color: 'rgba(0,0,0,.04)' } },
+          y: {
+            title: { display: true, text: '号码值' },
+            min: 0, max: yMax,
+            ticks: { stepSize: 1, font: { size: 10 } },
+            grid: { color: 'rgba(0,0,0,.04)' },
+          },
+        },
+      },
+    });
+  } else {
+    // ── 遗漏值折线图 ──
+    const datasets = posList.map((p, i) => ({
+      label: p.label,
+      data: Array(labels.length).fill(null),
+      borderColor: colors[i % colors.length],
+      backgroundColor: 'transparent',
+    }));
+    posList.forEach((p, pi) => {
+      const lo = p.lo, hi = p.hi;
+      const size = hi - lo + 1;
+      const omitLine = [];
+      let omit = new Array(size).fill(0);
+      for (let i = 0; i < periods.length; i++) {
+        const drawn = p.draws[i];
+        for (let d = 0; d < size; d++) {
+          if (d + lo === drawn) omit[d] = 0;
+          else omit[d]++;
+        }
+        omitLine.push(parseFloat((omit.reduce((a,b)=>a+b,0) / size).toFixed(1)));
+      }
+      datasets[pi].data = omitLine;
+      datasets[pi].fill = false;
+      datasets[pi].tension = .3;
+      datasets[pi].pointRadius = 0;
+      datasets[pi].borderWidth = 1.5;
+    });
+
+    trendChart = new Chart(ctx, {
+      type: 'line',
+      data: { labels, datasets },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { intersect: false, mode: 'index' },
+        plugins: {
+          legend: { position: 'top', labels: { usePointStyle: true, padding: 20 } },
+          tooltip: { mode: 'index', intersect: false },
+        },
+        scales: {
+          x: { title: { display: true, text: '期号（后4位）' }, ticks: { maxTicksLimit: 20, font: { size: 10 } }, grid: { color: 'rgba(0,0,0,.04)' } },
+          y: { title: { display: true, text: '遗漏值（期）' }, beginAtZero: true, grid: { color: 'rgba(0,0,0,.04)' } },
+        },
+      },
+    });
+  }
+}
 
 // ── 历史表格 ──
 let historyPage = 1;
@@ -164,6 +429,9 @@ function renderHistoryTable(result) {
     row += '</tr>';
     return row;
   }).join('');
+  // 更新 tab 徽标
+  const badge = document.getElementById('history-count-badge');
+  if (badge) { badge.textContent = total + ' 期'; badge.classList.remove('d-none'); }
   let ph = `<span class="small text-muted">共 ${total} 期</span><div>`;
   ph += `<button class="btn btn-sm btn-outline-primary me-1" ${page<=1?'disabled':''} onclick="loadHistory(${page-1})">上一页</button>`;
   ph += `<span class="small mx-2">${page} / ${totalPages}</span>`;
@@ -191,17 +459,161 @@ async function loadPrediction() {
     h += '</div></div>';
   }
   if (data.summary) h += '<div class="card bg-light mb-2"><div class="card-body py-1"><strong>摘要</strong><br><small>'+eh(data.summary)+'</small></div></div>';
-  if (data.kl8_ref20) h += `<div class="mb-1"><strong>20码：</strong><code>${eh(data.kl8_ref20)}</code></div>`;
-  if (data.kl8_ref11) h += `<div class="mb-1"><strong>11码：</strong><code>${eh(data.kl8_ref11)}</code></div>`;
   if (data.tickets && data.tickets.length > 0) {
-    h += '<h6 class="mt-2">预测单式</h6><div class="table-responsive"><table class="table table-sm"><thead class="table-light"><tr><th>#</th><th>号码</th></tr></thead><tbody>';
-    data.tickets.forEach(t => { h += `<tr><td>第${t.index}注</td><td><code>${eh(t.numbers)}</code></td></tr>`; });
+    h += '<h6 class="mt-2">预测单式</h6><div class="table-responsive"><table class="table table-sm"><thead class="table-light"><tr><th>#</th><th>号码</th><th>操作</th></tr></thead><tbody>';
+    data.tickets.forEach((t, i) => {
+      const numEsc = eh(t.numbers).replace(/'/g, "\\'").replace(/"/g, '&quot;');
+      h += '<tr>';
+      h += `<td>第${t.index}注</td>`;
+      h += `<td><code>${eh(t.numbers)}</code></td>`;
+      h += '<td><div class="d-flex gap-1">';
+      h += `<button class="btn btn-sm btn-outline-secondary" onclick="copyTicket('${numEsc}')" title="复制">📋</button>`;
+      h += `<button class="btn btn-sm btn-outline-info check-win-btn" id="win-btn-${i}" onclick="checkWinHistory(${i}, '${numEsc}')" title="历史匹配">🔍</button>`;
+      h += '</div></td>';
+      h += '</tr>';
+      h += `<tr id="win-row-${i}" style="display:none"><td colspan="3" class="p-1"><div class="win-result-container" id="win-result-${i}"><div class="text-center py-2"><span class="spinner-border spinner-border-sm"></span> 查询中...</div></div></td></tr>`;
+    });
     h += '</tbody></table></div>';
   }
-  if (data.best_ticket) h += `<h6 class="mt-2">单式优选</h6><p><code>${eh(data.best_ticket.numbers)}</code> · 总分 <strong>${data.best_ticket.score}</strong></p>`;
+  if (data.best_ticket) {
+    const btNumEsc = eh(data.best_ticket.numbers).replace(/'/g, "\\'").replace(/"/g, '&quot;');
+    h += '<h6 class="mt-2">单式优选</h6>';
+    h += `<p><code>${eh(data.best_ticket.numbers)}</code> · 总分 <strong>${data.best_ticket.score}</strong>`;
+    h += ` <button class="btn btn-sm btn-outline-info" id="win-btn-best" onclick="checkWinHistory('best', '${btNumEsc}')" title="历史匹配">🔍 历史匹配</button></p>`;
+    h += `<div id="win-row-best" style="display:none" class="mb-2"><div class="win-result-container" id="win-result-best"><div class="text-center py-2"><span class="spinner-border spinner-border-sm"></span> 查询中...</div></div></div>`;
+  }
   h += '<p class="small text-muted mt-2 mb-0">彩票为随机游戏，预测仅供娱乐参考。</p>';
   c.innerHTML = h;
 }
 function eh(s) { const d=document.createElement('div'); d.textContent=(s||''); return d.innerHTML.replace(/\n/g,'<br>'); }
+
+// ── 复制号码 ──
+function copyTicket(text) {
+  const tmp = document.createElement('textarea');
+  tmp.value = text; document.body.appendChild(tmp);
+  tmp.select(); document.execCommand('copy'); document.body.removeChild(tmp);
+  showToast('已复制：' + text);
+}
+
+// ── Toast 提示 ──
+function showToast(msg) {
+  let tc = document.getElementById('toast-container');
+  if (!tc) {
+    tc = document.createElement('div');
+    tc.id = 'toast-container';
+    tc.style.cssText = 'position:fixed;bottom:24px;right:24px;z-index:9999;display:flex;flex-direction:column;gap:8px';
+    document.body.appendChild(tc);
+  }
+  const el = document.createElement('div');
+  el.className = 'toast align-items-center text-bg-dark border-0 show';
+  el.setAttribute('role', 'alert');
+  el.innerHTML = `<div class="d-flex"><div class="toast-body">${msg}</div><button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button></div>`;
+  tc.appendChild(el);
+  setTimeout(() => { el.remove(); }, 2500);
+}
+
+// ── 历史中奖查询 ──
+async function checkWinHistory(idx, numbersText) {
+  const row = document.getElementById('win-row-' + idx);
+  const container = document.getElementById('win-result-' + idx);
+  const btn = document.getElementById('win-btn-' + idx);
+
+  // 如果已展开，收起
+  if (row.style.display === '') {
+    row.style.display = 'none';
+    return;
+  }
+
+  // 展开
+  row.style.display = '';
+  if (container._loaded) return;
+
+  try {
+    const resp = await fetch('/api/' + LT + '/check-wins', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ numbers: numbersText }),
+    });
+    const data = await resp.json();
+    container._loaded = true;
+    renderWinResult(container, data, idx);
+  } catch (e) {
+    container.innerHTML = '<p class="text-danger small">查询失败：' + e.message + '</p>';
+  }
+}
+
+function renderWinResult(c, data, idx) {
+  if (data.error) { c.innerHTML = '<p class="text-muted small">' + data.error + '</p>'; return; }
+  if (!data.matches || data.matches.length === 0) {
+    c.innerHTML = '<p class="text-muted small mb-0">未发现显著匹配记录（共扫描 ' + data.total_checked + ' 期）</p>';
+    return;
+  }
+
+  const lt = data.lottery_type;
+  let h = '<p class="small text-muted mb-2">扫描 ' + data.total_checked + ' 期，共 ' + data.match_count + ' 期有显著匹配</p>';
+  h += '<div style="max-height:320px;overflow-y:auto"><table class="win-result-table"><thead><tr>';
+  h += '<th>期号</th><th>开奖号码</th><th>命中详情</th><th>命中</th>';
+  h += '</tr></thead><tbody>';
+
+  const bestPeriod = data.best_match ? data.best_match.period : null;
+  data.matches.forEach(m => {
+    const isBest = m.period === bestPeriod;
+    h += `<tr class="${isBest ? 'best-match' : ''}"><td class="fw-bold">${m.period}`;
+    if (isBest) h += ' <span class="badge bg-warning text-dark">最佳</span>';
+    h += '</td>';
+
+    if (lt === 'dlt' || lt === 'ssq') {
+      // 号码显示
+      h += '<td>' + m.main_drawn.map(n => {
+        const cls = m.main_hit_nums.includes(n) ? 'hit-num' : '';
+        return `<span class="ball-sm-num ${cls}">${String(n).padStart(2,'0')}</span>`;
+      }).join(' ');
+      if (m.sub_drawn && m.sub_drawn.length > 0) {
+        h += ' <span class="text-muted">+</span> ';
+        h += m.sub_drawn.map(n => {
+          const cls = m.sub_hit_nums.includes(n) ? 'hit-num' : '';
+          return `<span class="ball-sm-num sub ${cls}">${String(n).padStart(2,'0')}</span>`;
+        }).join(' ');
+      }
+      h += '</td>';
+      // 命中详情
+      h += `<td>${META.main_label} ${m.main_hit}/${META.main_count}`;
+      if (m.main_hit_nums.length > 0) h += ' <small>(' + m.main_hit_nums.join(',') + ')</small>';
+      if (m.sub_hit !== undefined && META.sub_count > 0) {
+        h += `，${META.sub_label} ${m.sub_hit}/${META.sub_count}`;
+        if (m.sub_hit_nums.length > 0) h += ' <small>(' + m.sub_hit_nums.join(',') + ')</small>';
+      }
+      h += '</td>';
+      h += `<td class="fw-bold">${m.main_hit}+${m.sub_hit || 0}</td>`;
+    } else if (lt === 'kl8') {
+      h += '<td>' + m.drawn_nums.map(n => {
+        const cls = m.hit_nums.includes(n) ? 'hit-num' : '';
+        return `<span class="ball-sm-num ${cls}">${String(n).padStart(2,'0')}</span>`;
+      }).join(' ') + '</td>';
+      h += `<td>重合 ${m.hit_count} 码 <small>(${m.hit_nums.join(',')})</small></td>`;
+      h += `<td class="fw-bold">${m.hit_count}</td>`;
+    } else if (lt === 'pl5') {
+      h += '<td>' + m.drawn_digits.map((d, j) => {
+        return `<span class="ball-sm-num ${m.pos_hits[j] ? 'hit-num' : ''}">${d}</span>`;
+      }).join(' ') + '</td>';
+      h += `<td>第${m.pos_hits.map((ph,i) => ph ? (i+1) : null).filter(Boolean).join(',')}位命中</td>`;
+      h += `<td class="fw-bold">${m.hit_count}/5</td>`;
+    } else if (lt === 'qxc') {
+      h += '<td>' + m.drawn_front.map((d, j) => {
+        return `<span class="ball-sm-num ${m.front_pos_hits[j] ? 'hit-num' : ''}">${d}</span>`;
+      }).join(' ') + ' <small>+</small> ';
+      h += `<span class="ball-sm-num sub ${m.special_hit ? 'hit-num' : ''}">${m.drawn_special}</span></td>`;
+      h += `<td>前区第${m.front_pos_hits.map((ph,i) => ph ? (i+1) : null).filter(Boolean).join(',')}位`;
+      if (m.special_hit) h += ' + 后区';
+      h += '</td>';
+      h += `<td class="fw-bold">${m.hit_count}/7</td>`;
+    }
+
+    h += '</tr>';
+  });
+
+  h += '</tbody></table></div>';
+  c.innerHTML = h;
+}
 </script>
 {% endblock %}
