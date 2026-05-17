@@ -41,12 +41,21 @@ def now_cn_iso() -> str:
     return (datetime.now(timezone(timedelta(hours=8)))).replace(microsecond=0).isoformat()
 
 
-def _pattern_weight_md_line() -> str:
+def _pattern_weight_md_line(weights: dict[str, float] | None = None) -> str:
+    w = weights or {}
+    w_markov = w.get("markov", PATTERN_W_MARKOV)
+    w_miss = w.get("miss", PATTERN_W_MISS)
+    w_freq = w.get("freq", PATTERN_W_FREQ)
+    w_zone = w.get("zone", PATTERN_W_ZONE)
+    w_recency = w.get("recency", PATTERN_W_RECENCY)
+    w_parity = w.get("parity", PATTERN_W_PARITY)
+    w_size = w.get("size", PATTERN_W_SIZE)
+    w_sum = w.get("sum", PATTERN_W_SUM)
     return (
-        f"{PATTERN_W_MISS:.0%}×当前遗漏 + {PATTERN_W_FREQ:.0%}×频次 + {PATTERN_W_ZONE:.0%}×区间热度 + "
-        f"{PATTERN_W_RECENCY:.0%}×近{PATTERN_RECENT_K}期密度 + {PATTERN_W_PARITY:.0%}×奇偶对齐 + "
-        f"{PATTERN_W_SIZE:.0%}×大小/半区对齐 + {PATTERN_W_SUM:.0%}×和值带对齐 + "
-        f"{PATTERN_W_MARKOV:.0%}×马尔可夫转移"
+        f"{w_miss:.0%}×当前遗漏 + {w_freq:.0%}×频次 + {w_zone:.0%}×区间热度 + "
+        f"{w_recency:.0%}×近{PATTERN_RECENT_K}期密度 + {w_parity:.0%}×奇偶对齐 + "
+        f"{w_size:.0%}×大小/半区对齐 + {w_sum:.0%}×和值带对齐 + "
+        f"{w_markov:.0%}×马尔可夫转移"
     )
 
 

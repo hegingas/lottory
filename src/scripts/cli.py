@@ -144,7 +144,11 @@ def _build_doctor_report() -> tuple[dict, object]:
         k: (data_latest.get(k) is not None and data_latest.get(k) == history_analysis_latest.get(k))
         for k in ("dlt", "ssq", "kl8", "pl5", "qxc")
     }
-    expected_markov_weight = float(cfg.PATTERN_W_MARKOV)
+    optimized = {
+        "dlt": cfg.get_optimized_weights("dlt"),
+        "ssq": cfg.get_optimized_weights("ssq"),
+        "kl8": cfg.get_optimized_weights("kl8"),
+    }
     formula_weight = {
         "dlt": _extract_markov_formula_weight(hist / "daletou_prediction.md"),
         "ssq": _extract_markov_formula_weight(hist / "shuangseqiu_prediction.md"),
@@ -153,7 +157,8 @@ def _build_doctor_report() -> tuple[dict, object]:
     formula_sync = {
         k: (
             formula_weight.get(k) is not None
-            and abs(float(formula_weight.get(k)) - expected_markov_weight) < 1e-9
+            and optimized.get(k) is not None
+            and abs(float(formula_weight.get(k)) - float(optimized[k].get("markov", -1))) < 0.01
         )
         for k in ("dlt", "ssq", "kl8")
     }
@@ -182,7 +187,7 @@ def _build_doctor_report() -> tuple[dict, object]:
             "default_random_seed": int(cfg.DEFAULT_RANDOM_SEED),
             "active_random_seed": int(cfg._ACTIVE_RANDOM_SEED),
         },
-        "weights": {
+        "weights_legacy": {
             "miss": float(cfg.PATTERN_W_MISS),
             "freq": float(cfg.PATTERN_W_FREQ),
             "zone": float(cfg.PATTERN_W_ZONE),
@@ -192,6 +197,7 @@ def _build_doctor_report() -> tuple[dict, object]:
             "sum": float(cfg.PATTERN_W_SUM),
             "markov": float(cfg.PATTERN_W_MARKOV),
         },
+        "weights_optimized": {k: {kk: round(float(vv), 4) for kk, vv in v.items()} for k, v in optimized.items()},
         "validate_errors": val.get("errors", []),
         "suggested_commands": suggest_cmds,
     }

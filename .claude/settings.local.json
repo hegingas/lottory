@@ -59,7 +59,8 @@
       "Bash(echo \"pl5,26112,6,2,5,9,3\")",
       "Bash(echo \"exit=$?\")",
       "Bash(npm list *)",
-      "Bash(pip list *)"
+      "Bash(pip list *)",
+      "Bash(ruff check *)"
     ]
   },
   "mcpServers": {
