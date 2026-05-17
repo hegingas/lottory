@@ -97,8 +97,67 @@
 ## 5-Question Reboot Check
 | Question | Answer |
 |----------|--------|
-| Where am I? | Phase 5 complete - 全部完成 |
-| Where am I going? | 任务完成，可进入下一个优化（因子去相关） |
-| What's the goal? | 用回测数据驱动权重优化，替代硬编码 ✓ |
-| What have I learned? | 马尔可夫被严重高估；各彩种最优因子结构完全不同 |
-| What have I done? | 全部 5 阶段完成，优化权重已设为默认并刷新归档 |
+| Where am I? | 任务 3 完成，任务 4 待做 |
+| Where am I going? | 区间马尔可夫升二阶（任务 4） |
+| What's the goal? | 快乐八模型从单层直接选号重构为 20→11 两阶段 ✓ |
+| What have I learned? | Path B 20→11 重排位 +3.7%，0-hit 从 8 降到 2；瓶颈在结构非权重 |
+| What have I done? | 新增 _kl8_eleven_from_twenty_rerank + Path B 收集函数 + 回测 20 码命中率指标 |
+
+## Session: 2026-05-17 (任务 3: 快乐八模型重构)
+
+### Phase 1: 现状盘点 & 路径设计
+- **Status:** complete
+- Actions taken:
+  - 盘点 _kl8_twenty_from_patterns（已实现但闲置）与 _kl8_eleven_zone_capped_from_twenty（已实现但未接入主流程）
+  - 确认当前 prediction_block_kl8 直接从 80 码跳到 11 码，跳过 20 码中间层
+  - 设计 Path A（直接 11 码）、Path B（20→11）、Path C（频次基线）三条路径
+  - 快速 benchmark 确定 20→11 最优策略：完整多因子重排位 > 贪心 > 随机 > 加权采样
+- Key findings:
+  - Path B_score_rerank: avg 2.737 vs Path A 2.638 (+3.8%)
+  - Path B_greedy (_kl8_eleven_zone_capped_from_twenty): 实际倒退 -5.7%（因为用简单排名代替多因子分）
+  - Path C 纯频次: 2.388（最差基线）
+
+### Phase 2: Path B 实现 & 接入
+- **Status:** complete
+- Actions taken:
+  - selection.py: 新增 `_kl8_eleven_from_twenty_rerank`（在 20 码池内用完整多因子分数贪心取 11 码）
+  - builders.py: 新增 `_kl8_collect_one_path_outputs_b`，`prediction_block_kl8` 支持 `path` 参数（默认 "B"）
+  - builders.py: 新增 Path B 专有的 20 码中间层输出（twenty_fmt, twenty_hit, twenty_block）
+  - db.py: `run_backtest` 新增 `kl8_path` 参数 + 20 码命中率自动收集
+
+### Phase 3: 回测对比
+- **Status:** complete
+- Actions taken:
+  - 100 期 Path A vs B vs C: A=2.690, B=2.790 (+3.7%), C=2.510
+  - Head-to-head: A胜=22, B胜=31, 平=47
+  - Paired t-test: t=-1.119, p=0.266（不显著但方向明确）
+  - B 路径 0-hit 仅 2 次 vs A 的 8 次（-75%）
+  - 20 码中间层预测 avg 4.66/20 hit
+
+### Phase 4: 收敛 & 归档
+- **Status:** complete
+- Actions taken:
+  - 默认路径设为 "B"（20→11 重排位）
+  - regenerate-history --only kl8 刷新 history/kuaileba_analysis.md + history/kuaileba_prediction.md
+  - validate 确认 CSV ↔ DB 全部同步
+  - task_plan.md 更新任务 3 为完成
+
+### 改动文件
+- `src/lottery/selection.py`: +`_kl8_eleven_from_twenty_rerank`
+- `src/lottery/builders.py`: +`_kl8_collect_one_path_outputs_b`, `prediction_block_kl8` path 参数
+- `src/lottery/db.py`: `run_backtest` +kl8_path +20码命中率指标
+- `history/kuaileba_prediction.md`: 已刷新（默认 Path B）
+- `history/kuaileba_analysis.md`: 已刷新
+- `task_plan.md`: 更新状态
+
+### Test Results (任务 3)
+| Test | Input | Expected | Actual | Status |
+|------|-------|----------|--------|--------|
+| Import check | all new functions | OK | OK | ✓ |
+| Smoke test Path A | prediction_block_kl8 path='A' | No crash | OK | ✓ |
+| Smoke test Path B | prediction_block_kl8 path='B' | No crash + twenty_hit in pred_data | OK | ✓ |
+| 100期 Path A backtest | run_backtest kl8_path='A' | Baseline | avg=2.690 | ✓ |
+| 100期 Path B backtest | run_backtest kl8_path='B' | Better than A | avg=2.790 (+3.7%) | ✓ |
+| 20码命中率指标 | run_backtest kl8_path='B' | twenty_hit in summary | avg=4.66 | ✓ |
+| regenerate-history | --only kl8 | Both files refreshed | OK | ✓ |
+| validate | all data | No errors | all_synced=true | ✓ |

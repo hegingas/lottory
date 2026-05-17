@@ -727,6 +727,34 @@ def _kl8_eleven_zone_capped_from_twenty(
     return sorted(out)
 
 
+def _kl8_eleven_from_twenty_rerank(
+    twenty: list[int],
+    scores: np.ndarray,
+    active_zones: list[tuple[int, int]],
+) -> list[int]:
+    """在 20 码候选池内用完整多因子分数贪心重排位取 11 码（优于辅助排名分数）。"""
+    if len(twenty) != 20 or len(set(twenty)) != 20:
+        raise ValueError("twenty 须为 20 个互异号码")
+    sub_scores = np.zeros(81, dtype=float)
+    for x in twenty:
+        sub_scores[int(x)] = float(scores[int(x)])
+    sub_use = _kl8_scores_masked_to_active_zones(sub_scores, active_zones)
+    out = _pick_top_indices_zone_bounded(
+        sub_use,
+        1,
+        80,
+        11,
+        active_zones,
+        KL8_MIN_PER_PICK_ZONE,
+        KL8_MAX_PER_PICK_ZONE,
+    )
+    if len(out) < 11:
+        raise ValueError(
+            f"20 码在「活跃十码段」每区[{KL8_MIN_PER_PICK_ZONE},{KL8_MAX_PER_PICK_ZONE}]约束下无法凑满11码"
+        )
+    return sorted(out)
+
+
 def _kl8_eleven_random_from_twenty(
     twenty: list[int], active_zones: list[tuple[int, int]]
 ) -> list[int]:

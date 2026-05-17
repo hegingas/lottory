@@ -716,6 +716,7 @@ def run_backtest(
     progress_callback=None,
     weights: dict[str, float] | None = None,
     whiten: bool | None = None,
+    kl8_path: str = "B",
 ) -> dict:
     """滑动窗口历史回测。
 
@@ -725,6 +726,7 @@ def run_backtest(
         window: 预测窗口大小（默认 30）
         path: DB 路径
         progress_callback: 可选回调 f(current, total, period_id)
+        kl8_path: 快乐八选号路径 "A"（直接11码）或 "B"（20→11重排位），默认 "B"
 
     Returns:
         {"ok": True, "summary": {...}, "total": N}
@@ -776,6 +778,7 @@ def run_backtest(
     saved_total = 0
     all_regular_entries: list[dict] = []
     all_best_entries: list[dict] = []
+    twenty_hits: list[int] = []  # KL8 Path B 20码命中数
 
     from .config import _set_random_seed, DEFAULT_RANDOM_SEED
 
@@ -801,6 +804,8 @@ def run_backtest(
                 kwargs["weights"] = weights
             if whiten is not None:
                 kwargs["whiten"] = whiten
+            if lottery_type == "kl8":
+                kwargs["path"] = kl8_path
             _md, pred_data = builder(win_df, **kwargs)
         except Exception:
             continue
@@ -840,8 +845,20 @@ def run_backtest(
         if progress_callback:
             progress_callback(i - start_idx + 1, test_count, target_pid)
 
+        twenty_hit_val = pred_data.get("twenty_hit")
+        if isinstance(twenty_hit_val, (int, float)):
+            twenty_hits.append(int(twenty_hit_val))
+
     # 聚合
     summary = _aggregate_backtest(lottery_type, all_regular_entries, all_best_entries)
+    if twenty_hits:
+        import numpy as np
+        summary["twenty_hit"] = {
+            "count": len(twenty_hits),
+            "avg": float(np.mean(twenty_hits)),
+            "median": float(np.median(twenty_hits)),
+            "max": int(max(twenty_hits)),
+        }
     return {"ok": True, "lottery_type": lottery_type, "periods_tested": test_count, "window": window, "saved": saved_total, "summary": summary}
 
 

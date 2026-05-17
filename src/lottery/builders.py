@@ -64,6 +64,9 @@ from .selection import (
     _ssq_collect_five_unique_tickets,
     _kl8_eleven_from_patterns,
     _kl8_eleven_cap_overlap_latest,
+    _kl8_twenty_from_patterns,
+    _kl8_twenty_cap_overlap_latest,
+    _kl8_eleven_from_twenty_rerank,
     _assert_kl8_zone_bounds,
     _kl8_decadic_zone_totals,
     _zone_index_for_ball,
@@ -936,9 +939,50 @@ def _kl8_collect_one_path_outputs(
     }
 
 
+def _kl8_collect_one_path_outputs_b(
+    fq: np.ndarray,
+    fcur: np.ndarray,
+    draws: list[list[int]],
+    markov_raw: np.ndarray,
+    active_zones: list[tuple[int, int]],
+    kl8_scores: np.ndarray,
+    latest20_set: set[int],
+    markov_norm: np.ndarray,
+) -> dict[str, object]:
+    """Path B: 先预测 20 码 → 在 20 码池内用完整多因子分数重排位取 11 码。"""
+    twenty, _ = _kl8_twenty_from_patterns(fq, fcur, draws, markov_raw, active_zones)
+    twenty = _kl8_twenty_cap_overlap_latest(twenty, latest20_set, kl8_scores, active_zones, max_overlap=6)
+    twenty_hit = len(set(twenty) & latest20_set)
+    twenty_fmt = ",".join(_fmt2(x) for x in sorted(twenty))
+
+    eleven = _kl8_eleven_from_twenty_rerank(twenty, kl8_scores, active_zones)
+    eleven = _kl8_eleven_cap_overlap_latest(eleven, latest20_set, kl8_scores, active_zones)
+    olap = len(set(eleven) & latest20_set)
+    eleven_zone_counts = _assert_kl8_zone_bounds(eleven, "选十参考11码", active_zones)
+    eleven_fmt = ",".join(_fmt2(x) for x in eleven)
+    pref11_score = sum(float(kl8_scores[int(x)]) for x in eleven)
+    eleven_markov_detail = "；".join(
+        [
+            f"{_fmt2(x)}:P={float(markov_raw[x]):.4f},N={float(markov_norm[x]):.3f},C≈{PATTERN_W_MARKOV * float(markov_norm[x]):.3f}"
+            for x in eleven
+        ]
+    )
+    return {
+        "olap": olap,
+        "eleven": eleven,
+        "eleven_zone_counts": eleven_zone_counts,
+        "eleven_fmt": eleven_fmt,
+        "pref11_score": pref11_score,
+        "eleven_markov_detail": eleven_markov_detail,
+        "twenty": sorted(twenty),
+        "twenty_fmt": twenty_fmt,
+        "twenty_hit": twenty_hit,
+    }
+
+
 # ── 快乐八预测 ────────────────────────────────────────────────
 
-def prediction_block_kl8(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW, weights: dict[str, float] | None = None, whiten: bool = False) -> str:
+def prediction_block_kl8(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW, weights: dict[str, float] | None = None, whiten: bool = False, path: str = "B") -> str:
     if weights is None:
         weights = _lottery_config.get_optimized_weights("kl8")
     df = _norm_df(df)
@@ -972,9 +1016,14 @@ def prediction_block_kl8(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW, w
         s_pred_k, KL8_PICK_ZONES_CAP, 11, KL8_MAX_PER_PICK_ZONE
     )
     active_zones = mask_to_active_zone_ranges(m_exp_k, KL8_PICK_ZONES_CAP)
-    w = _kl8_collect_one_path_outputs(
-        fq, fcur, draws, markov_raw, active_zones, kl8_scores, latest20_set, markov_norm
-    )
+    if path == "B":
+        w = _kl8_collect_one_path_outputs_b(
+            fq, fcur, draws, markov_raw, active_zones, kl8_scores, latest20_set, markov_norm
+        )
+    else:
+        w = _kl8_collect_one_path_outputs(
+            fq, fcur, draws, markov_raw, active_zones, kl8_scores, latest20_set, markov_norm
+        )
 
     totals8w = _kl8_decadic_zone_totals(draws)
     active_zone_choice_md = "；".join(
@@ -1001,24 +1050,39 @@ def prediction_block_kl8(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW, w
     eleven_zone_counts = w["eleven_zone_counts"]
     eleven_markov_detail = str(w["eleven_markov_detail"])
     pref11 = float(w["pref11_score"])
+    twenty_fmt = str(w.get("twenty_fmt", ""))
+    twenty_hit = w.get("twenty_hit", None)
+    path_label = {"A": "直接 11 码（跳过 20 码中间层）", "B": "20→11 重排位（先预测 20 码再在池内用完整多因子分数取 11 码）"}.get(path, path)
+    path_method_desc = {"A": "直接", "B": "先预测 20 码再重排位"}.get(path, "直接")
+    twenty_desc = ""
+    if path == "B" and twenty_fmt:
+        twenty_desc = f" Path B 先预测 20 码：**{twenty_fmt}**（与最新一期真实 20 码重合 **{twenty_hit}** 个）。"
+        twenty_block = f"\n\n> **Path B 20 码中间层**：{twenty_fmt}（与最新一期真实 20 码重合 **{twenty_hit}** 个；在 20 码池内用完整多因子分数重排位取 11 码）。"
+    else:
+        twenty_block = ""
 
     hot_line = "；".join([f"`{a}`（**{b}** 次）" for a, b in hot5])
     low_line = "；".join([f"`{a}`（**{b}** 次）" for a, b in low5])
     miss_line = "；".join([f"`{a}`（**{b}** 期）" for a, b in top_miss])
     wline = _pattern_weight_md_line()
 
-    pred_data = {
+    pred_data: dict[str, object] = {
         "lottery_type": "kl8",
         "prediction_date": pred_ts,
         "window_start": int(pid_min),
         "window_end": int(pid_max),
         "tickets": [{"index": 1, "numbers": {"codes": eleven_codes}}],
         "best": {"numbers": {"codes": eleven_codes}, "score": float(pref11)},
+        "kl8_path": path,
     }
+    if path == "B" and twenty_hit is not None:
+        pred_data["twenty_hit"] = twenty_hit
+        pred_data["twenty_codes"] = w.get("twenty", [])
 
     return f"""# 快乐八 — 统计型预测参考归档
 
 > **最后更新**：{pred_ts}
+> **选号路径**：**{path_label}**
 > **统计窗口（默认）**：近 **{n}** 期，期号 **`{pid_min}`–`{pid_max}`**（期末尾连续段，至多 **{n_last}** 期）。
 > **随机种子**：`{_lottery_config._ACTIVE_RANDOM_SEED}`（同数据同种子可复现）。
 > **全表收录**：`kl8_draws.csv` 共 **{full_n}** 行，期号 **`{pid_full_min}`–`{pid_full_max}`**（见 `data/processed/manifest.json` 中 `lottery_type` 为 `kl8` 的条目）
@@ -1049,7 +1113,7 @@ def prediction_block_kl8(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW, w
   - **当前遗漏（期）**：自该号码**最近一次**出现之后，至**最后一期 `{last_pid}`** 为止所经过的期数；若最后一期开出该号，则遗漏为 **0**。
 - **数据来源**：`data/processed/kl8_draws.csv`；溯源见 `manifest.json` 中 `kl8` 条目。
 - **「规律线」综合分**：对 01–80 各号计算 **8** 项原始分（全窗口频次、当前遗漏、近 **{PATTERN_RECENT_K}** 期出现密度、与窗口内「每期 20 码奇数个数均值」的奇偶对齐、**01–40 / 41–80** 半区占比对齐、**20 码和值**相对中位带的条件对齐、**四区** 01–20 / 21–40 / 41–60 / 61–80 区段热度、**马尔可夫链转移概率**）；其中马尔可夫项（最大权重）按**全历史开奖**每次重算一阶与二阶转移矩阵，按 **40% 一阶 + 60% 二阶** 混合后基于最新两期状态计算下一期出现条件概率。**每项先 min-max 归一到 [0,1]**，再按权重 **{wline}** 合成，分高者优先（**同分随机**）。**不是**从「最后一期已开出的 20 个号」里抽样，也**不是**单纯频次 Top20；仍属历史统计投影，**非**科学预测。
-- **活跃十码段（区间二进制掩码 → 一阶马尔可夫 → 展开）**：{markov_path_bullet}在展开后的活跃十码段并集内直接取满 **11** 码：各段 **{KL8_MIN_PER_PICK_ZONE}–{KL8_MAX_PER_PICK_ZONE}** 个，非活跃段 **0** 个。本窗口各活跃段频次摘要：{active_zone_choice_md}。
+- **活跃十码段（区间二进制掩码 → 一阶马尔可夫 → 展开）**：{markov_path_bullet}在展开后的活跃十码段并集内{path_method_desc}取满 **11** 码：各段 **{KL8_MIN_PER_PICK_ZONE}–{KL8_MAX_PER_PICK_ZONE}** 个，非活跃段 **0** 个。本窗口各活跃段频次摘要：{active_zone_choice_md}。{twenty_desc}
 
 ---
 
@@ -1076,7 +1140,7 @@ def prediction_block_kl8(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW, w
 
 ## 明确号码输出（强制，选十视角统计参考）
 
-> 在近 **{n}** 期窗口综合分下，**仅在**上文马尔可夫展开后的活跃十码段并集内直接贪心取 **11** 个互异号码（**同分随机**），并执行重合上限修正。
+> 在近 **{n}** 期窗口综合分下，**仅在**上文马尔可夫展开后的活跃十码段并集内{path_method_desc}取 **11** 个互异号码（**同分随机**），并执行重合上限修正。{twenty_block}
 
 - **选十参考 11 码（升序）**：**{eleven_fmt}**
 - **活跃十码段**：{active_zone_choice_md}
