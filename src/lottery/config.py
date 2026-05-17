@@ -12,6 +12,17 @@ _ACTIVE_RANDOM_SEED = DEFAULT_RANDOM_SEED
 # 默认统计窗口（期末尾连续 N 期）
 DEFAULT_STATS_WINDOW = 30
 
+
+def adaptive_stats_window(total_draws: int, floor: int = 30, ceiling: int = 120) -> int:
+    """按数据总量自适应窗口：max(floor, min(ceil(sqrt(N)), ceiling))。
+
+    - PL5 ~7600 期 → sqrt ≈ 87 期（当前 30 期仅覆盖 0.4%）
+    - QXC ~842 期 → sqrt ≈ 29 期 → floor=30
+    - DLT/SSQ ~3000–3500 期 → sqrt ≈ 55–59 期
+    """
+    import math
+    return max(floor, min(int(math.sqrt(total_draws)), ceiling))
+
 # 近 K 期密度因子所用期数
 PATTERN_RECENT_K = 5
 KL8_PATTERN_RECENT_K = PATTERN_RECENT_K

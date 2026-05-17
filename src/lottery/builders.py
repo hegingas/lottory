@@ -12,6 +12,7 @@ import pandas as pd
 from . import config as _lottery_config
 from .config import (
     DEFAULT_STATS_WINDOW,
+    adaptive_stats_window,
     DLT_FRONT_ZONES_CAP,
     DLT_FRONT_MAX_PER_ZONE,
     DLT_BACK_ZONES_CAP,
@@ -190,8 +191,10 @@ def ssq_explicit_from_patterns(
 def build_dlt_analysis(
     df: pd.DataFrame,
     manifest_excluded: list[dict],
-    analysis_window: int = DEFAULT_STATS_WINDOW,
+    analysis_window: int | None = None,
 ) -> str:
+    if analysis_window is None:
+        analysis_window = adaptive_stats_window(len(df))
     df = df.copy()
     df["period_id"] = pd.to_numeric(df["period_id"], errors="coerce")
     df = df.sort_values("period_id").reset_index(drop=True)
@@ -313,7 +316,9 @@ def build_dlt_analysis(
 
 # ── 双色球分析 ────────────────────────────────────────────────
 
-def build_ssq_analysis(df: pd.DataFrame, analysis_window: int = DEFAULT_STATS_WINDOW) -> str:
+def build_ssq_analysis(df: pd.DataFrame, analysis_window: int | None = None) -> str:
+    if analysis_window is None:
+        analysis_window = adaptive_stats_window(len(df))
     df = df.copy()
     df["period_id"] = pd.to_numeric(df["period_id"], errors="coerce")
     df = df.sort_values("period_id").reset_index(drop=True)
@@ -418,7 +423,9 @@ def build_ssq_analysis(df: pd.DataFrame, analysis_window: int = DEFAULT_STATS_WI
 
 # ── 快乐八分析 ────────────────────────────────────────────────
 
-def build_kl8_analysis(df: pd.DataFrame, analysis_window: int = DEFAULT_STATS_WINDOW) -> str:
+def build_kl8_analysis(df: pd.DataFrame, analysis_window: int | None = None) -> str:
+    if analysis_window is None:
+        analysis_window = adaptive_stats_window(len(df))
     df = _norm_df(df)
     draws_all, pids_all = _kl8_draw_rows(df)
     full_n = len(draws_all)
@@ -543,8 +550,10 @@ def build_kl8_analysis(df: pd.DataFrame, analysis_window: int = DEFAULT_STATS_WI
 
 # ── 大乐透预测 ────────────────────────────────────────────────
 
-def prediction_block_dlt(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW, weights: dict[str, float] | None = None, whiten: bool = False) -> str:
+def prediction_block_dlt(df: pd.DataFrame, n_last: int | None = None, weights: dict[str, float] | None = None, whiten: bool = False) -> str:
     # DLT: 白化倒退 -2.7%，保持原始因子空间
+    if n_last is None:
+        n_last = adaptive_stats_window(len(df))
     if weights is None:
         weights = _lottery_config.get_optimized_weights("dlt")
     df = df.copy()
@@ -730,8 +739,10 @@ def prediction_block_dlt(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW, w
 
 # ── 双色球预测 ────────────────────────────────────────────────
 
-def prediction_block_ssq(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW, weights: dict[str, float] | None = None, whiten: bool | None = None) -> str:
+def prediction_block_ssq(df: pd.DataFrame, n_last: int | None = None, weights: dict[str, float] | None = None, whiten: bool | None = None) -> str:
     # SSQ: 白化 +4.0%，默认开启
+    if n_last is None:
+        n_last = adaptive_stats_window(len(df))
     if whiten is None:
         whiten = True
     if weights is None:
@@ -991,7 +1002,9 @@ def _kl8_collect_one_path_outputs_b(
 
 # ── 快乐八预测 ────────────────────────────────────────────────
 
-def prediction_block_kl8(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW, weights: dict[str, float] | None = None, whiten: bool = False, path: str = "B") -> str:
+def prediction_block_kl8(df: pd.DataFrame, n_last: int | None = None, weights: dict[str, float] | None = None, whiten: bool = False, path: str = "B") -> str:
+    if n_last is None:
+        n_last = adaptive_stats_window(len(df))
     if weights is None:
         weights = _lottery_config.get_optimized_weights("kl8")
     df = _norm_df(df)
@@ -1236,7 +1249,9 @@ def _pl5_markov_blended(draws: list[list[int]], pos: int, laplace: float = 1.0,
     return w1 * p1 + w2 * p2
 
 
-def build_pl5_analysis(df: pd.DataFrame, analysis_window: int = DEFAULT_STATS_WINDOW) -> str:
+def build_pl5_analysis(df: pd.DataFrame, analysis_window: int | None = None) -> str:
+    if analysis_window is None:
+        analysis_window = adaptive_stats_window(len(df))
     df = df.copy()
     df["period_id"] = pd.to_numeric(df["period_id"], errors="coerce")
     df = df.sort_values("period_id").reset_index(drop=True)
@@ -1297,7 +1312,9 @@ def build_pl5_analysis(df: pd.DataFrame, analysis_window: int = DEFAULT_STATS_WI
 """
 
 
-def prediction_block_pl5(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW, weights: dict[str, float] | None = None) -> str:
+def prediction_block_pl5(df: pd.DataFrame, n_last: int | None = None, weights: dict[str, float] | None = None) -> str:
+    if n_last is None:
+        n_last = adaptive_stats_window(len(df))
     if weights is None:
         weights = _lottery_config.get_optimized_weights("pl5")
     df = df.copy()
@@ -1446,7 +1463,9 @@ def prediction_block_pl5(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW, w
 
 # ── 七星彩分析与预测 ─────────────────────────────────────────────
 
-def build_qxc_analysis(df: pd.DataFrame, analysis_window: int = DEFAULT_STATS_WINDOW) -> str:
+def build_qxc_analysis(df: pd.DataFrame, analysis_window: int | None = None) -> str:
+    if analysis_window is None:
+        analysis_window = adaptive_stats_window(len(df))
     df = df.copy()
     df["period_id"] = pd.to_numeric(df["period_id"], errors="coerce")
     df = df.sort_values("period_id").reset_index(drop=True)
@@ -1517,7 +1536,9 @@ def build_qxc_analysis(df: pd.DataFrame, analysis_window: int = DEFAULT_STATS_WI
 """
 
 
-def prediction_block_qxc(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW, weights: dict[str, float] | None = None) -> str:
+def prediction_block_qxc(df: pd.DataFrame, n_last: int | None = None, weights: dict[str, float] | None = None) -> str:
+    if n_last is None:
+        n_last = adaptive_stats_window(len(df))
     if weights is None:
         weights = _lottery_config.get_optimized_weights("qxc")
     df = df.copy()
