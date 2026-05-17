@@ -261,9 +261,16 @@ def get_draws(
     with get_connection(path) as conn:
         cur = conn.execute(f"SELECT {select_cols} FROM {table} ORDER BY period_id")
         rows = cur.fetchall()
-    if not rows:
-        return pd.DataFrame(columns=csv_cols)
-    return pd.DataFrame([dict(r) for r in rows], columns=csv_cols)
+    if rows:
+        return pd.DataFrame([dict(r) for r in rows], columns=csv_cols)
+
+    # DB 为空时回退 CSV（CI 环境 / 新 checkout 无 lottery.db）
+    csv_path = processed_dir() / f"{lottery_type}_draws.csv"
+    if csv_path.is_file():
+        df = pd.read_csv(csv_path, dtype={"period_id": int})
+        df.columns = [str(c).lstrip("﻿").strip() for c in df.columns]
+        return df[csv_cols]
+    return pd.DataFrame(columns=csv_cols)
 
 
 def get_latest_period(
