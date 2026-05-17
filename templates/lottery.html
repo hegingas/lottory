@@ -150,6 +150,17 @@
         <div class="text-center py-3"><div class="spinner-border spinner-border-sm text-primary"></div> 加载中...</div>
       </div>
     </div>
+    <div class="card shadow-sm mb-4" id="accuracy-card" style="display:none; border-top:none; border-top-left-radius:0; border-top-right-radius:0">
+      <div class="card-header bg-white"><h5 class="mb-0 fw-bold">预测准确率</h5></div>
+      <div class="card-body" id="accuracy-content"></div>
+    </div>
+    <div class="card shadow-sm mb-4" id="backtest-card" style="display:none; border-top:none; border-top-left-radius:0; border-top-right-radius:0">
+      <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0 fw-bold">历史回测</h5>
+        <small class="text-muted" id="backtest-periods"></small>
+      </div>
+      <div class="card-body" id="backtest-content"></div>
+    </div>
   </div>
 </div>
 {% endblock %}
@@ -484,7 +495,196 @@ async function loadPrediction() {
   }
   h += '<p class="small text-muted mt-2 mb-0">彩票为随机游戏，预测仅供娱乐参考。</p>';
   c.innerHTML = h;
+  loadAccuracy();
+  loadBacktest();
 }
+
+// ── 预测准确率 ──
+async function loadAccuracy() {
+  const card = document.getElementById("accuracy-card");
+  const content = document.getElementById("accuracy-content");
+  try {
+    const resp = await fetch(`/api/${LT}/prediction-accuracy`);
+    const data = await resp.json();
+    if (data.error) { card.style.display = 'none'; return; }
+    if (!data.has_actual_draw) {
+      card.style.display = 'block';
+      content.innerHTML = '<p class="text-muted small mb-0">最新预测目标期 <strong>' + data.predicted_period_id + '</strong> 的开奖数据尚未入库，待数据更新后自动显示对比结果。</p>';
+      return;
+    }
+    card.style.display = 'block';
+    let h = '<p class="small text-muted mb-1">目标期：<strong>' + data.predicted_period_id + '</strong> · 预测时间：' + (data.prediction_date || 'N/A') + '</p>';
+    h += '<div class="table-responsive"><table class="table table-sm table-hover"><thead class="table-light"><tr><th>#</th><th>命中详情</th><th>结果</th></tr></thead><tbody>';
+    if (data.tickets && data.tickets.length > 0) {
+      data.tickets.forEach(t => {
+        let detail = '', result = '';
+        if (LT === 'dlt' || LT === 'ssq') {
+          if (LT === 'ssq') {
+            detail = '红球中' + t.red_matches + ' 蓝球' + (t.blue_match ? '中' : '不中');
+          } else {
+            detail = '前区中' + t.front_matches + ' 后区中' + t.back_matches;
+          }
+          result = '<span class="badge ' + (t.prize_level !== '未中奖' ? 'bg-success' : 'bg-secondary') + '">' + t.prize_level + '</span>';
+        } else if (LT === 'kl8') {
+          detail = '与开奖20码重合 ' + t.overlap_count + ' 个';
+          result = t.overlap_ok ? '<span class="badge bg-success">合规</span>' : '<span class="badge bg-danger">超标</span>';
+        } else if (LT === 'pl5') {
+          detail = '逐位命中 ' + t.position_matches + '/5';
+          result = t.all_matched ? '<span class="badge bg-success">全中</span>' : '<span class="badge bg-secondary">' + t.position_matches + '/5</span>';
+        } else if (LT === 'qxc') {
+          detail = '前区命中 ' + t.front_matches + '/6 ' + (t.special_match ? '后区命中' : '后区未命中');
+          result = '<span class="badge bg-secondary">' + t.front_matches + '+0</span>';
+        }
+        h += '<tr><td>第' + t.ticket_index + '注</td><td>' + detail + '</td><td>' + result + '</td></tr>';
+      });
+    }
+    if (data.best) {
+      let bd = '', br = '';
+      if (LT === 'dlt' || LT === 'ssq') {
+        if (LT === 'ssq') {
+          bd = '红球中' + data.best.red_matches + ' 蓝球' + (data.best.blue_match ? '中' : '不中');
+        } else {
+          bd = '前区中' + data.best.front_matches + ' 后区中' + data.best.back_matches;
+        }
+        br = '<span class="badge ' + (data.best.prize_level !== '未中奖' ? 'bg-success' : 'bg-secondary') + '">' + data.best.prize_level + '</span>';
+      } else if (LT === 'kl8') {
+        bd = '与开奖20码重合 ' + data.best.overlap_count + ' 个';
+        br = '<span class="badge bg-info">' + data.best.overlap_count + '/20</span>';
+      } else if (LT === 'pl5') {
+        bd = '逐位命中 ' + data.best.position_matches + '/5';
+        br = data.best.position_matches === 5 ? '<span class="badge bg-success">全中</span>' : '<span class="badge bg-secondary">' + data.best.position_matches + '/5</span>';
+      } else if (LT === 'qxc') {
+        bd = '前区命中 ' + data.best.front_matches + '/6 ' + (data.best.special_match ? '后区命中' : '后区未命中');
+        br = '<span class="badge bg-secondary">' + data.best.front_matches + '+0</span>';
+      }
+      h += '<tr class="table-warning"><td><strong>单式优选</strong></td><td>' + bd + '</td><td>' + br + '</td></tr>';
+    }
+    h += '</tbody></table></div>';
+    content.innerHTML = h;
+  } catch(e) {
+    card.style.display = 'none';
+  }
+}
+
+// ── 历史回测 ──
+async function loadBacktest() {
+  const card = document.getElementById("backtest-card");
+  const content = document.getElementById("backtest-content");
+  const periodsEl = document.getElementById("backtest-periods");
+  try {
+    const resp = await fetch(`/api/${LT}/backtest-summary`);
+    const data = await resp.json();
+    if (data.error) { card.style.display = 'none'; return; }
+    card.style.display = 'block';
+    periodsEl.textContent = `共 ${data.total_periods} 期 · ${data.total_records} 条`;
+
+    let h = '<div class="row g-2 mb-2">';
+    const reg = data.regular;
+    const best = data.best;
+
+    if (LT === 'dlt') {
+      if (reg) h += '<div class="col-md-6"><div class="card bg-light"><div class="card-body py-1"><strong>5注单式均值</strong><br><small>前区 ' + reg.avg_front + '/5 · 后区 ' + reg.avg_back + '/2</small></div></div></div>';
+      if (best) h += '<div class="col-md-6"><div class="card bg-light"><div class="card-body py-1"><strong>单式优选均值</strong><br><small>前区 ' + best.avg_front + '/5 · 后区 ' + best.avg_back + '/2</small></div></div></div>';
+    } else if (LT === 'ssq') {
+      if (reg) h += '<div class="col-md-6"><div class="card bg-light"><div class="card-body py-1"><strong>5注单式均值</strong><br><small>红球 ' + reg.avg_red + '/6 · 蓝球 ' + reg.avg_blue + '</small></div></div></div>';
+      if (best) h += '<div class="col-md-6"><div class="card bg-light"><div class="card-body py-1"><strong>单式优选均值</strong><br><small>红球 ' + best.avg_red + '/6 · 蓝球 ' + best.avg_blue + '</small></div></div></div>';
+    } else if (LT === 'kl8') {
+      if (reg) h += '<div class="col-md-6"><div class="card bg-light"><div class="card-body py-1"><strong>参考11码均值</strong><br><small>与开奖20码平均重合 ' + reg.avg_overlap + ' 个</small></div></div></div>';
+    } else if (LT === 'pl5') {
+      if (reg) h += '<div class="col-md-6"><div class="card bg-light"><div class="card-body py-1"><strong>5注单式均值</strong><br><small>逐位命中 ' + reg.avg_pos + '/5' + (reg.all_matched ? ' · 全中 ' + reg.all_matched + ' 次' : '') + '</small></div></div></div>';
+      if (best) h += '<div class="col-md-6"><div class="card bg-light"><div class="card-body py-1"><strong>单式优选均值</strong><br><small>逐位命中 ' + best.avg_pos + '/5</small></div></div></div>';
+    } else if (LT === 'qxc') {
+      if (reg) h += '<div class="col-md-6"><div class="card bg-light"><div class="card-body py-1"><strong>5注单式均值</strong><br><small>前区 ' + reg.avg_front + '/6 · 后区 ' + reg.avg_special + '</small></div></div></div>';
+      if (best) h += '<div class="col-md-6"><div class="card bg-light"><div class="card-body py-1"><strong>单式优选均值</strong><br><small>前区 ' + best.avg_front + '/6 · 后区 ' + best.avg_special + '</small></div></div></div>';
+    }
+    h += '</div>';
+
+    // 奖级分布
+    if (best && best.prize_dist) {
+      h += '<div class="card bg-light mb-2"><div class="card-body py-1"><strong>单式优选奖级分布</strong><br><small>';
+      const prizes = [];
+      for (const [k, v] of Object.entries(best.prize_dist)) {
+        prizes.push(k + ': ' + v + ' 期');
+      }
+      h += prizes.join(' · ') + '</small></div></div>';
+    }
+    if (reg && reg.prize_dist) {
+      h += '<div class="card bg-light mb-2"><div class="card-body py-1"><strong>5注单式奖级分布</strong><br><small>';
+      const prizes = [];
+      for (const [k, v] of Object.entries(reg.prize_dist)) {
+        prizes.push(k + ': ' + v + ' 注');
+      }
+      h += prizes.join(' · ') + '</small></div></div>';
+    }
+
+    // 走势 mini 图 (每期 best 命中)
+    h += '<div class="mt-2"><small class="text-muted">单式优选逐期命中走势</small><div id="backtest-chart" style="height:80px;width:100%"></div></div>';
+
+    content.innerHTML = h;
+
+    // 画走势图
+    loadBacktestChart();
+  } catch(e) {
+    card.style.display = 'none';
+  }
+}
+
+async function loadBacktestChart() {
+  try {
+    const resp = await fetch(`/api/${LT}/backtest-results?limit=100`);
+    const data = await resp.json();
+    if (data.error || !data.results || data.results.length === 0) return;
+    const results = data.results.reverse(); // 从旧到新
+
+    const container = document.getElementById("backtest-chart");
+    if (!container) return;
+    const w = container.clientWidth || 600;
+    const h = 80;
+    const pad = { top: 5, right: 5, bottom: 15, left: 30 };
+
+    let values = [];
+    const labels = [];
+    for (const r of results) {
+      labels.push(String(r.period));
+      if (LT === 'dlt') values.push(r.best_front || 0);
+      else if (LT === 'ssq') values.push(r.best_red || 0);
+      else if (LT === 'kl8') values.push(r.best_overlap || 0);
+      else if (LT === 'pl5') values.push(r.best_pos || 0);
+      else if (LT === 'qxc') values.push(r.best_front || 0);
+    }
+
+    const maxVal = LT === 'ssq' ? 6 : LT === 'dlt' ? 5 : LT === 'kl8' ? Math.max(4, Math.max(...values)) : Math.max(5, Math.max(...values));
+    const chW = w - pad.left - pad.right;
+    const chH = h - pad.top - pad.bottom;
+    const stepX = results.length > 1 ? chW / (results.length - 1) : chW;
+
+    let svg = '<svg width="' + w + '" height="' + h + '" style="display:block">';
+    // Y 轴标签
+    for (let i = 0; i <= maxVal; i++) {
+      const y = pad.top + chH - (i / maxVal) * chH;
+      svg += '<text x="' + (pad.left - 3) + '" y="' + (y + 3) + '" text-anchor="end" font-size="8" fill="#888">' + i + '</text>';
+      svg += '<line x1="' + pad.left + '" y1="' + y + '" x2="' + (w - pad.right) + '" y2="' + y + '" stroke="#eee" stroke-width="0.5"/>';
+    }
+    // 数据线
+    let path = '';
+    for (let i = 0; i < values.length; i++) {
+      const x = pad.left + i * stepX;
+      const y = pad.top + chH - (values[i] / maxVal) * chH;
+      if (i === 0) path += 'M' + x + ',' + y;
+      else path += 'L' + x + ',' + y;
+    }
+    svg += '<path d="' + path + '" fill="none" stroke="#0d6efd" stroke-width="1.5" opacity="0.7"/>';
+    // 数据点
+    for (let i = 0; i < values.length; i++) {
+      const x = pad.left + i * stepX;
+      const y = pad.top + chH - (values[i] / maxVal) * chH;
+      svg += '<circle cx="' + x + '" cy="' + y + '" r="2" fill="#0d6efd"/>';
+    }
+    svg += '</svg>';
+    container.innerHTML = svg;
+  } catch(e) {}
+}
+
 function eh(s) { const d=document.createElement('div'); d.textContent=(s||''); return d.innerHTML.replace(/\n/g,'<br>'); }
 
 // ── 复制号码 ──

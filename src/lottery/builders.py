@@ -65,6 +65,10 @@ from .selection import (
     _assert_kl8_zone_bounds,
     _kl8_decadic_zone_totals,
     _zone_index_for_ball,
+    _pick_top_indices_zone_capped,
+    _dlt_ticket_passes_history_rules,
+    _ssq_ticket_passes_history_rules,
+    _qxc_collect_five_tickets,
 )
 from .markdown_utils import (
     _fmt2,
@@ -649,6 +653,25 @@ def prediction_block_dlt(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW) -
         latest_dlt_seven,
     )
 
+    try:
+        fi_p = sorted(_pick_top_indices_zone_capped(fs, 1, 35, 5, DLT_FRONT_ZONES_CAP, DLT_FRONT_MAX_PER_ZONE))
+        bi_p = sorted(_pick_top_indices_zone_capped(bs, 1, 12, 2, DLT_BACK_ZONES_CAP, DLT_BACK_MAX_PER_ZONE))
+        if not _dlt_ticket_passes_history_rules(fi_p, bi_p, hist_keys_dlt, latest_dlt_seven):
+            fi_p, bi_p = five[0]
+        best_score = sum(float(fs[i]) for i in fi_p) + sum(float(bs[i]) for i in bi_p)
+    except Exception:
+        fi_p, bi_p = five[0]
+        best_score = sum(float(fs[i]) for i in fi_p) + sum(float(bs[i]) for i in bi_p)
+
+    pred_data = {
+        "lottery_type": "dlt",
+        "prediction_date": pred_ts,
+        "window_start": int(pmin),
+        "window_end": int(pmax),
+        "tickets": [{"index": i, "numbers": {"front": list(f), "back": list(b)}} for i, (f, b) in enumerate(five, 1)],
+        "best": {"numbers": {"front": fi_p, "back": bi_p}, "score": best_score},
+    }
+
     return f"""# 大乐透 — 统计型预测参考归档
 
 > **最后更新**：{pred_ts}
@@ -689,7 +712,7 @@ def prediction_block_dlt(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW) -
 
 以上仅为近 **{n_win}** 期历史统计参考，用于娱乐与信息整理；下一期开奖仍为独立随机事件，不构成中奖承诺或投资建议。
 {_prediction_md_appendix_budget_rules("大乐透", _dlt_appendix_five_singles_line())}
-"""
+""", pred_data
 
 
 # ── 双色球预测 ────────────────────────────────────────────────
@@ -807,6 +830,26 @@ def prediction_block_ssq(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW) -
         latest_ssq_seven,
     )
 
+    try:
+        ri_p = sorted(_pick_top_indices_zone_capped(rs, 1, 33, 6, SSQ_RED_ZONES_CAP, SSQ_RED_MAX_PER_ZONE))
+        bi_p_raw = _pick_top_indices_zone_capped(bs_sc, 1, 16, 1, SSQ_BLUE_ZONES_CAP, SSQ_BLUE_MAX_PER_ZONE)
+        bl_p = int(bi_p_raw[0])
+        if not _ssq_ticket_passes_history_rules(ri_p, bl_p, hist_keys_ssq, latest_ssq_seven):
+            ri_p, bl_p = five[0]
+        best_score = sum(float(rs[i]) for i in ri_p) + float(bs_sc[bl_p])
+    except Exception:
+        ri_p, bl_p = five[0]
+        best_score = sum(float(rs[i]) for i in ri_p) + float(bs_sc[bl_p])
+
+    pred_data = {
+        "lottery_type": "ssq",
+        "prediction_date": pred_ts,
+        "window_start": int(pmin),
+        "window_end": int(pmax),
+        "tickets": [{"index": i, "numbers": {"red": list(r), "blue": int(bl)}} for i, (r, bl) in enumerate(five, 1)],
+        "best": {"numbers": {"red": ri_p, "blue": bl_p}, "score": best_score},
+    }
+
     return f"""# 双色球 — 统计型预测参考归档
 
 > **最后更新**：{pred_ts}
@@ -847,7 +890,7 @@ def prediction_block_ssq(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW) -
 
 以上仅为近 **{n_win}** 期历史统计参考；下一期仍为独立随机事件，不构成中奖承诺或投资建议。
 {_prediction_md_appendix_budget_rules("双色球", _ssq_appendix_five_singles_line())}
-"""
+""", pred_data
 
 
 def _kl8_collect_one_path_outputs(
@@ -875,6 +918,7 @@ def _kl8_collect_one_path_outputs(
     )
     return {
         "olap": olap,
+        "eleven": eleven,
         "eleven_zone_counts": eleven_zone_counts,
         "eleven_fmt": eleven_fmt,
         "pref11_score": pref11_score,
@@ -940,6 +984,7 @@ def prediction_block_kl8(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW) -
         )
 
     olap = int(w["olap"])
+    eleven_codes = list(w["eleven"])
     eleven_fmt = str(w["eleven_fmt"])
     eleven_zone_counts = w["eleven_zone_counts"]
     eleven_markov_detail = str(w["eleven_markov_detail"])
@@ -949,6 +994,15 @@ def prediction_block_kl8(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW) -
     low_line = "；".join([f"`{a}`（**{b}** 次）" for a, b in low5])
     miss_line = "；".join([f"`{a}`（**{b}** 期）" for a, b in top_miss])
     wline = _pattern_weight_md_line()
+
+    pred_data = {
+        "lottery_type": "kl8",
+        "prediction_date": pred_ts,
+        "window_start": int(pid_min),
+        "window_end": int(pid_max),
+        "tickets": [{"index": 1, "numbers": {"codes": eleven_codes}}],
+        "best": {"numbers": {"codes": eleven_codes}, "score": float(pref11)},
+    }
 
     return f"""# 快乐八 — 统计型预测参考归档
 
@@ -1032,7 +1086,7 @@ def prediction_block_kl8(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW) -
 ---
 
 > **提示**：本文件由 `python src/scripts/lottery.py regenerate-history --only kl8`（**同时**重写 `history/kuaileba_analysis.md`）或 `regenerate-history --only all`（存在 `kl8_draws.csv` 时）生成；文末附录含 **10～30 元** 带内机械复式示例。若追加更复杂方案，可再请 **`lottery-combo-optimize`** 并写投注原因。
-"""
+""", pred_data
 
 
 # ── 排列5分析与预测 ──────────────────────────────────────────────
@@ -1241,6 +1295,15 @@ def prediction_block_pl5(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW) -
     pl5_pref_csv = ",".join(str(d) for d in pref_digits)
     pl5_pref_tot = sum(float(scores_by_pos[i][pref_digits[i]]) for i in range(5))
 
+    pred_data = {
+        "lottery_type": "pl5",
+        "prediction_date": pred_ts,
+        "window_start": int(pmin),
+        "window_end": int(pmax),
+        "tickets": [{"index": i, "numbers": {"digits": list(t)}} for i, t in enumerate(tickets, 1)],
+        "best": {"numbers": {"digits": pref_digits}, "score": float(pl5_pref_tot)},
+    }
+
     return f"""# 排列5 — 统计型预测参考归档
 
 > **最后更新**：{pred_ts}
@@ -1287,7 +1350,7 @@ def prediction_block_pl5(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW) -
 - **金额带（强制）**：统计规律输出完成后，至少提供一套 **10～30 元（含）** 的打票参考。
 {mech_line}
 - **说明**：本附录仅作金额示例；若用户指定其他预算或倍投口径，以用户要求为准。
-"""
+""", pred_data
 
 
 # ── 七星彩分析与预测 ─────────────────────────────────────────────
@@ -1418,6 +1481,15 @@ def prediction_block_qxc(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW) -
     qxc_pref_full = f"{qxc_pref_front},{pref_sp}"
     qxc_pref_tot = sum(float(scores_by_pos[i][pref_front[i]]) for i in range(6)) + float(sc_special[pref_sp])
 
+    pred_data = {
+        "lottery_type": "qxc",
+        "prediction_date": pred_ts,
+        "window_start": int(pmin),
+        "window_end": int(pmax),
+        "tickets": [{"index": i, "numbers": {"front": [int(x) for x in t[:6]], "special": int(t[6])}} for i, t in enumerate(tickets, 1)],
+        "best": {"numbers": {"front": pref_front, "special": pref_sp}, "score": float(qxc_pref_tot)},
+    }
+
     mech_line = (
         f"- **机械方案（{PREDICTION_SINGLE_LINES} 注单式）**：正文 {PREDICTION_SINGLE_LINES} 组「前 6+后 1」单式，"
         f"每组按 **2 元**计，合计 **{PREDICTION_SINGLE_LINES * 2} 元**（落在 10～30 元带内）。"
@@ -1470,4 +1542,4 @@ def prediction_block_qxc(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW) -
 - **金额带（强制）**：统计规律输出完成后，至少提供一套 **10～30 元（含）** 的打票参考。
 {mech_line}
 - **说明**：本附录仅作金额示例；若用户指定其他预算或倍投口径，以用户要求为准。
-"""
+""", pred_data

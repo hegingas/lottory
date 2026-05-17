@@ -35,6 +35,7 @@ from lottery.builders import (
     prediction_block_qxc,
 )
 from lottery.paths import repo_root  # noqa: E402
+from lottery.db import save_predictions_batch
 
 
 def _load_draws(lottery_type: str) -> "pd.DataFrame":
@@ -62,6 +63,19 @@ def _normalize_only(only: str) -> str:
     return o
 
 
+def _save_prediction_to_db(lottery_type: str, pred_data: dict) -> dict[str, int]:
+    """将单期预测结构化数据写入数据库。predicted_period_id = window_end + 1。"""
+    return save_predictions_batch(
+        lottery_type=lottery_type,
+        predicted_period_id=pred_data["window_end"] + 1,
+        tickets=pred_data["tickets"],
+        best=pred_data.get("best"),
+        prediction_date=pred_data["prediction_date"],
+        data_window_start=pred_data["window_start"],
+        data_window_end=pred_data["window_end"],
+    )
+
+
 def main(only: str = "all", seed: int | None = DEFAULT_RANDOM_SEED) -> int:
     only_n = _normalize_only(only)
     used_seed = _set_random_seed(seed)
@@ -76,6 +90,7 @@ def main(only: str = "all", seed: int | None = DEFAULT_RANDOM_SEED) -> int:
 
     HIST.mkdir(parents=True, exist_ok=True)
     wrote: list[str] = []
+    saved: dict[str, dict] = {}
 
     manifest_excl: list[dict] = []
     if MANIFEST.exists():
@@ -114,8 +129,15 @@ def main(only: str = "all", seed: int | None = DEFAULT_RANDOM_SEED) -> int:
 
         (HIST / "daletou_analysis.md").write_text(build_dlt_analysis(dlt, manifest_excl), encoding="utf-8")
         (HIST / "shuangseqiu_analysis.md").write_text(build_ssq_analysis(ssq), encoding="utf-8")
-        (HIST / "daletou_prediction.md").write_text(prediction_block_dlt(dlt), encoding="utf-8")
-        (HIST / "shuangseqiu_prediction.md").write_text(prediction_block_ssq(ssq), encoding="utf-8")
+
+        dlt_pred_md, dlt_pred_data = prediction_block_dlt(dlt)
+        (HIST / "daletou_prediction.md").write_text(dlt_pred_md, encoding="utf-8")
+        saved["dlt"] = _save_prediction_to_db("dlt", dlt_pred_data)
+
+        ssq_pred_md, ssq_pred_data = prediction_block_ssq(ssq)
+        (HIST / "shuangseqiu_prediction.md").write_text(ssq_pred_md, encoding="utf-8")
+        saved["ssq"] = _save_prediction_to_db("ssq", ssq_pred_data)
+
         wrote.extend(
             [
                 "history/daletou_analysis.md",
@@ -142,7 +164,11 @@ def main(only: str = "all", seed: int | None = DEFAULT_RANDOM_SEED) -> int:
                 )
                 return 1
             (HIST / "kuaileba_analysis.md").write_text(build_kl8_analysis(kl8), encoding="utf-8")
-            (HIST / "kuaileba_prediction.md").write_text(prediction_block_kl8(kl8), encoding="utf-8")
+
+            kl8_pred_md, kl8_pred_data = prediction_block_kl8(kl8)
+            (HIST / "kuaileba_prediction.md").write_text(kl8_pred_md, encoding="utf-8")
+            saved["kl8"] = _save_prediction_to_db("kl8", kl8_pred_data)
+
             wrote.extend(["history/kuaileba_analysis.md", "history/kuaileba_prediction.md"])
 
     if only_n in ("all", "pl5"):
@@ -162,7 +188,11 @@ def main(only: str = "all", seed: int | None = DEFAULT_RANDOM_SEED) -> int:
                 )
                 return 1
             (HIST / "pailie5_analysis.md").write_text(build_pl5_analysis(pl5), encoding="utf-8")
-            (HIST / "pailie5_prediction.md").write_text(prediction_block_pl5(pl5), encoding="utf-8")
+
+            pl5_pred_md, pl5_pred_data = prediction_block_pl5(pl5)
+            (HIST / "pailie5_prediction.md").write_text(pl5_pred_md, encoding="utf-8")
+            saved["pl5"] = _save_prediction_to_db("pl5", pl5_pred_data)
+
             wrote.extend(["history/pailie5_analysis.md", "history/pailie5_prediction.md"])
 
     if only_n in ("all", "qxc"):
@@ -182,7 +212,11 @@ def main(only: str = "all", seed: int | None = DEFAULT_RANDOM_SEED) -> int:
                 )
                 return 1
             (HIST / "qixingcai_analysis.md").write_text(build_qxc_analysis(qxc), encoding="utf-8")
-            (HIST / "qixingcai_prediction.md").write_text(prediction_block_qxc(qxc), encoding="utf-8")
+
+            qxc_pred_md, qxc_pred_data = prediction_block_qxc(qxc)
+            (HIST / "qixingcai_prediction.md").write_text(qxc_pred_md, encoding="utf-8")
+            saved["qxc"] = _save_prediction_to_db("qxc", qxc_pred_data)
+
             wrote.extend(["history/qixingcai_analysis.md", "history/qixingcai_prediction.md"])
 
     if not wrote:
@@ -196,7 +230,7 @@ def main(only: str = "all", seed: int | None = DEFAULT_RANDOM_SEED) -> int:
 
     print(
         json.dumps(
-            {"ok": True, "only": only_n, "seed": used_seed, "wrote": wrote},
+            {"ok": True, "only": only_n, "seed": used_seed, "wrote": wrote, "predictions_saved": saved},
             ensure_ascii=True,
         )
     )

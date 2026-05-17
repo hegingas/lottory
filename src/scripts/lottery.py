@@ -297,6 +297,124 @@ def cmd_db_status(as_json: bool = False) -> int:
     return 0 if status.get("all_synced", False) else 1
 
 
+def cmd_prediction_list(lottery_type: str | None = None, period_id: int | None = None, as_json: bool = False) -> int:
+    from lottery.db import get_predictions
+
+    preds = get_predictions(lottery_type=lottery_type, predicted_period_id=period_id)
+    if not preds:
+        print("（无匹配的预测记录）")
+        return 0
+
+    if as_json:
+        print(json.dumps(preds, ensure_ascii=False, indent=2))
+        return 0
+
+    # 按彩种+期号分组输出
+    groups: dict[tuple[str, int], list[dict]] = {}
+    for p in preds:
+        key = (p["lottery_type"], p["predicted_period_id"])
+        groups.setdefault(key, []).append(p)
+
+    for (lt, pid), items in sorted(groups.items()):
+        first = items[0]
+        print(f"\n{'='*60}")
+        print(f"彩种: {lt}  |  预测目标期: {pid}")
+        print(f"统计窗口: {first['data_window_start']} – {first['data_window_end']}")
+        print(f"预测时间: {first['prediction_date']}")
+        regulars = [i for i in items if i["ticket_type"] == "regular"]
+        bests = [i for i in items if i["ticket_type"] == "best"]
+        for r in sorted(regulars, key=lambda x: x["ticket_index"]):
+            nums = r["numbers"]
+            if lt in ("dlt",):
+                f_str = ",".join(f"{x:02d}" for x in nums["front"])
+                b_str = ",".join(f"{x:02d}" for x in nums["back"])
+                print(f"  第{r['ticket_index']}注: 前区 [{f_str}] 后区 [{b_str}]")
+            elif lt == "ssq":
+                r_str = ",".join(f"{x:02d}" for x in nums["red"])
+                print(f"  第{r['ticket_index']}注: 红球 [{r_str}] 蓝球 [{nums['blue']:02d}]")
+            elif lt == "kl8":
+                c_str = ",".join(f"{x:02d}" for x in nums["codes"])
+                print(f"  参考11码: [{c_str}]")
+            elif lt == "pl5":
+                d_str = "".join(str(d) for d in nums["digits"])
+                print(f"  第{r['ticket_index']}注: {d_str}")
+            elif lt == "qxc":
+                f_str = ",".join(str(d) for d in nums["front"])
+                print(f"  第{r['ticket_index']}注: 前区 [{f_str}] + 后区 {nums['special']}")
+        for b in bests:
+            nums = b["numbers"]
+            score_str = f"  总分={b['total_score']:.3f}" if b.get("total_score") is not None else ""
+            if lt in ("dlt",):
+                f_str = ",".join(f"{x:02d}" for x in nums["front"])
+                b_str = ",".join(f"{x:02d}" for x in nums["back"])
+                print(f"  单式优选: 前区 [{f_str}] 后区 [{b_str}] {score_str}")
+            elif lt == "ssq":
+                r_str = ",".join(f"{x:02d}" for x in nums["red"])
+                print(f"  单式优选: 红球 [{r_str}] 蓝球 [{nums['blue']:02d}] {score_str}")
+            elif lt == "kl8":
+                c_str = ",".join(f"{x:02d}" for x in nums["codes"])
+                print(f"  单式优选: [{c_str}] {score_str}")
+            elif lt == "pl5":
+                d_str = "".join(str(d) for d in nums["digits"])
+                print(f"  单式优选: {d_str} {score_str}")
+            elif lt == "qxc":
+                f_str = ",".join(str(d) for d in nums["front"])
+                print(f"  单式优选: 前区 [{f_str}] + 后区 {nums['special']} {score_str}")
+    print()
+    return 0
+
+
+def cmd_prediction_accuracy(lottery_type: str, period_id: int, as_json: bool = False) -> int:
+    from lottery.db import compute_accuracy
+
+    result = compute_accuracy(lottery_type, period_id)
+    if "error" in result:
+        print(result["error"])
+        return 1
+
+    if as_json:
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0
+
+    print(f"\n{'='*60}")
+    print(f"彩种: {result['lottery_type']}  |  目标期: {result['predicted_period_id']}")
+    print(f"预测时间: {result.get('prediction_date', 'N/A')}")
+    print(f"开奖数据: {'已入库' if result['has_actual_draw'] else '尚未入库'}")
+
+    if not result["has_actual_draw"]:
+        print(result.get("message", ""))
+        return 0
+
+    print(f"\n--- 5注单式 ---")
+    for t in result.get("tickets", []):
+        if lottery_type in ("dlt",):
+            print(f"  第{t['ticket_index']}注: 前区中{t['front_matches']} 后区中{t['back_matches']} → {t['prize_level']}")
+        elif lottery_type == "ssq":
+            print(f"  第{t['ticket_index']}注: 红球中{t['red_matches']} 蓝球{'中' if t['blue_match'] else '不中'} → {t['prize_level']}")
+        elif lottery_type == "kl8":
+            print(f"  参考11码: 与开奖20码重合 {t['overlap_count']} 个 {'(合规≤4)' if t['overlap_ok'] else '(超出上限)'}")
+        elif lottery_type == "pl5":
+            print(f"  第{t['ticket_index']}注: 逐位命中 {t['position_matches']}/5 {'★全中' if t['all_matched'] else ''}")
+        elif lottery_type == "qxc":
+            print(f"  第{t['ticket_index']}注: 前区命中 {t['front_matches']}/6 后区{'命中' if t['special_match'] else '未命中'}")
+
+    best = result.get("best")
+    if best:
+        print(f"\n--- 单式优选 ---")
+        if lottery_type in ("dlt",):
+            print(f"  前区中{best['front_matches']} 后区中{best['back_matches']} → {best['prize_level']}")
+        elif lottery_type == "ssq":
+            print(f"  红球中{best['red_matches']} 蓝球{'中' if best['blue_match'] else '不中'} → {best['prize_level']}")
+        elif lottery_type == "kl8":
+            print(f"  与开奖20码重合 {best['overlap_count']} 个")
+        elif lottery_type == "pl5":
+            print(f"  逐位命中 {best['position_matches']}/5")
+        elif lottery_type == "qxc":
+            print(f"  前区命中 {best['front_matches']}/6 后区{'命中' if best['special_match'] else '未命中'}")
+    print()
+    return 0
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description="彩票仓库统一 Python 工具（盘点 / 校验 / 重算 history）")
     sub = p.add_subparsers(dest="command", required=True)
@@ -337,6 +455,22 @@ def main() -> int:
     p_dbs = sub.add_parser("db-status", help="显示数据库状态与 CSV 同步情况")
     p_dbs.add_argument("--json", action="store_true", help="以 JSON 格式输出")
 
+    p_plist = sub.add_parser("prediction-list", help="列出已保存的预测记录")
+    p_plist.add_argument("--type", dest="pred_type", choices=["dlt","ssq","kl8","pl5","qxc"], default=None, metavar="TYPE", help="按彩种过滤")
+    p_plist.add_argument("--period", type=int, default=None, help="按目标期号过滤")
+    p_plist.add_argument("--json", action="store_true", help="以 JSON 格式输出")
+
+    p_pacc = sub.add_parser("prediction-accuracy", help="对比预测 vs 实际开奖，计算准确率")
+    p_pacc.add_argument("--type", dest="pred_type", choices=["dlt","ssq","kl8","pl5","qxc"], required=True, metavar="TYPE", help="彩种")
+    p_pacc.add_argument("--period", type=int, required=True, help="被预测的目标期号")
+    p_pacc.add_argument("--json", action="store_true", help="以 JSON 格式输出")
+
+    p_bt = sub.add_parser("backtest", help="历史滑动窗口回测")
+    p_bt.add_argument("--type", dest="bt_type", choices=["dlt","ssq","kl8","pl5","qxc"], required=True, metavar="TYPE", help="彩种")
+    p_bt.add_argument("--periods", type=int, default=100, help="回测期数（默认 100）")
+    p_bt.add_argument("--window", type=int, default=30, help="预测窗口大小（默认 30）")
+    p_bt.add_argument("--json", action="store_true", help="以 JSON 格式输出")
+
     args = p.parse_args()
     if args.command == "inventory":
         return cmd_inventory()
@@ -352,7 +486,109 @@ def main() -> int:
         return cmd_migrate_to_db()
     if args.command == "db-status":
         return cmd_db_status(as_json=args.json)
+    if args.command == "prediction-list":
+        return cmd_prediction_list(args.pred_type, args.period, as_json=args.json)
+    if args.command == "prediction-accuracy":
+        return cmd_prediction_accuracy(args.pred_type, args.period, as_json=args.json)
+    if args.command == "backtest":
+        return cmd_backtest(args.bt_type, args.periods, args.window, as_json=args.json)
     return 1
+
+
+def cmd_backtest(lottery_type: str, periods: int = 100, window: int = 30, as_json: bool = False) -> int:
+    from lottery.db import run_backtest
+
+    def progress(current, total, pid):
+        pct = current * 100 // total
+        bar = "#" * (pct // 4) + "-" * (25 - pct // 4)
+        print(f"\r  [{bar}] {current}/{total} 期 (当前: {pid})", end="", flush=True)
+
+    print(f"\n{'='*60}")
+    print(f"彩种: {lottery_type}  |  回测范围: 近 {periods} 期  |  窗口: {window} 期")
+    print(f"{'='*60}")
+
+    result = run_backtest(lottery_type, periods=periods, window=window, progress_callback=progress)
+    print("\n")
+
+    if not result.get("ok"):
+        print(f"回测失败: {result.get('error')}")
+        return 1
+
+    if as_json:
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0
+
+    s = result.get("summary", {})
+    tested = result.get("periods_tested", 0)
+    saved = result.get("saved", 0)
+    print(f"回测完成: {tested} 期, 入库 {saved} 条\n")
+
+    _print_backtest_summary(lottery_type, s)
+    return 0
+
+
+def _print_backtest_summary(lottery_type: str, s: dict) -> None:
+    reg = s.get("regular", {})
+    best = s.get("best", {})
+
+    if lottery_type in ("dlt",):
+        if reg:
+            print("--- 5注单式 ---")
+            print(f"  共 {reg.get('count', 0)} 注, 前区均值 {reg.get('avg_front', '-')}/5, 后区均值 {reg.get('avg_back', '-')}/2")
+            pd = reg.get("prize_dist", {})
+            if pd:
+                print(f"  奖级分布: {', '.join(f'{k}:{v}' for k,v in pd.items())}")
+            bh = reg.get("best_hit", {})
+            if bh:
+                print(f"  最优注: 第{bh.get('ticket_index','?')}注 前区中{bh.get('front_matches','?')} 后区中{bh.get('back_matches','?')} → {bh.get('prize_level','?')}")
+        if best:
+            print("\n--- 单式优选 ---")
+            print(f"  共 {best.get('count', 0)} 期, 前区均值 {best.get('avg_front', '-')}/5, 后区均值 {best.get('avg_back', '-')}/2")
+            pd = best.get("prize_dist", {})
+            if pd:
+                print(f"  奖级分布: {', '.join(f'{k}:{v}' for k,v in pd.items())}")
+
+    elif lottery_type == "ssq":
+        if reg:
+            print("--- 5注单式 ---")
+            print(f"  共 {reg.get('count', 0)} 注, 红球均值 {reg.get('avg_red', '-')}/6, 蓝球命中率 {reg.get('avg_blue', '-')}")
+            pd = reg.get("prize_dist", {})
+            if pd:
+                print(f"  奖级分布: {', '.join(f'{k}:{v}' for k,v in pd.items())}")
+            bh = reg.get("best_hit", {})
+            if bh:
+                print(f"  最优注: 第{bh.get('ticket_index','?')}注 红球中{bh.get('red_matches','?')} 蓝球{'中' if bh.get('blue_match') else '不中'} → {bh.get('prize_level','?')}")
+        if best:
+            print("\n--- 单式优选 ---")
+            print(f"  共 {best.get('count', 0)} 期, 红球均值 {best.get('avg_red', '-')}/6, 蓝球命中率 {best.get('avg_blue', '-')}")
+            pd = best.get("prize_dist", {})
+            if pd:
+                print(f"  奖级分布: {', '.join(f'{k}:{v}' for k,v in pd.items())}")
+
+    elif lottery_type == "kl8":
+        if reg:
+            print("--- 选十参考11码 ---")
+            print(f"  共 {reg.get('count', 0)} 期, 与开奖20码平均重合 {reg.get('avg_overlap', '-')} 个")
+        if best:
+            print("\n--- 单式优选 ---")
+            print(f"  共 {best.get('count', 0)} 期, 与开奖20码平均重合 {best.get('avg_overlap', '-')} 个")
+
+    elif lottery_type == "pl5":
+        if reg:
+            print("--- 5注单式 ---")
+            print(f"  共 {reg.get('count', 0)} 注, 平均逐位命中 {reg.get('avg_pos', '-')}/5, 全中 {reg.get('all_matched', 0)} 次")
+        if best:
+            print("\n--- 单式优选 ---")
+            print(f"  共 {best.get('count', 0)} 期, 平均逐位命中 {best.get('avg_pos', '-')}/5")
+
+    elif lottery_type == "qxc":
+        if reg:
+            print("--- 5注单式 ---")
+            print(f"  共 {reg.get('count', 0)} 注, 前区均值 {reg.get('avg_front', '-')}/6, 后区命中率 {reg.get('avg_special', '-')}")
+        if best:
+            print("\n--- 单式优选 ---")
+            print(f"  共 {best.get('count', 0)} 期, 前区均值 {best.get('avg_front', '-')}/6, 后区命中率 {best.get('avg_special', '-')}")
+    print()
 
 
 if __name__ == "__main__":
