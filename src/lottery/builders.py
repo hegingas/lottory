@@ -41,6 +41,7 @@ from .interval_markov import (
     expand_mask_until_pickable,
     format_mask_zones,
     markov_next_bitmap,
+    markov_next_bitmap_blended,
     mask_to_active_zone_ranges,
     mask_to_allowed_balls,
     valid_mask_set,
@@ -142,12 +143,12 @@ def dlt_explicit_from_patterns(
     bs = _dlt_back_scores(b_draws, bq, bcur, b_mk)
     fa = [list(map(int, row)) for row in f_draws]
     ba = [list(map(int, row)) for row in b_draws]
-    _, mf, _, _, _ = markov_next_bitmap(fa, DLT_FRONT_ZONES_CAP, valid_set=valid_mask_set(7, DLT_FRONT_MAX_ACTIVE_ZONES))
+    _, mf, _, _, _, _, _ = markov_next_bitmap_blended(fa, DLT_FRONT_ZONES_CAP, valid_set=valid_mask_set(7, DLT_FRONT_MAX_ACTIVE_ZONES))
     af = mask_to_allowed_balls(
         expand_mask_until_pickable(mf, DLT_FRONT_ZONES_CAP, DLT_FRONT_MAX_PER_ZONE, 5),
         DLT_FRONT_ZONES_CAP,
     )
-    _, mb, _, _, _ = markov_next_bitmap(ba, DLT_BACK_ZONES_CAP, valid_set=valid_mask_set(4, DLT_BACK_MAX_ACTIVE_ZONES))
+    _, mb, _, _, _, _, _ = markov_next_bitmap_blended(ba, DLT_BACK_ZONES_CAP, valid_set=valid_mask_set(4, DLT_BACK_MAX_ACTIVE_ZONES))
     ab = mask_to_allowed_balls(
         expand_mask_until_pickable(mb, DLT_BACK_ZONES_CAP, DLT_BACK_MAX_PER_ZONE, 2),
         DLT_BACK_ZONES_CAP,
@@ -170,12 +171,12 @@ def ssq_explicit_from_patterns(
     bs = _ssq_blue_scores(blues, bq, bcur, b_mk)
     ra = [list(map(int, row)) for row in r_draws]
     ba = [[int(b)] for b in blues]
-    _, mr, _, _, _ = markov_next_bitmap(ra, SSQ_RED_ZONES_CAP, valid_set=valid_mask_set(7, SSQ_RED_MAX_ACTIVE_ZONES))
+    _, mr, _, _, _, _, _ = markov_next_bitmap_blended(ra, SSQ_RED_ZONES_CAP, valid_set=valid_mask_set(7, SSQ_RED_MAX_ACTIVE_ZONES))
     ar = mask_to_allowed_balls(
         expand_mask_until_pickable(mr, SSQ_RED_ZONES_CAP, SSQ_RED_MAX_PER_ZONE, 6),
         SSQ_RED_ZONES_CAP,
     )
-    _, mbl, _, _, _ = markov_next_bitmap(ba, SSQ_BLUE_ZONES_CAP, valid_set=valid_mask_set(4, SSQ_BLUE_MAX_ACTIVE_ZONES))
+    _, mbl, _, _, _, _, _ = markov_next_bitmap_blended(ba, SSQ_BLUE_ZONES_CAP, valid_set=valid_mask_set(4, SSQ_BLUE_MAX_ACTIVE_ZONES))
     abl = mask_to_allowed_balls(
         expand_mask_until_pickable(mbl, SSQ_BLUE_ZONES_CAP, SSQ_BLUE_MAX_PER_ZONE, 1),
         SSQ_BLUE_ZONES_CAP,
@@ -602,12 +603,12 @@ def prediction_block_dlt(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW, w
     }
     f_all_rows = [list(map(int, r)) for r in f_draws_all]
     b_all_rows = [list(map(int, r)) for r in b_draws_all]
-    s_last_f, m_front, p_front, row_f, short_fb_f = markov_next_bitmap(f_all_rows, DLT_FRONT_ZONES_CAP, valid_set=valid_mask_set(7, DLT_FRONT_MAX_ACTIVE_ZONES))
+    s_last_f, m_front, p_front, p_front_1st, row_f, row_f_2nd, short_fb_f = markov_next_bitmap_blended(f_all_rows, DLT_FRONT_ZONES_CAP, valid_set=valid_mask_set(7, DLT_FRONT_MAX_ACTIVE_ZONES))
     m_front_e = expand_mask_until_pickable(
         m_front, DLT_FRONT_ZONES_CAP, DLT_FRONT_MAX_PER_ZONE, 5
     )
     allowed_front_dlt = mask_to_allowed_balls(m_front_e, DLT_FRONT_ZONES_CAP)
-    s_last_b, m_back, p_back, row_b, short_fb_b = markov_next_bitmap(b_all_rows, DLT_BACK_ZONES_CAP, valid_set=valid_mask_set(4, DLT_BACK_MAX_ACTIVE_ZONES))
+    s_last_b, m_back, p_back, p_back_1st, row_b, row_b_2nd, short_fb_b = markov_next_bitmap_blended(b_all_rows, DLT_BACK_ZONES_CAP, valid_set=valid_mask_set(4, DLT_BACK_MAX_ACTIVE_ZONES))
     m_back_e = expand_mask_until_pickable(
         m_back, DLT_BACK_ZONES_CAP, DLT_BACK_MAX_PER_ZONE, 2
     )
@@ -616,16 +617,20 @@ def prediction_block_dlt(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW, w
     # ── 区间选择原因说明 ──
     full_n_dlt = len(f_all_rows)
     last_pid_dlt = int(full["period_id"].iloc[-1])
+    dlt_2nd_avail_f = row_f_2nd > 0
+    dlt_2nd_avail_b = row_b_2nd > 0
     dlt_markov_bullet = (
         f"对**全表 {full_n_dlt} 期**：将每期前区 5 码映射到 **7** 个五码段（01–05 / 06–10 / 11–15 / 16–20 / 21–25 / 26–30 / 31–35），"
         f"后区 2 码映射到 **4** 个三段（01–03 / 04–06 / 07–09 / 10–12），各段至少 1 球则对应位为 1，按段序拼成二进制掩码；"
-        f"统计相邻期掩码的一阶转移并对条件行施加拉普拉斯 **α={MARKOV_LAPLACE_ALPHA}**。"
+        f"统计相邻期掩码的**一阶+二阶混合转移**（一阶 40% + 二阶 60%，与按号马尔可夫方法论对齐），对条件行施加拉普拉斯 **α={MARKOV_LAPLACE_ALPHA}**。"
         f"以最后一期 **`{last_pid_dlt}`** 为条件：\n"
         f"- **前区**：末态掩码 **{format_mask_zones(s_last_f, DLT_FRONT_ZONES_CAP)}**（`{s_last_f}`），"
-        f"平滑后概率最大的下一掩码 **{format_mask_zones(m_front, DLT_FRONT_ZONES_CAP)}**（`{m_front}`，平滑概率 **{p_front:.4f}**；该条件行历史转移条数 **{row_f}**）；"
+        f"混合后概率最大的下一掩码 **{format_mask_zones(m_front, DLT_FRONT_ZONES_CAP)}**（`{m_front}`，混合概率 **{p_front:.4f}**；一阶行 **{row_f}** 条" + (
+            f"，二阶行 **{row_f_2nd}** 条" if dlt_2nd_avail_f else "，二阶不可用回退纯一阶") + "）；"
         f"按「每区至多 {DLT_FRONT_MAX_PER_ZONE} 个、共 5 球」展开为 **{format_mask_zones(m_front_e, DLT_FRONT_ZONES_CAP)}**（`{m_front_e}`）\n"
         f"- **后区**：末态掩码 **{format_mask_zones(s_last_b, DLT_BACK_ZONES_CAP)}**（`{s_last_b}`），"
-        f"平滑后概率最大的下一掩码 **{format_mask_zones(m_back, DLT_BACK_ZONES_CAP)}**（`{m_back}`，平滑概率 **{p_back:.4f}**；该条件行历史转移条数 **{row_b}**）；"
+        f"混合后概率最大的下一掩码 **{format_mask_zones(m_back, DLT_BACK_ZONES_CAP)}**（`{m_back}`，混合概率 **{p_back:.4f}**；一阶行 **{row_b}** 条" + (
+            f"，二阶行 **{row_b_2nd}** 条" if dlt_2nd_avail_b else "，二阶不可用回退纯一阶") + "）；"
         f"按「每区至多 {DLT_BACK_MAX_PER_ZONE} 个、共 2 球」展开为 **{format_mask_zones(m_back_e, DLT_BACK_ZONES_CAP)}**（`{m_back_e}`）"
     )
     if short_fb_f or short_fb_b:
@@ -784,12 +789,12 @@ def prediction_block_ssq(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW, w
     latest_ssq_seven = set(int(lr_s[f"red_{i}"]) for i in range(1, 7)) | {int(lr_s["blue"])}
     r_all_rows = [list(map(int, r)) for r in reds_all]
     b_all_rows = [[int(x)] for x in blues_all]
-    s_last_r, m_red, p_red, row_r, short_fb_r = markov_next_bitmap(r_all_rows, SSQ_RED_ZONES_CAP, valid_set=valid_mask_set(7, SSQ_RED_MAX_ACTIVE_ZONES))
+    s_last_r, m_red, p_red, p_red_1st, row_r, row_r_2nd, short_fb_r = markov_next_bitmap_blended(r_all_rows, SSQ_RED_ZONES_CAP, valid_set=valid_mask_set(7, SSQ_RED_MAX_ACTIVE_ZONES))
     m_red_e = expand_mask_until_pickable(
         m_red, SSQ_RED_ZONES_CAP, SSQ_RED_MAX_PER_ZONE, 6
     )
     allowed_red_ssq = mask_to_allowed_balls(m_red_e, SSQ_RED_ZONES_CAP)
-    s_last_b, m_blue, p_blue, row_b, short_fb_b = markov_next_bitmap(b_all_rows, SSQ_BLUE_ZONES_CAP, valid_set=valid_mask_set(4, SSQ_BLUE_MAX_ACTIVE_ZONES))
+    s_last_b, m_blue, p_blue, p_blue_1st, row_b, row_b_2nd, short_fb_b = markov_next_bitmap_blended(b_all_rows, SSQ_BLUE_ZONES_CAP, valid_set=valid_mask_set(4, SSQ_BLUE_MAX_ACTIVE_ZONES))
     m_blue_e = expand_mask_until_pickable(
         m_blue, SSQ_BLUE_ZONES_CAP, SSQ_BLUE_MAX_PER_ZONE, 1
     )
@@ -798,16 +803,20 @@ def prediction_block_ssq(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW, w
     # ── 区间选择原因说明 ──
     full_n_ssq = len(r_all_rows)
     last_pid_ssq = int(full["period_id"].iloc[-1])
+    ssq_2nd_avail_r = row_r_2nd > 0
+    ssq_2nd_avail_b = row_b_2nd > 0
     ssq_markov_bullet = (
         f"对**全表 {full_n_ssq} 期**：将每期红球 6 码映射到 **7** 个五码段（01–05 / 06–10 / 11–15 / 16–20 / 21–25 / 26–30 / 31–33），"
         f"蓝球 1 码映射到 **4** 个四码段（01–04 / 05–08 / 09–12 / 13–16），各段至少 1 球则对应位为 1，按段序拼成二进制掩码；"
-        f"统计相邻期掩码的一阶转移并对条件行施加拉普拉斯 **α={MARKOV_LAPLACE_ALPHA}**。"
+        f"统计相邻期掩码的**一阶+二阶混合转移**（一阶 40% + 二阶 60%，与按号马尔可夫方法论对齐），对条件行施加拉普拉斯 **α={MARKOV_LAPLACE_ALPHA}**。"
         f"以最后一期 **`{last_pid_ssq}`** 为条件：\n"
         f"- **红球**：末态掩码 **{format_mask_zones(s_last_r, SSQ_RED_ZONES_CAP)}**（`{s_last_r}`），"
-        f"平滑后概率最大的下一掩码 **{format_mask_zones(m_red, SSQ_RED_ZONES_CAP)}**（`{m_red}`，平滑概率 **{p_red:.4f}**；该条件行历史转移条数 **{row_r}**）；"
+        f"混合后概率最大的下一掩码 **{format_mask_zones(m_red, SSQ_RED_ZONES_CAP)}**（`{m_red}`，混合概率 **{p_red:.4f}**；一阶行 **{row_r}** 条" + (
+            f"，二阶行 **{row_r_2nd}** 条" if ssq_2nd_avail_r else "，二阶不可用回退纯一阶") + "）；"
         f"按「每区至多 {SSQ_RED_MAX_PER_ZONE} 个、共 6 球」展开为 **{format_mask_zones(m_red_e, SSQ_RED_ZONES_CAP)}**（`{m_red_e}`）\n"
         f"- **蓝球**：末态掩码 **{format_mask_zones(s_last_b, SSQ_BLUE_ZONES_CAP)}**（`{s_last_b}`），"
-        f"平滑后概率最大的下一掩码 **{format_mask_zones(m_blue, SSQ_BLUE_ZONES_CAP)}**（`{m_blue}`，平滑概率 **{p_blue:.4f}**；该条件行历史转移条数 **{row_b}**）；"
+        f"混合后概率最大的下一掩码 **{format_mask_zones(m_blue, SSQ_BLUE_ZONES_CAP)}**（`{m_blue}`，混合概率 **{p_blue:.4f}**；一阶行 **{row_b}** 条" + (
+            f"，二阶行 **{row_b_2nd}** 条" if ssq_2nd_avail_b else "，二阶不可用回退纯一阶") + "）；"
         f"按「每区至多 {SSQ_BLUE_MAX_PER_ZONE} 个、共 1 球」展开为 **{format_mask_zones(m_blue_e, SSQ_BLUE_ZONES_CAP)}**（`{m_blue_e}`）"
     )
     if short_fb_r or short_fb_b:
@@ -1009,7 +1018,7 @@ def prediction_block_kl8(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW, w
 
     pred_ts = now_cn_iso()
 
-    s_last_k, s_pred_k, p_pred_k, row_total_k, short_fb_k = markov_next_bitmap(
+    s_last_k, s_pred_k, p_pred_k, p_pred_1st_k, row_total_k, row_total_2nd_k, short_fb_k = markov_next_bitmap_blended(
         draws_all, KL8_PICK_ZONES_CAP, valid_set=valid_mask_set(8, KL8_MAX_ACTIVE_ZONES)
     )
     m_exp_k = expand_kl8_decadic_mask(
@@ -1031,10 +1040,13 @@ def prediction_block_kl8(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW, w
         for lo, hi in active_zones
     )
 
+    kl8_2nd_avail = row_total_2nd_k > 0
     markov_path_bullet = (
         f"对**全表 {full_n} 期**：将每期开奖 **20** 码映射到 **8** 个十码段，若某段至少出现 **1** 球则对应位为 **1**，按段序拼成 **8** 位二进制掩码；"
-        f"统计相邻期掩码的一阶转移并对条件行施加拉普拉斯 **α={MARKOV_LAPLACE_ALPHA}**。以最后一期 **`{last_pid}`** 的掩码 **{format_mask_zones(s_last_k, KL8_PICK_ZONES_CAP)}**（`{s_last_k}`）为条件，"
-        f"取平滑后概率最大的下一掩码 **{format_mask_zones(s_pred_k, KL8_PICK_ZONES_CAP)}**（`{s_pred_k}`，平滑概率 **{p_pred_k:.4f}**；该条件行历史转移条数 **{row_total_k}**）。"
+        f"统计相邻期掩码的**一阶+二阶混合转移**（一阶 40% + 二阶 60%，与按号马尔可夫方法论对齐），对条件行施加拉普拉斯 **α={MARKOV_LAPLACE_ALPHA}**。"
+        f"以最后一期 **`{last_pid}`** 的掩码 **{format_mask_zones(s_last_k, KL8_PICK_ZONES_CAP)}**（`{s_last_k}`）为条件，"
+        f"取混合后概率最大的下一掩码 **{format_mask_zones(s_pred_k, KL8_PICK_ZONES_CAP)}**（`{s_pred_k}`，混合概率 **{p_pred_k:.4f}**；一阶行 **{row_total_k}** 条" + (
+            f"，二阶行 **{row_total_2nd_k}** 条" if kl8_2nd_avail else "，二阶不可用回退纯一阶") + "）。"
         f"再按快乐八规则将掩码扩展至至少 **4** 个活跃段且在「每段至多 **{KL8_MAX_PER_PICK_ZONE}** 个」下可凑满 **11** 码（仍不足则全开）；展开后为 **{format_mask_zones(m_exp_k, KL8_PICK_ZONES_CAP)}**（`{m_exp_k}`）。"
     )
     if short_fb_k:
