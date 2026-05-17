@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import random
+
 import numpy as np
 
 # 仓库根与数据路径（保留给非 paths 模块直接引用场景）

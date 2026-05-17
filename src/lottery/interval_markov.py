@@ -236,7 +236,7 @@ def markov_next_bitmap_blended(
     p2 = _markov_prob_dist(draws_balls, zones, alpha, valid_set, order=2)
     if p2 is None:
         # 二阶不可用，纯一阶
-        s_pred, p_pred = s_last_1, 0.0
+        _s_pred, _p_pred = s_last_1, 0.0
         candidates = valid_set if valid_set is not None else set(range(n_states))
         best_s = 0
         best_p = -1.0

@@ -8,19 +8,16 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from lottery.selection import (
-    _zone_index_for_ball,
-    _pick_top_indices_zone_capped,
-    _pick_top_indices_zone_bounded,
-    _kl8_decadic_zone_totals,
-    _kl8_active_zone_pick_policy_ok,
-)
 from lottery.config import (
-    DLT_FRONT_ZONES_CAP,
     DLT_FRONT_MAX_PER_ZONE,
-    KL8_PICK_ZONES_CAP,
-    KL8_MIN_PER_PICK_ZONE,
-    KL8_MAX_PER_PICK_ZONE,
+    DLT_FRONT_ZONES_CAP,
+)
+from lottery.selection import (
+    _kl8_active_zone_pick_policy_ok,
+    _kl8_decadic_zone_totals,
+    _pick_top_indices_zone_bounded,
+    _pick_top_indices_zone_capped,
+    _zone_index_for_ball,
 )
 
 

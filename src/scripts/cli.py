@@ -3,9 +3,9 @@
 统一入口：盘点 data、校验 processed、按范围重算 history 书面归档。
 
 用法（在仓库根目录）：
-  python src/scripts/lottery.py inventory
-  python src/scripts/lottery.py validate
-  python src/scripts/lottery.py regenerate-history [--only all|kl8|dlt-ssq|pl5|qxc]
+  python src/scripts/cli.py inventory
+  python src/scripts/cli.py validate
+  python src/scripts/cli.py regenerate-history [--only all|kl8|dlt-ssq|pl5|qxc]
 
 **唯一推荐的刷新路径**：`regenerate-history`，用 ``--only`` 按用户/任务要刷的彩种选择范围。
 """
@@ -24,8 +24,8 @@ _REPO = Path(__file__).resolve().parents[2]
 if str(_REPO / "src") not in sys.path:
     sys.path.insert(0, str(_REPO / "src"))
 
-from lottery.paths import repo_root, processed_dir, manifest_path
 from lottery.inventory import print_inventory_json
+from lottery.paths import processed_dir, repo_root
 from lottery.validate import run_validate
 
 
@@ -263,7 +263,7 @@ def cmd_doctor(as_json: bool = False, auto_fix: bool = False) -> int:
 
 
 def cmd_migrate_to_db() -> int:
-    from lottery.db import migrate_csv_to_db, get_row_count
+    from lottery.db import get_row_count, migrate_csv_to_db
 
     result = migrate_csv_to_db()
     summary = {lt: get_row_count(lt) for lt in result}
@@ -272,7 +272,7 @@ def cmd_migrate_to_db() -> int:
 
 
 def cmd_db_status(as_json: bool = False) -> int:
-    from lottery.db import verify_db_csv_consistency, get_row_count
+    from lottery.db import get_row_count, verify_db_csv_consistency
     from lottery.paths import db_path
 
     db = db_path()
@@ -385,7 +385,7 @@ def cmd_prediction_accuracy(lottery_type: str, period_id: int, as_json: bool = F
         print(result.get("message", ""))
         return 0
 
-    print(f"\n--- 5注单式 ---")
+    print("\n--- 5注单式 ---")
     for t in result.get("tickets", []):
         if lottery_type in ("dlt",):
             print(f"  第{t['ticket_index']}注: 前区中{t['front_matches']} 后区中{t['back_matches']} → {t['prize_level']}")
@@ -400,7 +400,7 @@ def cmd_prediction_accuracy(lottery_type: str, period_id: int, as_json: bool = F
 
     best = result.get("best")
     if best:
-        print(f"\n--- 单式优选 ---")
+        print("\n--- 单式优选 ---")
         if lottery_type in ("dlt",):
             print(f"  前区中{best['front_matches']} 后区中{best['back_matches']} → {best['prize_level']}")
         elif lottery_type == "ssq":

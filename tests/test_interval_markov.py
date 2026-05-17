@@ -3,11 +3,9 @@
 import sys
 from pathlib import Path
 
-import pytest
-
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from lottery.config import DLT_FRONT_ZONES_CAP, DLT_FRONT_MAX_PER_ZONE, KL8_PICK_ZONES_CAP
+from lottery.config import DLT_FRONT_MAX_PER_ZONE, DLT_FRONT_ZONES_CAP, KL8_PICK_ZONES_CAP
 from lottery.interval_markov import (
     bitmap_zone_hits,
     expand_kl8_decadic_mask,

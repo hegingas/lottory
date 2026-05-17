@@ -8,11 +8,11 @@
 from __future__ import annotations
 
 import time
-from typing import Callable
+from collections.abc import Callable
 
 import numpy as np
 
-from .config import DEFAULT_8F_WEIGHTS, DEFAULT_4F_WEIGHTS
+from .config import DEFAULT_4F_WEIGHTS, DEFAULT_8F_WEIGHTS
 from .db import run_backtest
 
 _KEYS_8F = ["markov", "miss", "freq", "zone", "recency", "parity", "size", "sum"]
@@ -20,7 +20,7 @@ _KEYS_4F = ["markov", "miss", "freq", "recency"]
 
 
 def _weights_to_dict(keys: list[str], vec: np.ndarray) -> dict[str, float]:
-    return {k: float(v) for k, v in zip(keys, vec)}
+    return {k: float(v) for k, v in zip(keys, vec, strict=False)}
 
 
 # ── 采样 ──────────────────────────────────────────────────────────
@@ -262,22 +262,22 @@ def format_optimization_report(result: dict) -> str:
 
     lines.append("### 默认权重基线")
     dw = result["default_weights"]
-    lines.append(f"```")
+    lines.append("```")
     for k, v in dw.items():
         lines.append(f"  {k}: {v:.4f}")
-    lines.append(f"```")
+    lines.append("```")
     lines.append(f"基线得分: {result['default_results']}")
     lines.append("")
 
     lines.append("### 各目标最优权重")
     for oname, info in result.get("top_overall", {}).items():
         lines.append(f"**{oname}**: 得分 {info['score']:.4f} (vs 默认 {info['vs_default']:+.4f})")
-        lines.append(f"```")
+        lines.append("```")
         for k, v in info["weights"].items():
             default_v = dw.get(k, 0)
             delta = v - default_v
             lines.append(f"  {k}: {v:.4f}  (默认 {default_v:.4f}, {'+' if delta >= 0 else ''}{delta:.4f})")
-        lines.append(f"```")
+        lines.append("```")
         lines.append("")
 
     lines.append("### Top 5 精细验证结果")

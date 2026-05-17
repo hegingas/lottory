@@ -1,19 +1,20 @@
 """数据库模块测试（使用临时文件隔离）。"""
 
-import pytest
 import pandas as pd
+import pytest
 
 from lottery.db import (
+    _CSV_COLUMNS,
+    _LOTTERY_META,
+    CURRENT_SCHEMA_VERSION,
     get_connection,
-    init_db,
-    insert_draws,
     get_draws,
     get_latest_period,
     get_row_count,
-    verify_db_csv_consistency,
     get_schema_version,
-    _LOTTERY_META,
-    _CSV_COLUMNS,
+    init_db,
+    insert_draws,
+    verify_db_csv_consistency,
 )
 
 
@@ -28,7 +29,7 @@ def test_init_db_creates_tables(db_path):
         cur = conn.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
         tables = [r["name"] for r in cur.fetchall()]
         assert "schema_version" in tables
-        for lt, (table, _) in _LOTTERY_META.items():
+        for _lt, (table, _) in _LOTTERY_META.items():
             assert table in tables, f"table {table} missing"
 
 
@@ -105,7 +106,7 @@ def test_get_row_count(db_path):
 
 def test_schema_version(db_path):
     v = get_schema_version(path=db_path)
-    assert v == 1
+    assert v == CURRENT_SCHEMA_VERSION
 
 
 def test_verify_consistency(db_path):

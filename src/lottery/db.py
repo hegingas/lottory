@@ -7,13 +7,14 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Iterator
 
 import pandas as pd
 
-from .paths import db_path as _default_db_path, processed_dir
+from .paths import db_path as _default_db_path
+from .paths import processed_dir
 
 CURRENT_SCHEMA_VERSION = 3
 
@@ -733,10 +734,10 @@ def run_backtest(
     """
     from .builders import (
         prediction_block_dlt,
-        prediction_block_ssq,
         prediction_block_kl8,
         prediction_block_pl5,
         prediction_block_qxc,
+        prediction_block_ssq,
     )
 
     builders = {
@@ -780,7 +781,7 @@ def run_backtest(
     all_best_entries: list[dict] = []
     twenty_hits: list[int] = []  # KL8 Path B 20码命中数
 
-    from .config import _set_random_seed, DEFAULT_RANDOM_SEED
+    from .config import DEFAULT_RANDOM_SEED, _set_random_seed
 
     for i in range(start_idx, len(all_pids)):
         target_pid = int(all_pids[i])

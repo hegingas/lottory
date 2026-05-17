@@ -14,9 +14,9 @@ from typing import Any
 
 import pandas as pd
 
-from .paths import manifest_path, processed_dir, repo_root, schema_path
 from .builders import _norm_df
 from .config import VALIDATE_MAX_ERRORS
+from .paths import manifest_path, processed_dir, repo_root, schema_path
 
 
 def _load_csv(path: Path) -> pd.DataFrame:

@@ -2,26 +2,20 @@
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
+
 import numpy as np
 
 from .config import (
-    PATTERN_RECENT_K,
-    PATTERN_W_MISS,
-    PATTERN_W_FREQ,
-    PATTERN_W_ZONE,
-    PATTERN_W_RECENCY,
-    PATTERN_W_PARITY,
-    PATTERN_W_SIZE,
-    PATTERN_W_SUM,
-    PATTERN_W_MARKOV,
-    DLT_FRONT_ZONES_CAP,
-    DLT_BACK_ZONES_CAP,
-    SSQ_RED_ZONES_CAP,
-    SSQ_BLUE_ZONES_CAP,
-    MARKOV_LAPLACE_ALPHA,
-    DEFAULT_8F_WEIGHTS,
     DEFAULT_4F_WEIGHTS,
+    DEFAULT_8F_WEIGHTS,
+    DLT_BACK_ZONES_CAP,
+    DLT_FRONT_ZONES_CAP,
+    MARKOV_LAPLACE_ALPHA,
+    PATTERN_RECENT_K,
+    SSQ_BLUE_ZONES_CAP,
+    SSQ_RED_ZONES_CAP,
 )
 
 

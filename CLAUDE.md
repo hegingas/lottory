@@ -4,6 +4,8 @@
 
 规则体系：`CLAUDE.md`（本文件，Claude Code 全局规则）← 与 `.cursor/rules/*.mdc`、`.cursor/agents/*.md`、`AGENTS.md` 保持一致。
 
+**冲突声明**：当本文件与 `.cursor/rules/*.mdc` 存在冲突时，以 `.cursor/rules/` 为准，并在发现后同步本文件。可运行 `python scripts/check_rule_consistency.py` 做快速一致性检查。
+
 ---
 
 ## 合规与表述
@@ -58,9 +60,9 @@
 
 | 命令                                                                          | 作用                                       |
 | --------------------------------------------------------------------------- | ---------------------------------------- |
-| `python src/scripts/lottery.py inventory`                                   | 列出 data/ 下文件（JSON）                       |
-| `python src/scripts/lottery.py validate`                                    | 校验 CSV 与 manifest 一致性                    |
-| `python src/scripts/lottery.py regenerate-history [--only all|kl8|dlt-ssq|pl5|qxc]` | **唯一推荐**的机械刷新入口，默认近 30 期，覆盖 history/*.md |
+| `python src/scripts/cli.py inventory`                                   | 列出 data/ 下文件（JSON）                       |
+| `python src/scripts/cli.py validate`                                    | 校验 CSV 与 manifest 一致性                    |
+| `python src/scripts/cli.py regenerate-history [--only all|kl8|dlt-ssq|pl5|qxc]` | **唯一推荐**的机械刷新入口，默认近 30 期，覆盖 history/*.md |
 
 
 `regenerate-history` 用 `--only all`（默认）刷新大乐透、双色球、排列5，并在存在 `kl8_draws.csv` 时追加快乐八、存在 `qxc_draws.csv` 时追加七星彩；`--only kl8` 仅快乐八；`--only dlt-ssq` 仅大乐透+双色球；`--only pl5` 仅排列5；`--only qxc` 仅七星彩。`regenerate-kl8-prediction` 为兼容别名，等同 `--only kl8`。
@@ -270,7 +272,7 @@ min-max 归一后按 8 项独立因子加权：**马尔可夫转移 25%（一阶
 /lottery-manager（盘点 + 移交清单）
     → /lottery-draw-sync 或 /lottery-draw-dlt-ssq（补数据）
     → [按需] 排列5按 pl5_draws.csv 规范手工补录（当前无专用 draw Agent）
-    → validate（python src/scripts/lottery.py validate）
+    → validate（python src/scripts/cli.py validate）
     → /lottery-history-analysis（分析 + 更新 history/*_analysis.md）
     → /lottery-prediction（预测 + 更新 history/*_prediction.md）
     → /lottery-combo-optimize（可选组号）

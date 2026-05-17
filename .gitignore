@@ -7,3 +7,10 @@ __pycache__/
 venv/
 .venv/
 .pytest_cache/
+
+# Build artifacts
+src/lottery.egg-info/
+*.egg-info/
+
+# Database (large binary, regenerated from CSV)
+data/lottery.db

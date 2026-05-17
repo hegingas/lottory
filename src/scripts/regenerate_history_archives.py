@@ -18,27 +18,26 @@ _REPO = Path(__file__).resolve().parents[2]
 if str(_REPO / "src") not in sys.path:
     sys.path.insert(0, str(_REPO / "src"))
 
-from lottery.config import DEFAULT_RANDOM_SEED, _set_random_seed
 from lottery.builders import (
     HIST,
     MANIFEST,
     PROC,
     build_dlt_analysis,
-    build_ssq_analysis,
     build_kl8_analysis,
     build_pl5_analysis,
+    build_qxc_analysis,
+    build_ssq_analysis,
     prediction_block_dlt,
-    prediction_block_ssq,
     prediction_block_kl8,
     prediction_block_pl5,
-    build_qxc_analysis,
     prediction_block_qxc,
+    prediction_block_ssq,
 )
-from lottery.paths import repo_root  # noqa: E402
+from lottery.config import DEFAULT_RANDOM_SEED, _set_random_seed
 from lottery.db import save_predictions_batch
 
 
-def _load_draws(lottery_type: str) -> "pd.DataFrame":
+def _load_draws(lottery_type: str) -> pd.DataFrame:
     """从 DB 优先读取，若 DB 为空或不可用则回退 CSV。"""
     import pandas as pd
     try:

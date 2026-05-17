@@ -15,7 +15,7 @@ _REPO = Path(__file__).resolve().parents[2]
 if str(_REPO / "src") not in sys.path:
     sys.path.insert(0, str(_REPO / "src"))
 
-from lottery.web_app import create_app
+from lottery.web import create_app
 
 app = create_app()
 

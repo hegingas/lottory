@@ -7,7 +7,7 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from lottery.validate import validate_dlt, validate_ssq, validate_kl8, validate_pl5
+from lottery.validate import validate_dlt, validate_kl8, validate_pl5, validate_ssq
 
 
 def _make_dlt_df(rows):
