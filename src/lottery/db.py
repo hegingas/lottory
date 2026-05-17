@@ -902,8 +902,60 @@ def _compare_one_ticket(lottery_type: str, numbers: dict, draw: dict) -> dict:
 
 
 def _aggregate_backtest(lottery_type: str, regulars: list[dict], bests: list[dict]) -> dict:
-    """聚合回测统计。"""
+    """聚合回测统计（含最大回撤、中奖间隔分布等金融视角指标）。"""
+    import numpy as np
     summary: dict = {}
+
+    def _is_loss_dlt(e: dict) -> bool:
+        return e.get("prize_level", "未中奖") == "未中奖"
+
+    def _is_loss_ssq(e: dict) -> bool:
+        return e.get("prize_level", "未中奖") == "未中奖"
+
+    def _is_loss_kl8(e: dict) -> bool:
+        return e.get("overlap_count", 0) == 0
+
+    def _is_loss_pl5(e: dict) -> bool:
+        return e.get("position_matches", 0) == 0
+
+    def _is_loss_qxc(e: dict) -> bool:
+        return e.get("front_matches", 0) == 0 and e.get("special_match", 0) == 0
+
+    _loss_fn = {
+        "dlt": _is_loss_dlt, "ssq": _is_loss_ssq, "kl8": _is_loss_kl8,
+        "pl5": _is_loss_pl5, "qxc": _is_loss_qxc,
+    }.get(lottery_type, lambda e: False)
+
+    def _compute_stability(entries: list[dict]) -> dict:
+        if not entries:
+            return {}
+        # 最大回撤：最长连续未中奖
+        max_dd = 0
+        cur_dd = 0
+        gaps: list[int] = []
+        since_last_win = 0
+        for e in entries:
+            if _loss_fn(e):
+                cur_dd += 1
+                since_last_win += 1
+            else:
+                if since_last_win > 0:
+                    gaps.append(since_last_win)
+                since_last_win = 0
+                max_dd = max(max_dd, cur_dd)
+                cur_dd = 0
+        max_dd = max(max_dd, cur_dd)
+        gap_avg = float(np.mean(gaps)) if gaps else 0.0
+        gap_median = float(np.median(gaps)) if gaps else 0.0
+        gap_max = int(max(gaps)) if gaps else 0
+        win_rate = sum(1 for e in entries if not _loss_fn(e)) / len(entries)
+        return {
+            "max_drawdown": max_dd,
+            "prize_gap_avg": round(gap_avg, 1),
+            "prize_gap_median": round(gap_median, 1),
+            "prize_gap_max": gap_max,
+            "win_rate": round(win_rate, 4),
+        }
 
     if lottery_type in ("dlt",):
         if regulars:
@@ -913,9 +965,9 @@ def _aggregate_backtest(lottery_type: str, regulars: list[dict], bests: list[dic
             from collections import Counter
             prize_dist = Counter(e.get("prize_level", "未中奖") for e in regulars)
             summary["regular"]["prize_dist"] = dict(prize_dist.most_common())
-            # 最优注
             best_hit = max(regulars, key=lambda e: (e.get("front_matches", 0) * 10 + e.get("back_matches", 0)))
             summary["regular"]["best_hit"] = best_hit
+            summary["regular"]["stability"] = _compute_stability(regulars)
         if bests:
             fm_avg = sum(e.get("front_matches", 0) for e in bests) / len(bests)
             bm_avg = sum(e.get("back_matches", 0) for e in bests) / len(bests)
@@ -923,6 +975,7 @@ def _aggregate_backtest(lottery_type: str, regulars: list[dict], bests: list[dic
             from collections import Counter
             prize_dist = Counter(e.get("prize_level", "未中奖") for e in bests)
             summary["best"]["prize_dist"] = dict(prize_dist.most_common())
+            summary["best"]["stability"] = _compute_stability(bests)
 
     elif lottery_type == "ssq":
         if regulars:
@@ -934,6 +987,7 @@ def _aggregate_backtest(lottery_type: str, regulars: list[dict], bests: list[dic
             summary["regular"]["prize_dist"] = dict(prize_dist.most_common())
             best_hit = max(regulars, key=lambda e: (e.get("red_matches", 0) * 10 + e.get("blue_match", 0)))
             summary["regular"]["best_hit"] = best_hit
+            summary["regular"]["stability"] = _compute_stability(regulars)
         if bests:
             rm_avg = sum(e.get("red_matches", 0) for e in bests) / len(bests)
             bm_avg = sum(e.get("blue_match", 0) for e in bests) / len(bests)
@@ -941,32 +995,107 @@ def _aggregate_backtest(lottery_type: str, regulars: list[dict], bests: list[dic
             from collections import Counter
             prize_dist = Counter(e.get("prize_level", "未中奖") for e in bests)
             summary["best"]["prize_dist"] = dict(prize_dist.most_common())
+            summary["best"]["stability"] = _compute_stability(bests)
 
     elif lottery_type == "kl8":
         if regulars:
             ol_avg = sum(e.get("overlap_count", 0) for e in regulars) / len(regulars)
             summary["regular"] = {"count": len(regulars), "avg_overlap": round(ol_avg, 2)}
+            summary["regular"]["stability"] = _compute_stability(regulars)
         if bests:
             ol_avg = sum(e.get("overlap_count", 0) for e in bests) / len(bests)
             summary["best"] = {"count": len(bests), "avg_overlap": round(ol_avg, 2)}
+            summary["best"]["stability"] = _compute_stability(bests)
 
     elif lottery_type == "pl5":
         if regulars:
             pm_avg = sum(e.get("position_matches", 0) for e in regulars) / len(regulars)
             all_hit = sum(1 for e in regulars if e.get("all_matched"))
             summary["regular"] = {"count": len(regulars), "avg_pos": round(pm_avg, 2), "all_matched": all_hit}
+            summary["regular"]["stability"] = _compute_stability(regulars)
         if bests:
             pm_avg = sum(e.get("position_matches", 0) for e in bests) / len(bests)
             summary["best"] = {"count": len(bests), "avg_pos": round(pm_avg, 2)}
+            summary["best"]["stability"] = _compute_stability(bests)
 
     elif lottery_type == "qxc":
         if regulars:
             fm_avg = sum(e.get("front_matches", 0) for e in regulars) / len(regulars)
             sm_avg = sum(e.get("special_match", 0) for e in regulars) / len(regulars)
             summary["regular"] = {"count": len(regulars), "avg_front": round(fm_avg, 2), "avg_special": round(sm_avg, 2)}
+            summary["regular"]["stability"] = _compute_stability(regulars)
         if bests:
             fm_avg = sum(e.get("front_matches", 0) for e in bests) / len(bests)
             sm_avg = sum(e.get("special_match", 0) for e in bests) / len(bests)
             summary["best"] = {"count": len(bests), "avg_front": round(fm_avg, 2), "avg_special": round(sm_avg, 2)}
+            summary["best"]["stability"] = _compute_stability(bests)
 
     return summary
+
+
+def compute_rolling_stability(
+    lottery_type: str,
+    periods: int = 200,
+    window: int = 30,
+    slice_size: int = 50,
+    path: Path | str | None = None,
+) -> dict:
+    """滚动窗口稳定性：将全历史按 slice_size 拆分，各段独立回测，评估模型在不同时期的稳定性。"""
+    import numpy as np
+
+    init_db(path)
+    df = get_draws(lottery_type, path=path)
+    if df.empty:
+        return {"ok": False, "error": "无开奖数据"}
+    df["period_id"] = pd.to_numeric(df["period_id"], errors="coerce")
+    df = df.sort_values("period_id").reset_index(drop=True)
+    all_pids = df["period_id"].tolist()
+
+    total = len(all_pids)
+    slices = []
+    start = max(0, total - periods)
+    while start + window + 10 < total:
+        end = min(start + slice_size, total)
+        if end - start >= window + 10:
+            slices.append((start, end))
+        start += slice_size // 2  # 50% 重叠
+
+    if len(slices) < 2:
+        return {"ok": False, "error": f"数据不足以做滚动分析（需至少 2 段，当前 {len(slices)} 段）"}
+
+    segment_results = []
+    for seg_start, seg_end in slices:
+        seg_pids = all_pids[seg_start:seg_end]
+        seg_label = f"{int(min(seg_pids))}–{int(max(seg_pids))}"
+        r = run_backtest(lottery_type, periods=min(50, seg_end - seg_start - window),
+                         window=window, path=path)
+        if r["ok"]:
+            s = r["summary"]
+            metric = None
+            if lottery_type == "dlt":
+                metric = s.get("regular", {}).get("avg_front", 0) + s.get("regular", {}).get("avg_back", 0)
+            elif lottery_type == "ssq":
+                metric = s.get("regular", {}).get("avg_red", 0)
+            elif lottery_type == "kl8":
+                metric = s.get("regular", {}).get("avg_overlap", 0)
+            elif lottery_type == "pl5":
+                metric = s.get("regular", {}).get("avg_pos", 0)
+            elif lottery_type == "qxc":
+                metric = s.get("regular", {}).get("avg_front", 0)
+            segment_results.append({"segment": seg_label, "periods": r["periods_tested"], "metric": round(metric, 3) if metric else 0})
+
+    if not segment_results:
+        return {"ok": False, "error": "无有效回测段"}
+
+    metrics = [s["metric"] for s in segment_results]
+    return {
+        "ok": True,
+        "lottery_type": lottery_type,
+        "total_segments": len(segment_results),
+        "metric_mean": round(float(np.mean(metrics)), 3),
+        "metric_std": round(float(np.std(metrics, ddof=1)), 3) if len(metrics) > 1 else 0.0,
+        "metric_min": round(float(min(metrics)), 3),
+        "metric_max": round(float(max(metrics)), 3),
+        "cv": round(float(np.std(metrics, ddof=1)) / max(0.001, float(np.mean(metrics))), 4) if len(metrics) > 1 else 0.0,
+        "segments": segment_results,
+    }
