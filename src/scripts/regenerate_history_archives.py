@@ -3,7 +3,7 @@
 基于 data/processed/*.csv 重算并写入 history 下归档（N 默认见 `DEFAULT_STATS_WINDOW`，当前为 30）。
 
 运行（在仓库根，统一入口）：
-  python src/scripts/lottery.py regenerate-history [--only all|kl8|dlt-ssq|pl5|qxc]
+  python src/scripts/cli.py regenerate-history [--only all|kl8|dlt-ssq|pl5|qxc]
   # 或直接：python src/scripts/regenerate_history_archives.py [--only kl8]
 """
 

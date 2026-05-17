@@ -10,7 +10,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-# 确保 src/ 在 sys.path 中（避免 lottery 包与 lottery.py 脚本冲突）
+# 确保 src/ 在 sys.path 中
 _REPO = Path(__file__).resolve().parents[2]
 if str(_REPO / "src") not in sys.path:
     sys.path.insert(0, str(_REPO / "src"))

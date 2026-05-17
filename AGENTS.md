@@ -85,10 +85,10 @@
 
 | 子命令 | 作用 | 建议由谁触发 |
 |--------|------|----------------|
-| `python src/scripts/lottery.py inventory` | 列出 `data/` 下文件（UTF-8 JSON） | **`lottery-manager`** 盘点、任意 Agent 核对路径 |
-| `python src/scripts/lottery.py validate` | 校验 `dlt/ssq/kl8/pl5/qxc` CSV 列、号码区间、去重、与 `manifest` 行数是否一致；失败时 exit code 1 | 写入或追加 CSV **之后**必须执行；任意分析/预测 Agent 怀疑脏数据时可先跑 |
-| `python src/scripts/lottery.py regenerate-history`（可选 `--only all` / `kl8` / `dlt-ssq` / `pl5` / `qxc`） | **唯一推荐的机械刷新入口**。`--only all`（默认）写大乐透+双色球+排列5六文件，且存在 `kl8_draws.csv` 时再写快乐八两文件、存在 `qxc_draws.csv` 时再写七星彩两文件；`--only kl8` 仅快乐八；`--only dlt-ssq` 仅大乐透+双色球；`--only pl5` 仅排列5；`--only qxc` 仅七星彩。均为**期末尾近 30 期**（`DEFAULT_STATS_WINDOW`） | **validate 通过**后按任务选择 `--only`；**会覆盖**本次涉及的 `history/*.md` 全文；预测若有 combo 附录须事后补回 |
-| `python src/scripts/lottery.py regenerate-kl8-prediction` | **[兼容别名]**，等同 `regenerate-history --only kl8` | 旧脚本或习惯用法；新流程请统一用上一行 |
+| `python src/scripts/cli.py inventory` | 列出 `data/` 下文件（UTF-8 JSON） | **`lottery-manager`** 盘点、任意 Agent 核对路径 |
+| `python src/scripts/cli.py validate` | 校验 `dlt/ssq/kl8/pl5/qxc` CSV 列、号码区间、去重、与 `manifest` 行数是否一致；失败时 exit code 1 | 写入或追加 CSV **之后**必须执行；任意分析/预测 Agent 怀疑脏数据时可先跑 |
+| `python src/scripts/cli.py regenerate-history`（可选 `--only all` / `kl8` / `dlt-ssq` / `pl5` / `qxc`） | **唯一推荐的机械刷新入口**。`--only all`（默认）写大乐透+双色球+排列5六文件，且存在 `kl8_draws.csv` 时再写快乐八两文件、存在 `qxc_draws.csv` 时再写七星彩两文件；`--only kl8` 仅快乐八；`--only dlt-ssq` 仅大乐透+双色球；`--only pl5` 仅排列5；`--only qxc` 仅七星彩。均为**期末尾近 30 期**（`DEFAULT_STATS_WINDOW`） | **validate 通过**后按任务选择 `--only`；**会覆盖**本次涉及的 `history/*.md` 全文；预测若有 combo 附录须事后补回 |
+| `python src/scripts/cli.py regenerate-kl8-prediction` | **[兼容别名]**，等同 `regenerate-history --only kl8` | 旧脚本或习惯用法；新流程请统一用上一行 |
 
 **配合原则**：专精 Agent **不替代**脚本做大规模逐行校验（易错）；脚本 **不替代** Agent 写归档解读与随机性声明。改数 → **先 `validate` 再分析与预测**；批量重算正文 → **`regenerate-history`**（用 `--only` 限定范围）。
 
@@ -110,7 +110,7 @@
 
 在仓库根执行（与直接跑 `regenerate_history_archives.py` 等价）：
 
-`python src/scripts/lottery.py regenerate-history [--only all|kl8|dlt-ssq|pl5|qxc]`
+`python src/scripts/cli.py regenerate-history [--only all|kl8|dlt-ssq|pl5|qxc]`
 
 或：`python src/scripts/regenerate_history_archives.py [--only kl8]`（参数与上一致）。
 

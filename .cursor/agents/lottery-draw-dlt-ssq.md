@@ -23,4 +23,4 @@ description: 专精更新大乐透与双色球开奖数据：抓取或导入、�
 
 ## 完成后
 
-说明新区间与文件路径；优先建议运行 `python src/scripts/lottery.py regenerate-history --only dlt-ssq`（统一入口）或移交 `lottery-history-analysis`。
+说明新区间与文件路径；优先建议运行 `python src/scripts/cli.py regenerate-history --only dlt-ssq`（统一入口）或移交 `lottery-history-analysis`。

@@ -72,7 +72,7 @@ alwaysApply: true
 ## 预测归档与数据盘点
 
 - 统计型预测参考的固定落盘见 `.cursor/rules/lottery-prediction-storage.mdc`（`history/*_prediction.md`）。
-- 总控做文件盘点时，**优先**在仓库根执行 `python src/scripts/lottery.py inventory`，以 JSON 输出为清单依据；亦可配合 IDE 文件树核对路径。
+- 总控做文件盘点时，**优先**在仓库根执行 `python src/scripts/cli.py inventory`，以 JSON 输出为清单依据；亦可配合 IDE 文件树核对路径。
 
 ## 组号与预测的边界
 

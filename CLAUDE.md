@@ -47,7 +47,7 @@
 | `data/processed/` | **规范化主数据**，分析与预测的单一事实源 |
 | `history/`        | 分析/预测书面归档（10 个 md）     |
 | `src/lottery/`    | Python 库：配置、评分、选号、构建、格式化、路径、盘点、校验 |
-| `src/scripts/`    | CLI 入口 `lottery.py`    |
+| `src/scripts/`    | CLI 入口 `cli.py`    |
 | `.cursor/rules/`  | Cursor IDE 规则（与本文件等效）  |
 | `.cursor/agents/` | Cursor IDE Subagent 定义 |
 | `.cursor/skills/` | Skill 技能定义             |
@@ -118,7 +118,7 @@
 
 ### 区间掩码马尔可夫与候选域（大乐透 / 双色球 / 快乐八）
 
-机械预测在「按号综合分」之外增加一层**全历史、按期的区间命中掩码**（各区是否至少出过 1 个球 → 二进制整数），对相邻期做**一阶马尔可夫 + 拉普拉斯平滑**，取末态条件下概率最大的下一掩码，再**扩展掩码**直至在「每区至多 `max_per_zone`」下能取满所需球数（仍不足则该球区全开）。**仅在掩码并集号码内**做贪心选号或随机兜底（`src/lottery/interval_markov.py`，接线见 `src/lottery/builders.py` 中 `prediction_block_dlt` / `prediction_block_ssq` / `prediction_block_kl8`，选号见 `src/lottery/selection.py`）。
+机械预测在「按号综合分」之外增加一层**全历史、按期的区间命中掩码**（各区是否至少出过 1 个球 → 二进制整数），对相邻期做**一阶马尔可夫 + 拉普拉斯平滑**，取末态条件下概率最大的下一掩码，再**扩展掩码**直至在「每区至多 `max_per_zone`」下能取满所需球数（仍不足则该球区全开）。**仅在掩码并集号码内**做贪心选号或随机兜底（`src/lottery/interval_markov.py`，接线见 `src/lottery/builders/_prediction.py` 中 `prediction_block_dlt` / `prediction_block_ssq` / `prediction_block_kl8`，选号见 `src/lottery/selection.py`）。
 
 - **大乐透**：前区 7 段（每段 5 个连续号）、后区 **4** 段（**01–03 / 04–06 / 07–09 / 10–12**，每段 3 个号），前区需凑满 5 个、后区 2 个。  
 - **双色球**：红球 7 段（每段 5 个连续号，末段 31–33）、蓝球 **4** 段（每段 4 个连续号），红球需 6 个、蓝球 1 个。  
@@ -141,7 +141,7 @@ min-max 归一后按 8 项独立因子加权：**马尔可夫转移 25%（一阶
 
 ### 排列5 多因子加权规则
 
-排列5 每位独立评分，按 4 项因子合成：**马尔可夫转移 40%（一阶+二阶混合，40%/60%） + 当前遗漏 20% + 频次 20% + 近 K 期密度 20%**（权重合计 1.0，见 `src/lottery/builders.py` 中 `prediction_block_pl5`）。每位 0–9 共 10 个候选，取综合分最高者（5 注之间施加轻度去重惩罚）。排列5 允许重复数字，不存在分区上限约束。
+排列5 每位独立评分，按 4 项因子合成：**马尔可夫转移 40%（一阶+二阶混合，40%/60%） + 当前遗漏 20% + 频次 20% + 近 K 期密度 20%**（权重合计 1.0，见 `src/lottery/builders/_prediction.py` 中 `prediction_block_pl5`）。每位 0–9 共 10 个候选，取综合分最高者（5 注之间施加轻度去重惩罚）。排列5 允许重复数字，不存在分区上限约束。
 
 ### 七星彩 多因子加权规则
 

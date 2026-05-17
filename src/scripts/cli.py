@@ -159,9 +159,9 @@ def _build_doctor_report() -> tuple[dict, object]:
     }
     suggest_cmds: list[str] = []
     if not bool(val.get("ok")):
-        suggest_cmds.append("python src/scripts/lottery.py validate")
+        suggest_cmds.append("python src/scripts/cli.py validate")
     if not all(sync.values()) or not all(analysis_sync.values()) or not all(formula_sync.values()):
-        suggest_cmds.append("python src/scripts/lottery.py regenerate-history --only all --seed 20260430")
+        suggest_cmds.append("python src/scripts/cli.py regenerate-history --only all --seed 20260430")
     if not suggest_cmds:
         suggest_cmds.append("# 状态正常：当前无需修复命令")
 

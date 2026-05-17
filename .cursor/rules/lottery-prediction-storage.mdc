@@ -42,7 +42,7 @@ alwaysApply: true
 5. **使用说明 / 随机性声明**  
 6. **附录：预算与投注推荐（脚本固写）**：`regenerate-history` 在 `history/daletou_prediction.md`、`history/shuangseqiu_prediction.md` 文末写入 **10～30 元（含）** 金额带规则，并说明正文 **5 注单式** 合计 **10 元**（无倍投）；在 `history/kuaileba_prediction.md` 文末为 **选十 11 码复式 ≈22 元**；在 `history/pailie5_prediction.md` 文末写入 **10～30 元带内** 的单式金额示例（默认 5 注共 10 元）。常量以 `src/lottery/config.py` 为准。更复杂方案仍由 **`lottery-combo-optimize`** 在金额带内优化并写校验与投注原因。
 
-历史版本以 Git 为准；若用户要求多版保留，可在正文末追加日期分节。`python src/scripts/lottery.py regenerate-history`（`--only all`，以及 `--only kl8` / `--only pl5`）会按范围重写对应预测正文。快乐八预算说明见 `kuaileba_prediction.md` 文末提示与 `lottery-combo-optimize` 技能。
+历史版本以 Git 为准；若用户要求多版保留，可在正文末追加日期分节。`python src/scripts/cli.py regenerate-history`（`--only all`，以及 `--only kl8` / `--only pl5`）会按范围重写对应预测正文。快乐八预算说明见 `kuaileba_prediction.md` 文末提示与 `lottery-combo-optimize` 技能。
 
 - **时间口径（强制）**：上述元数据中的 `最后更新` 与正文中的 `预测生成时间` 必须使用**北京时间**（ISO-8601，`+08:00`）。
 

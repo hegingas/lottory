@@ -75,7 +75,7 @@ description: 在明确统计口径下整理大乐透、双色球、快乐八、�
 
 **元数据块**须含：`最后更新`（ISO 8601）、`统计窗口`（如近 N 期）、`期号范围`、`所用数据路径`、可选 `引用分析归档路径`。正文须含「输出结构模板」全部章节，**且「## 明确号码输出（强制）」不可省略**（无号码视为未完成落盘）。**归档文件不可漏更**。
 
-批量从 processed 重写预测正文（**含**机械「明确号码输出」：大乐透/双色球/排列5/七星彩 各 **5 注单式**，快乐八含 20 码/11码；**默认近 30 期**）**统一**运行：`python src/scripts/lottery.py regenerate-history --only all`（存在 `kl8_draws.csv` 时会覆盖快乐八、存在 `qxc_draws.csv` 时会覆盖七星彩）；仅快乐八：`--only kl8`；仅大乐透/双色球：`--only dlt-ssq`；仅排列5：`--only pl5`；仅七星彩：`--only qxc`。**会覆盖**对应 `history/*_prediction.md` 全文。文末「**附录：预算与投注推荐**」按各彩种模板写入。若另有 **`lottery-combo-optimize` 更丰富打票表**附录，重跑后须补回。若需与一键结果不同的口径，由本 Agent 手写覆盖。
+批量从 processed 重写预测正文（**含**机械「明确号码输出」：大乐透/双色球/排列5/七星彩 各 **5 注单式**，快乐八含 20 码/11码；**默认近 30 期**）**统一**运行：`python src/scripts/cli.py regenerate-history --only all`（存在 `kl8_draws.csv` 时会覆盖快乐八、存在 `qxc_draws.csv` 时会覆盖七星彩）；仅快乐八：`--only kl8`；仅大乐透/双色球：`--only dlt-ssq`；仅排列5：`--only pl5`；仅七星彩：`--only qxc`。**会覆盖**对应 `history/*_prediction.md` 全文。文末「**附录：预算与投注推荐**」按各彩种模板写入。若另有 **`lottery-combo-optimize` 更丰富打票表**附录，重跑后须补回。若需与一键结果不同的口径，由本 Agent 手写覆盖。
 
 ## 职责隔离（禁止越界）
 

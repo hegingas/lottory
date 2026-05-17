@@ -318,7 +318,7 @@ def build_kl8_analysis(df: pd.DataFrame, analysis_window: int | None = None) -> 
 本次基于 **processed** `kl8_draws.csv` 做质量检查与描述性统计。**频率、遗漏与结构类指标**仅针对上述 **近 {n} 期** 默认窗口（与大乐透/双色球 `regenerate-history` 一致）；全表行数见元数据。
 
 - **结构**：每期一行，`period_id` + `n01`–`n20` 共 **20** 个开奖号码；取值 **01–80**。
-- **数据质量（脚本自检）**：窗口内每期恰为 **20** 个互异号码、升序存储、无越界（与 `lottery.py validate` 规则一致方可入库）。
+- **数据质量（脚本自检）**：窗口内每期恰为 **20** 个互异号码、升序存储、无越界（与 `cli.py validate` 规则一致方可入库）。
 - **统计视角**：下文「频次 / 当前遗漏」均针对 **每期开出的 20 个开奖号码**；**不等同**于「选十」玩法下购彩者选 10 个号后的中奖分析。
 
 ---
@@ -375,7 +375,7 @@ def build_kl8_analysis(df: pd.DataFrame, analysis_window: int | None = None) -> 
 
 ---
 
-> **脚本提示**：本文件由 `python src/scripts/lottery.py regenerate-history`（`--only all` 且存在 `kl8_draws.csv` 时）或 `regenerate-history --only kl8` **按相同默认窗口**自动重写；亦可由 `lottery-history-analysis` 增补深度解读（须在元数据中保持口径一致）。
+> **脚本提示**：本文件由 `python src/scripts/cli.py regenerate-history`（`--only all` 且存在 `kl8_draws.csv` 时）或 `regenerate-history --only kl8` **按相同默认窗口**自动重写；亦可由 `lottery-history-analysis` 增补深度解读（须在元数据中保持口径一致）。
 """
 
 

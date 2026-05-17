@@ -11,7 +11,7 @@
 | # | 任务 | 执行者 | 产出核对 |
 |---|------|--------|----------|
 | 0.1 | 确认彩种与范围：大乐透 / 双色球 / 快乐八 / 排列5 / 七星彩；是否要预测、是否要 combo 附录 | 用户 / `lottery-manager` | ☐ |
-| 0.2 | 仓库根执行：`python src/scripts/lottery.py inventory` | 用户 / 终端 | ☐ 已保存或已查看 JSON 输出 |
+| 0.2 | 仓库根执行：`python src/scripts/cli.py inventory` | 用户 / 终端 | ☐ 已保存或已查看 JSON 输出 |
 | 0.3 | 总控输出**移交清单**（下一步 Subagent、`name`、提示词要点） | `lottery-manager` | ☐ 清单已拿到 |
 
 ---
@@ -22,7 +22,7 @@
 |---|------|--------|----------|
 | 1.1 | 仅大乐透+双色球补数 → `lottery-draw-dlt-ssq`；含快乐八 → `lottery-draw-sync`；排列5/七星彩 → 按CSV规范手工补录（当前无专用draw Agent） | 专精 Agent | ☐ `dlt_draws.csv` / `ssq_draws.csv` /（如需）`kl8_draws.csv` / `pl5_draws.csv` / `qxc_draws.csv` 已更新 |
 | 1.2 | 同步更新 `data/processed/manifest.json`（溯源、rows_out、期号范围等） | 同上 | ☐ manifest 与 CSV 一致 |
-| 1.3 | 仓库根执行：`python src/scripts/lottery.py validate` | 用户 / 终端 | ☐ 退出码 **0**，JSON 中 `ok: true` |
+| 1.3 | 仓库根执行：`python src/scripts/cli.py validate` | 用户 / 终端 | ☐ 退出码 **0**，JSON 中 `ok: true` |
 
 ---
 
@@ -69,7 +69,7 @@
 
 | # | 任务 | 执行者 | 产出核对 |
 |---|------|--------|----------|
-| 4.1 | **统一命令**：`python src/scripts/lottery.py regenerate-history`，按任务加 `--only`：`all`（默认，含 kl8/qxc 时写满分至多 10 个 md）、`kl8`（仅快乐八）、`dlt-ssq`（仅大乐透+双色球）、`pl5`（仅排列5）、`qxc`（仅七星彩） | 用户 / 终端 | ☐ 终端 JSON `ok: true` 且 `wrote` 与预期一致 |
+| 4.1 | **统一命令**：`python src/scripts/cli.py regenerate-history`，按任务加 `--only`：`all`（默认，含 kl8/qxc 时写满分至多 10 个 md）、`kl8`（仅快乐八）、`dlt-ssq`（仅大乐透+双色球）、`pl5`（仅排列5）、`qxc`（仅七星彩） | 用户 / 终端 | ☐ 终端 JSON `ok: true` 且 `wrote` 与预期一致 |
 | 4.1b | 若曾做 B.3：**重新粘贴/生成** 预测 md 的 combo 附录（DLT/SSQ/KL8 按需） | 用户 / combo Agent | ☐ 附录已恢复 |
 
 ---

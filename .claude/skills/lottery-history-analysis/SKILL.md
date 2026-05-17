@@ -21,8 +21,8 @@ description: 对大乐透、双色球、快乐八、排列5、七星彩历史开
    - 元数据与剔除说明：`data/processed/manifest.json`。  
 2. 否则：`data/raw/` 或用户指定的其它结构化文件（本仓库不约定 xlsx）。  
 3. 必须在输出元数据中写明**实际采用的层级与路径**。若发现行级异常，按 `lottery-manager` 技能中的「异常数据闭环」移交修正后再重跑。  
-4. 开始深度统计前，可建议用户在仓库根执行 `python src/scripts/lottery.py validate`，以脚本结果作为数据质量门禁（与 Agent 文字结论相互印证）。  
-5. 若用户仅需将 `data/processed` 机械分析同步到 `history/*_analysis.md`：**统一**使用 `python src/scripts/lottery.py regenerate-history`，用 `--only all`（默认，含 kl8 时写 `kuaileba_analysis.md`、含 qxc 时写 `qixingcai_analysis.md`）、`--only dlt-ssq`（仅大乐透+双色球）、`--only kl8`（仅快乐八分析+预测）、`--only pl5`（仅排列5分析+预测）或 `--only qxc`（仅七星彩分析+预测）。脚本为**默认近 30 期**；人工深度解读仍由本 Agent 在对话中完成。
+4. 开始深度统计前，可建议用户在仓库根执行 `python src/scripts/cli.py validate`，以脚本结果作为数据质量门禁（与 Agent 文字结论相互印证）。  
+5. 若用户仅需将 `data/processed` 机械分析同步到 `history/*_analysis.md`：**统一**使用 `python src/scripts/cli.py regenerate-history`，用 `--only all`（默认，含 kl8 时写 `kuaileba_analysis.md`、含 qxc 时写 `qixingcai_analysis.md`）、`--only dlt-ssq`（仅大乐透+双色球）、`--only kl8`（仅快乐八分析+预测）、`--only pl5`（仅排列5分析+预测）或 `--only qxc`（仅七星彩分析+预测）。脚本为**默认近 30 期**；人工深度解读仍由本 Agent 在对话中完成。
 
 ## 彩种字段口径
 

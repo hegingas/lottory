@@ -719,7 +719,7 @@ def prediction_block_kl8(df: pd.DataFrame, n_last: int | None = None, weights: d
 
 ---
 
-> **提示**：本文件由 `python src/scripts/lottery.py regenerate-history --only kl8`（**同时**重写 `history/kuaileba_analysis.md`）或 `regenerate-history --only all`（存在 `kl8_draws.csv` 时）生成；文末附录含 **10～30 元** 带内机械复式示例。若追加更复杂方案，可再请 **`lottery-combo-optimize`** 并写投注原因。
+> **提示**：本文件由 `python src/scripts/cli.py regenerate-history --only kl8`（**同时**重写 `history/kuaileba_analysis.md`）或 `regenerate-history --only all`（存在 `kl8_draws.csv` 时）生成；文末附录含 **10～30 元** 带内机械复式示例。若追加更复杂方案，可再请 **`lottery-combo-optimize`** 并写投注原因。
 """, pred_data
 
 

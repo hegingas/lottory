@@ -19,7 +19,7 @@ description: 彩票项目总控编排：解析大乐透/双色球/快乐八/排�
 
 ## 阶段 0：数据盘点（总控可做）
 
-1. **优先**让用户/终端在仓库根执行：`python src/scripts/lottery.py inventory`（UTF-8 JSON）；再核对 `data/processed/` 行数与 `manifest.json`；勿假设存在 xlsx。  
+1. **优先**让用户/终端在仓库根执行：`python src/scripts/cli.py inventory`（UTF-8 JSON）；再核对 `data/processed/` 行数与 `manifest.json`；勿假设存在 xlsx。  
 2. 再核对与五彩种相关的 `history/` 归档是否齐全；若存在 `data/processed/`，在移交清单中**优先推荐**下游读取 processed。  
 3. 抽样或读取元信息，输出：**路径、期号起止、行数、缺口**（与仓库基线：快乐八常缺；大乐透/双色球常缺近期——以实际盘点为准）。  
 4. **不得编造**不存在的文件或期号。
@@ -39,7 +39,7 @@ description: 彩票项目总控编排：解析大乐透/双色球/快乐八/排�
 - **若需补数**：  
   - 仅大乐透/双色球 → `lottery-draw-dlt-ssq`；提示词要点（彩种、期号缺口、官方源、更新 `dlt_draws.csv`/`ssq_draws.csv`/manifest）。  
   - 含快乐八或三彩种全量 → `lottery-draw-sync`。  
-  - 仅排列5 → 当前仓库无专用 draw Agent；建议按 `data/processed/pl5_draws.csv` 规范人工补录并同步 `manifest.json`，随后执行 `python src/scripts/lottery.py validate`。  
+  - 仅排列5 → 当前仓库无专用 draw Agent；建议按 `data/processed/pl5_draws.csv` 规范人工补录并同步 `manifest.json`，随后执行 `python src/scripts/cli.py validate`。  
 - **若需分析**：下一步 → `lottery-history-analysis`；提示词要点（数据路径、彩种、关注维度）；提醒该 Agent 须在 `history/daletou_analysis.md`、`history/shuangseqiu_analysis.md`、`history/kuaileba_analysis.md`、`history/pailie5_analysis.md`、`history/qixingcai_analysis.md` 中更新对应归档（见 `lottery-history-storage` 规则）。  
 - **若需预测**：下一步 → `lottery-prediction`；提示词要点（**优先** `data/processed/` 路径、或请用户粘贴分析摘要、口径 N）；提醒更新 `history/daletou_prediction.md` / `shuangseqiu_prediction.md` / `kuaileba_prediction.md` / `pailie5_prediction.md` / `qixingcai_prediction.md`（见 `lottery-prediction-storage`）；**声明须由该 Agent 输出随机性说明**。  
 - **若需组号**：下一步 → `lottery-combo-optimize`（仅当用户明确提出）。
@@ -53,7 +53,7 @@ description: 彩票项目总控编排：解析大乐透/双色球/快乐八/排�
 ## 目录约定
 
 - `data/raw/`、`data/processed/`、`src/`；实际文件以盘点为准（**本仓库不约定存放 xlsx**）。  
-- **更新 processed 后（可选）**：在仓库根统一执行 `python src/scripts/lottery.py regenerate-history`，用 `--only` 告诉用户刷新范围：`all`（默认，含 kl8/qxc 时写至多 10 个 md）、`kl8`（仅快乐八分析+预测）、`dlt-ssq`（仅大乐透+双色球四文件）、`pl5`（仅排列5分析+预测）、`qxc`（仅七星彩分析+预测）。均为**默认近 30 期**、**会覆盖**正文；再移交专精 Agent 做增量解读或复核。旧别名 `regenerate-kl8-prediction` 等同 `--only kl8`。
+- **更新 processed 后（可选）**：在仓库根统一执行 `python src/scripts/cli.py regenerate-history`，用 `--only` 告诉用户刷新范围：`all`（默认，含 kl8/qxc 时写至多 10 个 md）、`kl8`（仅快乐八分析+预测）、`dlt-ssq`（仅大乐透+双色球四文件）、`pl5`（仅排列5分析+预测）、`qxc`（仅七星彩分析+预测）。均为**默认近 30 期**、**会覆盖**正文；再移交专精 Agent 做增量解读或复核。旧别名 `regenerate-kl8-prediction` 等同 `--only kl8`。
 
 ## 与其它技能的关系
 

@@ -14,7 +14,7 @@ description: 彩票总控：解析五彩种分析与预测需求、盘点仓库�
 ## 你只能做
 
 - 解析用户意图（彩种 + 分析 / 预测 / 两者；含排列5、七星彩）。  
-- **盘点**当前项目内数据文件与期号覆盖、缺口（不编造）；**优先**引用 `python src/scripts/lottery.py inventory` 的 JSON 输出列清单（本仓库不存放 xlsx）。  
+- **盘点**当前项目内数据文件与期号覆盖、缺口（不编造）；**优先**引用 `python src/scripts/cli.py inventory` 的 JSON 输出列清单（本仓库不存放 xlsx）。  
 - 输出 **分阶段计划** 与 **移交清单**：下一步应打开的 Subagent `name`、建议用户复制的提示词、上下游依赖；若存在 `data/processed/`，移交中写明**优先读取 processed**。
 
 ## 你禁止做（属于其他 Agent）

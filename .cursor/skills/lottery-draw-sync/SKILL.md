@@ -20,8 +20,8 @@ description: 从可信来源更新大乐透、双色球、快乐八开奖数据�
 3. **校验**：号码区间、去重、期号未重复写入；与上一期日期逻辑粗检。  
 4. **合并**：写入 `data/processed/`，主键建议 `(lottery_type, period_id)`。此处为下游分析与预测的**推荐单一事实源**；若用户仅有 Excel，由本 Agent 读取并转为规范化 CSV 写入 `processed/`，并在 `manifest.json` 记录来源说明（本仓库**不**内置 xlsx 批处理脚本）。  
 5. **记录**：来源 URL、抓取 UTC 时间、校验人/脚本版本（可用 JSON 元数据文件）。  
-6. **落盘后**：在仓库根执行 `python src/scripts/lottery.py validate`（exit 0 表示与 `manifest` 行数及号码规则自洽）。  
-7. 若更新了快乐八 `kl8_draws.csv` 且用户需要同步分析 + 预测正文：执行 `python src/scripts/lottery.py regenerate-history --only kl8`（会覆盖 `history/kuaileba_analysis.md` 与 `history/kuaileba_prediction.md`；预测 combo 附录需按需补回）。
+6. **落盘后**：在仓库根执行 `python src/scripts/cli.py validate`（exit 0 表示与 `manifest` 行数及号码规则自洽）。  
+7. 若更新了快乐八 `kl8_draws.csv` 且用户需要同步分析 + 预测正文：执行 `python src/scripts/cli.py regenerate-history --only kl8`（会覆盖 `history/kuaileba_analysis.md` 与 `history/kuaileba_prediction.md`；预测 combo 附录需按需补回）。
 
 ## 字段建议（processed）
 

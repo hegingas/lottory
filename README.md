@@ -31,7 +31,7 @@ python src/scripts/lottery_web.py
 # 浏览器打开 http://localhost:5000
 ```
 
-功能：走势图（新浪风格遗漏值/衍生列/重号标记）、模拟选号输入框、全彩种分析预测在线刷新。数据源为 `data/lottery.db`（SQLite），由 `src/lottery/db.py` 提供 DB 读写；`src/lottery/web_app.py` 为 Flask 应用主体，`templates/` 为 Jinja2 模板。
+功能：走势图（新浪风格遗漏值/衍生列/重号标记）、模拟选号输入框、全彩种分析预测在线刷新。数据源为 `data/lottery.db`（SQLite），由 `src/lottery/db.py` 提供 DB 读写；`src/lottery/web/` 为 Flask 蓝图应用主体，`templates/` 为 Jinja2 模板。
 
 ## 仓库结构概览
 
@@ -49,9 +49,9 @@ python src/scripts/lottery_web.py
 | `data/`                     | `raw/` 原始抓取（可选）；`processed/` **主数据**（`dlt_draws.csv` / `ssq_draws.csv` / `kl8_draws.csv` / `pl5_draws.csv` / `qxc_draws.csv`，**不含开奖日期列**，仅期号+号码）；`lottery.db` SQLite 数据库（Web 界面数据源）                                                                                                     |
 | `history/`                  | 分析 / 预测：`daletou_*`、`shuangseqiu_*`、`kuaileba_*`、`pailie5_*`、`qixingcai_*`（可由 `regenerate-history` 按**五彩种同一默认窗口**批量刷新，或由对应 Agent 维护）                                                                               |
 | `templates/`                | Jinja2 模板（`index.html`、`lottery.html`、`base.html`），用于 Flask Web 走势图与预测展示                                                                                                                                                |
-| `src/scripts/`              | **`lottery.py`**：统一用 `regenerate-history` + `--only` 刷新 `history/`（`all` / `kl8` / `dlt-ssq` / `pl5` / `qxc`，默认近 30 期）；`regenerate-kl8-prediction` 为兼容别名；**`lottery_web.py`** 启动 Flask 开发服务器；另保留 `regenerate_history_archives.py`                          |
-| `src/lottery/`              | 配置、评分、**区间掩码马尔可夫**（`interval_markov.py`）、选号、构建 `history` 正文、校验、DB 读写（`db.py`）、Flask 应用（`web_app.py`） |
-| `requirements.txt`          | Python 依赖：`pandas>=2.0`、`numpy>=1.24`、`flask>=3.0`                                                                                                                                                        |
+| `src/scripts/`              | **`cli.py`**：统一用 `regenerate-history` + `--only` 刷新 `history/`（`all` / `kl8` / `dlt-ssq` / `pl5` / `qxc`，默认近 30 期）；`regenerate-kl8-prediction` 为兼容别名；**`lottery_web.py`** 启动 Flask 开发服务器；另保留 `regenerate_history_archives.py`                          |
+| `src/lottery/`              | 配置、评分、**区间掩码马尔可夫**（`interval_markov.py`）、选号、构建 `history` 正文（`builders/`）、校验（`validate.py`）、DB 读写（`db.py`）、Flask 蓝图应用（`web/`） |
+| `pyproject.toml`            | Python 依赖与工具配置：`pandas`、`numpy`、`flask`（运行时）；`pytest`、`ruff`、`mypy`（开发）                                                                                                                       |
 
 
 ## Subagent 一览
@@ -83,7 +83,7 @@ python src/scripts/lottery_web.py
 ### Claude Code
 
 1. 通过 `/skill-name` 调用对应技能（如 `/lottery-manager`、`/lottery-prediction`）。
-2. CLI 命令直接在终端执行：`python src/scripts/lottery.py validate`、`regenerate-history --only all`。
+2. CLI 命令直接在终端执行：`python src/scripts/cli.py validate`、`regenerate-history --only all`。
 3. 全局规则自动加载自 `CLAUDE.md`，与 `.cursor/rules/` 保持等效。
 
 ### Web 界面
@@ -106,4 +106,4 @@ python src/scripts/lottery_web.py
 
 ## 机械预测口径（摘要）
 
-`regenerate-history` 生成大乐透 / 双色球 / 快乐八预测时：先做**全表**「小区是否出球」**二进制掩码**的相邻期一阶马尔可夫 + 拉普拉斯平滑，再**扩展掩码**得到允许选号集合，最后在集合内按多因子与分区上限取号（`src/lottery/interval_markov.py`、`builders.prediction_block_*`、`selection`）。快乐八为**单一路径**活跃十码段，**非**旧版「窗口 Top4 + Top4 状态马尔可夫」并列。细则见 `AGENTS.md`（「机械预测口径」）、`CLAUDE.md` 与 `.cursor/rules/lottery-core.mdc`。
+`regenerate-history` 生成大乐透 / 双色球 / 快乐八预测时：先做**全表**「小区是否出球」**二进制掩码**的相邻期一阶马尔可夫 + 拉普拉斯平滑，再**扩展掩码**得到允许选号集合，最后在集合内按多因子与分区上限取号（`src/lottery/interval_markov.py`、`src/lottery/builders/_prediction.py`、`src/lottery/selection.py`）。快乐八为**单一路径**活跃十码段，**非**旧版「窗口 Top4 + Top4 状态马尔可夫」并列。细则见 `AGENTS.md`（「机械预测口径」）、`CLAUDE.md` 与 `.cursor/rules/lottery-core.mdc`。
