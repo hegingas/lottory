@@ -33,6 +33,8 @@ from .config import (
     KL8_PICK_ZONES_CAP,
     KL8_ELEVEN_OVERLAP_MAX,
     MARKOV_LAPLACE_ALPHA,
+    DEFAULT_8F_WEIGHTS,
+    DEFAULT_4F_WEIGHTS,
 )
 from .interval_markov import (
     expand_kl8_decadic_mask,
@@ -537,7 +539,10 @@ def build_kl8_analysis(df: pd.DataFrame, analysis_window: int = DEFAULT_STATS_WI
 
 # ── 大乐透预测 ────────────────────────────────────────────────
 
-def prediction_block_dlt(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW) -> str:
+def prediction_block_dlt(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW, weights: dict[str, float] | None = None, whiten: bool = False) -> str:
+    # DLT: 白化倒退 -2.7%，保持原始因子空间
+    if weights is None:
+        weights = _lottery_config.get_optimized_weights("dlt")
     df = df.copy()
     df["period_id"] = pd.to_numeric(df["period_id"], errors="coerce")
     full = df.sort_values("period_id").reset_index(drop=True)
@@ -580,8 +585,8 @@ def prediction_block_dlt(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW) -
     b_mk = _markov_blended_probabilities([list(map(int, r)) for r in b_draws_all], 12)
     f_mk_n = _minmax01_ball(f_mk, 35)
     b_mk_n = _minmax01_ball(b_mk, 12)
-    fs = _dlt_front_scores(f_draws, fq, fcur, f_mk)
-    bs = _dlt_back_scores(b_draws, bq, bcur, b_mk)
+    fs = _dlt_front_scores(f_draws, fq, fcur, f_mk, weights=weights, whiten=whiten)
+    bs = _dlt_back_scores(b_draws, bq, bcur, b_mk, weights=weights, whiten=whiten)
     hist_keys_dlt: set[tuple[tuple[int, ...], tuple[int, ...]]] = set()
     for _, row in full.iterrows():
         f_t = tuple(sorted(int(row[f"front_{i}"]) for i in range(1, 6)))
@@ -717,7 +722,12 @@ def prediction_block_dlt(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW) -
 
 # ── 双色球预测 ────────────────────────────────────────────────
 
-def prediction_block_ssq(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW) -> str:
+def prediction_block_ssq(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW, weights: dict[str, float] | None = None, whiten: bool | None = None) -> str:
+    # SSQ: 白化 +4.0%，默认开启
+    if whiten is None:
+        whiten = True
+    if weights is None:
+        weights = _lottery_config.get_optimized_weights("ssq")
     df = df.copy()
     df["period_id"] = pd.to_numeric(df["period_id"], errors="coerce")
     full = df.sort_values("period_id").reset_index(drop=True)
@@ -760,8 +770,8 @@ def prediction_block_ssq(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW) -
     b_mk = _markov_blended_probabilities([[int(x)] for x in blues_all], 16)
     r_mk_n = _minmax01_ball(r_mk, 33)
     b_mk_n = _minmax01_ball(b_mk, 16)
-    rs = _ssq_red_scores(r_draws, rq, rcur, r_mk)
-    bs_sc = _ssq_blue_scores(blues_list, bq, bcur, b_mk)
+    rs = _ssq_red_scores(r_draws, rq, rcur, r_mk, weights=weights, whiten=whiten)
+    bs_sc = _ssq_blue_scores(blues_list, bq, bcur, b_mk, weights=weights, whiten=whiten)
     hist_keys_ssq: set[tuple[tuple[int, ...], int]] = set()
     for _, row in full.iterrows():
         r_t = tuple(sorted(int(row[f"red_{i}"]) for i in range(1, 7)))
@@ -928,7 +938,9 @@ def _kl8_collect_one_path_outputs(
 
 # ── 快乐八预测 ────────────────────────────────────────────────
 
-def prediction_block_kl8(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW) -> str:
+def prediction_block_kl8(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW, weights: dict[str, float] | None = None, whiten: bool = False) -> str:
+    if weights is None:
+        weights = _lottery_config.get_optimized_weights("kl8")
     df = _norm_df(df)
     draws_all, pids_all = _kl8_draw_rows(df)
     full_n = len(draws_all)
@@ -948,7 +960,7 @@ def prediction_block_kl8(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW) -
     top_miss = sorted([(i, int(fcur[i])) for i in range(1, 81)], key=lambda t: -t[1])[:5]
     markov_raw = _markov_blended_probabilities(draws_all, 80)
     markov_norm = _minmax01_ball(markov_raw, 80)
-    kl8_scores = _kl8_twenty_scores(fq, fcur, draws, markov_raw)
+    kl8_scores = _kl8_twenty_scores(fq, fcur, draws, markov_raw, weights=weights, whiten=whiten)
     latest20_set = set(int(x) for x in draws_all[-1])
 
     pred_ts = now_cn_iso()
@@ -1209,7 +1221,9 @@ def build_pl5_analysis(df: pd.DataFrame, analysis_window: int = DEFAULT_STATS_WI
 """
 
 
-def prediction_block_pl5(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW) -> str:
+def prediction_block_pl5(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW, weights: dict[str, float] | None = None) -> str:
+    if weights is None:
+        weights = _lottery_config.get_optimized_weights("pl5")
     df = df.copy()
     df["period_id"] = pd.to_numeric(df["period_id"], errors="coerce")
     full = df.sort_values("period_id").reset_index(drop=True)
@@ -1242,11 +1256,12 @@ def prediction_block_pl5(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW) -
             rec[int(row[pos])] += 1.0
         mk = _pl5_markov_blended(draws_all, pos)
         mk_by_pos.append(mk)
+        w4 = weights if weights is not None else DEFAULT_4F_WEIGHTS
         sc = (
-            _lottery_config.QXC_W_MISS    * _pl5_norm01(miss)
-            + _lottery_config.QXC_W_FREQ  * _pl5_norm01(freq)
-            + _lottery_config.QXC_W_RECENCY * _pl5_norm01(rec)
-            + _lottery_config.QXC_W_MARKOV * _pl5_norm01(mk)
+            w4["miss"]    * _pl5_norm01(miss)
+            + w4["freq"]  * _pl5_norm01(freq)
+            + w4["recency"] * _pl5_norm01(rec)
+            + w4["markov"] * _pl5_norm01(mk)
         )
         scores_by_pos.append(sc)
 
@@ -1426,7 +1441,9 @@ def build_qxc_analysis(df: pd.DataFrame, analysis_window: int = DEFAULT_STATS_WI
 """
 
 
-def prediction_block_qxc(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW) -> str:
+def prediction_block_qxc(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW, weights: dict[str, float] | None = None) -> str:
+    if weights is None:
+        weights = _lottery_config.get_optimized_weights("qxc")
     df = df.copy()
     df["period_id"] = pd.to_numeric(df["period_id"], errors="coerce")
     full = df.sort_values("period_id").reset_index(drop=True)
@@ -1447,11 +1464,11 @@ def prediction_block_qxc(df: pd.DataFrame, n_last: int = DEFAULT_STATS_WINDOW) -
     scores_by_pos: list[np.ndarray] = []
     mk_by_pos: list[np.ndarray] = []
     for pos in range(6):
-        sc, mk = _qxc_position_scores(draws, pos, 10, _lottery_config.QXC_W_MISS, _lottery_config.QXC_W_FREQ, _lottery_config.QXC_W_RECENCY, _lottery_config.QXC_W_MARKOV, PATTERN_RECENT_K)
+        sc, mk = _qxc_position_scores(draws, pos, 10, _lottery_config.QXC_W_MISS, _lottery_config.QXC_W_FREQ, _lottery_config.QXC_W_RECENCY, _lottery_config.QXC_W_MARKOV, PATTERN_RECENT_K, weights=weights)
         scores_by_pos.append(sc)
         mk_by_pos.append(mk)
     sc_special, mk_special = _qxc_position_scores(
-        [[s] for s in specials_win], 0, 15, _lottery_config.QXC_W_MISS, _lottery_config.QXC_W_FREQ, _lottery_config.QXC_W_RECENCY, _lottery_config.QXC_W_MARKOV, PATTERN_RECENT_K
+        [[s] for s in specials_win], 0, 15, _lottery_config.QXC_W_MISS, _lottery_config.QXC_W_FREQ, _lottery_config.QXC_W_RECENCY, _lottery_config.QXC_W_MARKOV, PATTERN_RECENT_K, weights=weights
     )
     scores_by_pos.append(sc_special)
     mk_by_pos.append(mk_special)

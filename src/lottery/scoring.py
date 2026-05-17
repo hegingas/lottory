@@ -20,6 +20,8 @@ from .config import (
     SSQ_RED_ZONES_CAP,
     SSQ_BLUE_ZONES_CAP,
     MARKOV_LAPLACE_ALPHA,
+    DEFAULT_8F_WEIGHTS,
+    DEFAULT_4F_WEIGHTS,
 )
 
 
@@ -89,6 +91,46 @@ def _minmax01_ball(raw: np.ndarray, n_ball: int) -> np.ndarray:
     return out
 
 
+def _zca_whitening_matrix(factor_cols: list[np.ndarray], reg: float = 0.05) -> np.ndarray:
+    """计算 ZCA 白化矩阵 W，使得 X @ W 的协方差为单位矩阵。
+
+    Args:
+        factor_cols: 各因子列向量列表（每列长度 n_ball，已归一化）
+        reg: 正则化系数（shrinkage），防止小特征值爆炸
+
+    Returns:
+        (n_factors, n_factors) 白化矩阵 W
+    """
+    X = np.column_stack(factor_cols)  # (n_balls, n_factors)
+    X_centered = X - X.mean(axis=0, keepdims=True)
+    cov = (X_centered.T @ X_centered) / max(len(X_centered) - 1, 1)
+    # 收缩估计：向单位矩阵收缩
+    cov_shrunk = (1.0 - reg) * cov + reg * np.eye(len(cov))
+    eigvals, eigvecs = np.linalg.eigh(cov_shrunk)
+    # 数值安全：截断过小特征值
+    eigvals = np.maximum(eigvals, 1e-8)
+    # ZCA: W = V @ D^(-1/2) @ V^T
+    inv_sqrt_diag = np.diag(1.0 / np.sqrt(eigvals))
+    W = eigvecs @ inv_sqrt_diag @ eigvecs.T
+    return W
+
+
+def _apply_whitening(
+    factor_arrs: list[np.ndarray],
+    W: np.ndarray,
+    n_ball: int,
+) -> list[np.ndarray]:
+    """对归一化后的因子列应用白化变换，返回白化后各因子列（保持 1-indexed 格式）。"""
+    X = np.column_stack([np.array([float(a[i]) for i in range(1, n_ball + 1)]) for a in factor_arrs])
+    X_white = X @ W
+    result = []
+    for j in range(X_white.shape[1]):
+        col = np.zeros(n_ball + 1, dtype=float)
+        col[1:] = X_white[:, j]
+        result.append(col)
+    return result
+
+
 def _weighted_composite(
     miss_raw: np.ndarray,
     freq_raw: np.ndarray,
@@ -99,7 +141,10 @@ def _weighted_composite(
     sum_raw: np.ndarray,
     markov_raw: np.ndarray,
     n_ball: int,
+    weights: dict[str, float] | None = None,
+    whiten: bool = False,
 ) -> np.ndarray:
+    w = weights if weights is not None else DEFAULT_8F_WEIGHTS
     nm = _minmax01_ball(miss_raw, n_ball)
     nf = _minmax01_ball(freq_raw, n_ball)
     nz = _minmax01_ball(zone_raw, n_ball)
@@ -108,18 +153,41 @@ def _weighted_composite(
     ns = _minmax01_ball(size_raw, n_ball)
     nsum = _minmax01_ball(sum_raw, n_ball)
     nmk = _minmax01_ball(markov_raw, n_ball)
-    out = np.zeros(n_ball + 1, dtype=float)
-    for i in range(1, n_ball + 1):
-        out[i] = (
-            PATTERN_W_MISS    * nm[i]
-            + PATTERN_W_FREQ  * nf[i]
-            + PATTERN_W_ZONE  * nz[i]
-            + PATTERN_W_RECENCY * nr[i]
-            + PATTERN_W_PARITY  * np_[i]
-            + PATTERN_W_SIZE    * ns[i]
-            + PATTERN_W_SUM     * nsum[i]
-            + PATTERN_W_MARKOV  * nmk[i]
+
+    if whiten:
+        # ZCA 白化：消除因子间相关性，避免同一信息源重复计分
+        factor_order = ["miss", "freq", "zone", "recency", "parity", "size", "sum", "markov"]
+        factor_arrs = [nm, nf, nz, nr, np_, ns, nsum, nmk]
+        W_mat = _zca_whitening_matrix(
+            [np.array([float(a[i]) for i in range(1, n_ball + 1)]) for a in factor_arrs]
         )
+        white_arrs = _apply_whitening(factor_arrs, W_mat, n_ball)
+        wm = {k: white_arrs[i] for i, k in enumerate(factor_order)}
+        out = np.zeros(n_ball + 1, dtype=float)
+        for i in range(1, n_ball + 1):
+            out[i] = (
+                w["miss"]    * wm["miss"][i]
+                + w["freq"]  * wm["freq"][i]
+                + w["zone"]  * wm["zone"][i]
+                + w["recency"] * wm["recency"][i]
+                + w["parity"]  * wm["parity"][i]
+                + w["size"]    * wm["size"][i]
+                + w["sum"]     * wm["sum"][i]
+                + w["markov"]  * wm["markov"][i]
+            )
+    else:
+        out = np.zeros(n_ball + 1, dtype=float)
+        for i in range(1, n_ball + 1):
+            out[i] = (
+                w["miss"]    * nm[i]
+                + w["freq"]  * nf[i]
+                + w["zone"]  * nz[i]
+                + w["recency"] * nr[i]
+                + w["parity"]  * np_[i]
+                + w["size"]    * ns[i]
+                + w["sum"]     * nsum[i]
+                + w["markov"]  * nmk[i]
+            )
     return out
 
 
@@ -311,6 +379,8 @@ def _kl8_twenty_scores(
     cur_miss: np.ndarray,
     draws: list[list[int]],
     markov_raw: np.ndarray,
+    weights: dict[str, float] | None = None,
+    whiten: bool = False,
 ) -> np.ndarray:
     n_ball = 80
     f_miss = np.array([float(cur_miss[i]) for i in range(n_ball + 1)], dtype=float)
@@ -323,7 +393,7 @@ def _kl8_twenty_scores(
     f_sum = _sum_alignment_scores(draws, n_ball)
     zones = [(1, 20), (21, 40), (41, 60), (61, 80)]
     f_zone = _zone_density_raw(draws, n_ball, zones)
-    return _weighted_composite(f_miss, f_freq, f_zone, f_rec, f_odd, f_half, f_sum, markov_raw, n_ball)
+    return _weighted_composite(f_miss, f_freq, f_zone, f_rec, f_odd, f_half, f_sum, markov_raw, n_ball, weights=weights, whiten=whiten)
 
 
 def _dlt_front_scores(
@@ -331,6 +401,8 @@ def _dlt_front_scores(
     fq: np.ndarray,
     fcur: np.ndarray,
     markov_raw: np.ndarray,
+    weights: dict[str, float] | None = None,
+    whiten: bool = False,
 ) -> np.ndarray:
     n_ball = 35
     f_miss = np.array([float(fcur[i]) for i in range(n_ball + 1)], dtype=float)
@@ -343,7 +415,7 @@ def _dlt_front_scores(
     f_big = _size_alignment_raw(n_ball, mean_big, slots, lambda i: i >= 18)
     f_sum = _sum_alignment_scores(f_draws, n_ball)
     f_zone = _zone_density_raw(f_draws, n_ball, DLT_FRONT_ZONES_CAP)
-    return _weighted_composite(f_miss, f_freq, f_zone, f_rec, f_odd, f_big, f_sum, markov_raw, n_ball)
+    return _weighted_composite(f_miss, f_freq, f_zone, f_rec, f_odd, f_big, f_sum, markov_raw, n_ball, weights=weights, whiten=whiten)
 
 
 def _dlt_back_scores(
@@ -351,6 +423,8 @@ def _dlt_back_scores(
     bq: np.ndarray,
     bcur: np.ndarray,
     markov_raw: np.ndarray,
+    weights: dict[str, float] | None = None,
+    whiten: bool = False,
 ) -> np.ndarray:
     n_ball = 12
     f_miss = np.array([float(bcur[i]) for i in range(n_ball + 1)], dtype=float)
@@ -363,7 +437,7 @@ def _dlt_back_scores(
     f_zone = _zone_density_raw(b_draws, n_ball, DLT_BACK_ZONES_CAP)
     mean_hi = float(np.mean([sum(1 for x in row if int(x) >= 7) for row in b_draws])) if b_draws else 1.0
     f_hi = _size_alignment_raw(n_ball, mean_hi, slots, lambda i: i >= 7)
-    return _weighted_composite(f_miss, f_freq, f_zone, f_rec, f_odd, f_hi, f_sum, markov_raw, n_ball)
+    return _weighted_composite(f_miss, f_freq, f_zone, f_rec, f_odd, f_hi, f_sum, markov_raw, n_ball, weights=weights, whiten=whiten)
 
 
 def _ssq_red_scores(
@@ -371,6 +445,8 @@ def _ssq_red_scores(
     rq: np.ndarray,
     rcur: np.ndarray,
     markov_raw: np.ndarray,
+    weights: dict[str, float] | None = None,
+    whiten: bool = False,
 ) -> np.ndarray:
     n_ball = 33
     f_miss = np.array([float(rcur[i]) for i in range(n_ball + 1)], dtype=float)
@@ -383,7 +459,7 @@ def _ssq_red_scores(
     f_big = _size_alignment_raw(n_ball, mean_big, slots, lambda i: i >= 17)
     f_sum = _sum_alignment_scores(r_draws, n_ball)
     f_zone = _zone_density_raw(r_draws, n_ball, SSQ_RED_ZONES_CAP)
-    return _weighted_composite(f_miss, f_freq, f_zone, f_rec, f_odd, f_big, f_sum, markov_raw, n_ball)
+    return _weighted_composite(f_miss, f_freq, f_zone, f_rec, f_odd, f_big, f_sum, markov_raw, n_ball, weights=weights, whiten=whiten)
 
 
 def _ssq_blue_scores(
@@ -391,6 +467,8 @@ def _ssq_blue_scores(
     bq: np.ndarray,
     bcur: np.ndarray,
     markov_raw: np.ndarray,
+    weights: dict[str, float] | None = None,
+    whiten: bool = False,
 ) -> np.ndarray:
     n_ball = 16
     b_draws = [[int(x)] for x in blues]
@@ -409,7 +487,7 @@ def _ssq_blue_scores(
         f_med[i] = 1.0 - min(1.0, abs(float(i) - med) / max(scale, 1e-6))
     mean_hi = float(np.mean([1 if int(x) >= 9 else 0 for x in blues])) if blues else 0.5
     f_hi = _size_alignment_raw(n_ball, mean_hi, 1, lambda i: i >= 9)
-    return _weighted_composite(f_miss, f_freq, f_zone, f_rec, f_odd, f_hi, f_med, markov_raw, n_ball)
+    return _weighted_composite(f_miss, f_freq, f_zone, f_rec, f_odd, f_hi, f_med, markov_raw, n_ball, weights=weights, whiten=whiten)
 
 
 # ── 七星彩分位评分 ──────────────────────────────────────────────
@@ -485,7 +563,9 @@ def _qxc_position_scores(
     w_recency: float,
     w_markov: float,
     recent_k: int = 5,
+    weights: dict[str, float] | None = None,
 ) -> np.ndarray:
+    w = weights if weights is not None else DEFAULT_4F_WEIGHTS
     n_win = len(draws)
     freq = np.zeros(n_digits, dtype=float)
     miss = np.zeros(n_digits, dtype=float)
@@ -502,10 +582,19 @@ def _qxc_position_scores(
     for row in draws[-min(recent_k, n_win):]:
         rec[int(row[pos])] += 1.0
     mk = _qxc_markov_blended(draws, pos, n_digits)
-    sc = (
-        w_miss    * _qxc_norm01(miss)
-        + w_freq  * _qxc_norm01(freq)
-        + w_recency * _qxc_norm01(rec)
-        + w_markov * _qxc_norm01(mk)
-    )
+    # 若外部传入显式 weights，优先使用；否则回退到位置参数（向后兼容）
+    if weights is not None:
+        sc = (
+            w["miss"]    * _qxc_norm01(miss)
+            + w["freq"]  * _qxc_norm01(freq)
+            + w["recency"] * _qxc_norm01(rec)
+            + w["markov"] * _qxc_norm01(mk)
+        )
+    else:
+        sc = (
+            w_miss    * _qxc_norm01(miss)
+            + w_freq  * _qxc_norm01(freq)
+            + w_recency * _qxc_norm01(rec)
+            + w_markov * _qxc_norm01(mk)
+        )
     return sc, mk

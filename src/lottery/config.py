@@ -17,6 +17,7 @@ PATTERN_RECENT_K = 5
 KL8_PATTERN_RECENT_K = PATTERN_RECENT_K
 
 # 8 项因子独立权重（合计 1.0）—— 马尔可夫转移为最大权重
+# 以下为原始硬编码值（保留作参考）；实际使用请通过 get_weights(lottery_type) 获取优化后权重
 PATTERN_W_MARKOV  = 0.25
 PATTERN_W_MISS    = 0.18
 PATTERN_W_FREQ    = 0.14
@@ -25,6 +26,90 @@ PATTERN_W_RECENCY = 0.10
 PATTERN_W_PARITY  = 0.08
 PATTERN_W_SIZE    = 0.08
 PATTERN_W_SUM     = 0.05
+
+# 默认 8 因子权重字典（大乐透/双色球/快乐八），key 与 _weighted_composite 参数对应
+DEFAULT_8F_WEIGHTS: dict[str, float] = {
+    "markov": PATTERN_W_MARKOV,
+    "miss": PATTERN_W_MISS,
+    "freq": PATTERN_W_FREQ,
+    "zone": PATTERN_W_ZONE,
+    "recency": PATTERN_W_RECENCY,
+    "parity": PATTERN_W_PARITY,
+    "size": PATTERN_W_SIZE,
+    "sum": PATTERN_W_SUM,
+}
+
+# ── 各彩种优化权重（Dirichlet 采样 + 回测搜索，2026-05-17） ──
+
+# 大乐透 8 因子优化权重（基于 hits 目标：avg_front*10 + avg_back）
+DLT_8F_WEIGHTS: dict[str, float] = {
+    "markov": 0.059, "miss": 0.014, "freq": 0.006, "zone": 0.007,
+    "recency": 0.086, "parity": 0.082, "size": 0.230, "sum": 0.517,
+}
+
+# 大乐透 8 因子优化权重（基于 prize 目标：九等奖及以上比例）
+DLT_8F_WEIGHTS_PRIZE: dict[str, float] = {
+    "markov": 0.011, "miss": 0.066, "freq": 0.009, "zone": 0.216,
+    "recency": 0.221, "parity": 0.016, "size": 0.012, "sum": 0.450,
+}
+
+# 双色球 8 因子优化权重（基于 hits 目标）
+SSQ_8F_WEIGHTS: dict[str, float] = {
+    "markov": 0.054, "miss": 0.087, "freq": 0.287, "zone": 0.004,
+    "recency": 0.359, "parity": 0.004, "size": 0.194, "sum": 0.012,
+}
+
+# 双色球 8 因子优化权重（基于 prize 目标）
+SSQ_8F_WEIGHTS_PRIZE: dict[str, float] = {
+    "markov": 0.063, "miss": 0.013, "freq": 0.183, "zone": 0.017,
+    "recency": 0.565, "parity": 0.087, "size": 0.047, "sum": 0.026,
+}
+
+# 快乐八 8 因子优化权重（基于 overlap 目标）
+KL8_8F_WEIGHTS: dict[str, float] = {
+    "markov": 0.269, "miss": 0.103, "freq": 0.028, "zone": 0.090,
+    "recency": 0.016, "parity": 0.207, "size": 0.220, "sum": 0.067,
+}
+
+# 默认 4 因子权重字典（排列5/七星彩）
+DEFAULT_4F_WEIGHTS: dict[str, float] = {
+    "markov": 0.40,
+    "miss": 0.20,
+    "freq": 0.20,
+    "recency": 0.20,
+}
+
+# 排列5 4 因子优化权重（基于 pos 目标）
+PL5_4F_WEIGHTS: dict[str, float] = {
+    "markov": 0.094, "miss": 0.445, "freq": 0.436, "recency": 0.025,
+}
+
+# 七星彩 4 因子优化权重（基于 pos 目标）
+QXC_4F_WEIGHTS: dict[str, float] = {
+    "markov": 0.701, "miss": 0.087, "freq": 0.180, "recency": 0.032,
+}
+
+# ── 彩种 → 优化权重映射 ──
+
+_OPTIMIZED_8F: dict[str, dict[str, float]] = {
+    "dlt": DLT_8F_WEIGHTS,
+    "ssq": SSQ_8F_WEIGHTS,
+    "kl8": KL8_8F_WEIGHTS,
+}
+
+_OPTIMIZED_4F: dict[str, dict[str, float]] = {
+    "pl5": PL5_4F_WEIGHTS,
+    "qxc": QXC_4F_WEIGHTS,
+}
+
+
+def get_optimized_weights(lottery_type: str) -> dict[str, float] | None:
+    """返回指定彩种的优化权重字典，无优化数据时返回 None。"""
+    if lottery_type in _OPTIMIZED_8F:
+        return dict(_OPTIMIZED_8F[lottery_type])
+    if lottery_type in _OPTIMIZED_4F:
+        return dict(_OPTIMIZED_4F[lottery_type])
+    return None
 
 # 马尔可夫链阶数混合权重（1 阶 + 2 阶，合计 1.0）
 MARKOV_1ST_ORDER_WEIGHT = 0.40

@@ -714,6 +714,8 @@ def run_backtest(
     window: int = 30,
     path: Path | str | None = None,
     progress_callback=None,
+    weights: dict[str, float] | None = None,
+    whiten: bool | None = None,
 ) -> dict:
     """滑动窗口历史回测。
 
@@ -794,7 +796,12 @@ def run_backtest(
         _set_random_seed(int(DEFAULT_RANDOM_SEED) + target_pid)
 
         try:
-            _md, pred_data = builder(win_df, n_last=window)
+            kwargs = {"n_last": window}
+            if weights is not None:
+                kwargs["weights"] = weights
+            if whiten is not None:
+                kwargs["whiten"] = whiten
+            _md, pred_data = builder(win_df, **kwargs)
         except Exception:
             continue
 
