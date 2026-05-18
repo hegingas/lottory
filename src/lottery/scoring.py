@@ -558,7 +558,7 @@ def _qxc_position_scores(
     w_markov: float,
     recent_k: int = 5,
     weights: dict[str, float] | None = None,
-) -> np.ndarray:
+) -> tuple[np.ndarray, np.ndarray]:
     w = weights if weights is not None else DEFAULT_4F_WEIGHTS
     n_win = len(draws)
     freq = np.zeros(n_digits, dtype=float)

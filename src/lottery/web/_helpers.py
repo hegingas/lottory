@@ -661,14 +661,14 @@ def _build_trend_table(lt: str, window: int = 100) -> dict[str, Any]:
             derived_cols.append(col)
 
         # ── 重号检测 ──
-        repeat_hits = []
+        repeat_hits: list[list[int]] = []
         for pi in range(len(main_draws)):
             if pi == 0:
                 repeat_hits.append([])
             else:
                 repeat_hits.append(sorted(main_draws[pi] & main_draws[pi - 1]))
 
-        sub_repeat_hits = None
+        sub_repeat_hits: list[list[int]] | None = None
         if has_sub:
             sub_repeat_hits = []
             for pi in range(len(sub_draws)):

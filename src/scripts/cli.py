@@ -18,6 +18,7 @@ import json
 import re
 import sys
 from pathlib import Path
+from typing import Any
 
 # 确保 src/ 在 sys.path 中
 _REPO = Path(__file__).resolve().parents[2]
@@ -105,7 +106,7 @@ def _extract_markov_formula_weight(path: Path) -> float | None:
     return None
 
 
-def _build_doctor_report() -> tuple[dict, object]:
+def _build_doctor_report() -> tuple[dict, Any]:
     import lottery.config as cfg
 
     root = repo_root()
@@ -154,14 +155,15 @@ def _build_doctor_report() -> tuple[dict, object]:
         "ssq": _extract_markov_formula_weight(hist / "shuangseqiu_prediction.md"),
         "kl8": _extract_markov_formula_weight(hist / "kuaileba_prediction.md"),
     }
-    formula_sync = {
-        k: (
-            formula_weight.get(k) is not None
-            and optimized.get(k) is not None
-            and abs(float(formula_weight.get(k)) - float(optimized[k].get("markov", -1))) < 0.01
+    formula_sync: dict[str, bool] = {}
+    for k in ("dlt", "ssq", "kl8"):
+        fw = formula_weight.get(k)
+        ow = optimized.get(k)
+        formula_sync[k] = (
+            fw is not None
+            and ow is not None
+            and abs(float(fw) - float(ow.get("markov", -1))) < 0.01
         )
-        for k in ("dlt", "ssq", "kl8")
-    }
     suggest_cmds: list[str] = []
     if not bool(val.get("ok")):
         suggest_cmds.append("python src/scripts/cli.py validate")
@@ -197,7 +199,7 @@ def _build_doctor_report() -> tuple[dict, object]:
             "sum": float(cfg.PATTERN_W_SUM),
             "markov": float(cfg.PATTERN_W_MARKOV),
         },
-        "weights_optimized": {k: {kk: round(float(vv), 4) for kk, vv in v.items()} for k, v in optimized.items()},
+        "weights_optimized": {k: {kk: round(float(vv), 4) for kk, vv in v.items()} for k, v in optimized.items() if v is not None},
         "validate_errors": val.get("errors", []),
         "suggested_commands": suggest_cmds,
     }
@@ -225,9 +227,9 @@ def cmd_doctor(as_json: bool = False, auto_fix: bool = False) -> int:
             out2["auto_fix_steps"] = out["auto_fix_steps"]
             out2["auto_fix_error"] = out["auto_fix_error"]
             out = out2
-        except Exception as e:
+        except Exception as exc:
             out["ok"] = False
-            out["auto_fix_error"] = f"doctor --fix exception: {e}"
+            out["auto_fix_error"] = f"doctor --fix exception: {exc}"
     else:
         out["auto_fix_executed"] = False
         out["auto_fix_steps"] = []

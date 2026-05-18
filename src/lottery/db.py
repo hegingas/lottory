@@ -347,7 +347,7 @@ def verify_db_csv_consistency(
 ) -> dict:
     types = [lottery_type] if lottery_type else list(_LOTTERY_META)
     all_synced = True
-    result: dict[str, dict] = {}
+    result: dict[str, object] = {}
     for lt in types:
         csv_rows = len(_read_csv(lt))
         db_rows = get_row_count(lt, path=path)
@@ -616,11 +616,11 @@ def compute_accuracy(
                 "all_matched": pos_matches == 5,
             }
         elif lottery_type == "qxc":
-            front_pred = nums["front"]
-            front_actual = [draw["d1"], draw["d2"], draw["d3"], draw["d4"], draw["d5"], draw["d6"]]
+            qxc_front_pred = nums["front"]
+            qxc_front_actual = [draw["d1"], draw["d2"], draw["d3"], draw["d4"], draw["d5"], draw["d6"]]
             special_pred = nums["special"]
             special_actual = draw["special"]
-            fm = sum(1 for i in range(6) if front_pred[i] == front_actual[i])
+            fm = sum(1 for i in range(6) if qxc_front_pred[i] == qxc_front_actual[i])
             sm = 1 if special_pred == special_actual else 0
             entry = {
                 "ticket_type": p["ticket_type"],
@@ -807,14 +807,14 @@ def run_backtest(
         _set_random_seed(int(DEFAULT_RANDOM_SEED) + target_pid)
 
         try:
-            kwargs = {"n_last": window}
+            kwargs: dict[str, object] = {"n_last": window}
             if weights is not None:
                 kwargs["weights"] = weights
             if whiten is not None:
                 kwargs["whiten"] = whiten
             if lottery_type == "kl8":
                 kwargs["path"] = kl8_path
-            _md, pred_data = builder(win_df, **kwargs)
+            _md, pred_data = builder(win_df, **kwargs)  # type: ignore[arg-type]
         except Exception:
             continue
 
@@ -899,11 +899,11 @@ def _compare_one_ticket(lottery_type: str, numbers: dict, draw: dict) -> dict:
         pm = sum(1 for i in range(5) if d_pred[i] == d_act[i])
         return {"position_matches": pm, "all_matched": pm == 5}
     elif lottery_type == "qxc":
-        f_pred = numbers["front"]
-        f_act = [draw["d1"], draw["d2"], draw["d3"], draw["d4"], draw["d5"], draw["d6"]]
+        qxc_fpred = numbers["front"]
+        qxc_fact = [draw["d1"], draw["d2"], draw["d3"], draw["d4"], draw["d5"], draw["d6"]]
         sp = numbers["special"]
         sa = draw["special"]
-        fm = sum(1 for i in range(6) if f_pred[i] == f_act[i])
+        fm = sum(1 for i in range(6) if qxc_fpred[i] == qxc_fact[i])
         sm = 1 if sp == sa else 0
         return {"front_matches": fm, "special_match": sm}
     return {}

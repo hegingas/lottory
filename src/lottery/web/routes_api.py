@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from flask import Blueprint, jsonify, request
 
 from ._helpers import (
@@ -244,7 +246,8 @@ def api_check_wins(lt: str):
             return jsonify({"error": "无法解析号码，期望前 6 + 后 1 共 7 个数字"}), 400
 
     # ── 逐期匹配 ──
-    matches = []
+    assert parsed is not None
+    matches: list[dict[str, Any]] = []
     if lt in ("dlt", "ssq"):
         main_set = set(parsed["main"])
         sub_set = set(parsed["sub"])
@@ -286,15 +289,15 @@ def api_check_wins(lt: str):
         digits = parsed["digits"]
         threshold = 3
         for _, row in df.iterrows():
-            drawn = [int(row[c]) for c in meta["main_cols"]]
-            pos_hits = [digits[i] == drawn[i] for i in range(5)]
+            pl5_drawn = [int(row[c]) for c in meta["main_cols"]]
+            pos_hits = [digits[i] == pl5_drawn[i] for i in range(5)]
             hit_count = sum(pos_hits)
             if hit_count >= threshold:
                 matches.append({
                     "period": int(row["period_id"]),
                     "pos_hits": pos_hits,
                     "hit_count": hit_count,
-                    "drawn_digits": drawn,
+                    "drawn_digits": pl5_drawn,
                 })
 
     elif lt == "qxc":

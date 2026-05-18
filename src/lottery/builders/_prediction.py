@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 import pandas as pd
 
@@ -83,7 +85,7 @@ from ._utils import _kl8_draw_rows, _norm_df, _pl5_markov_blended, _pl5_norm01
 # ── 大乐透预测 ────────────────────────────────────────────────
 
 
-def prediction_block_dlt(df: pd.DataFrame, n_last: int | None = None, weights: dict[str, float] | None = None, whiten: bool = False) -> str:
+def prediction_block_dlt(df: pd.DataFrame, n_last: int | None = None, weights: dict[str, float] | None = None, whiten: bool = False) -> tuple[str, dict[str, Any]]:
     # DLT: 白化倒退 -2.7%，保持原始因子空间
     if n_last is None:
         n_last = adaptive_stats_window(len(df))
@@ -111,14 +113,14 @@ def prediction_block_dlt(df: pd.DataFrame, n_last: int | None = None, weights: d
     size_pairs: dict[str, int] = {}
     sums = []
     spans = []
-    for row in fronts:
-        row = list(map(int, row))
-        odds = sum(1 for x in row if x % 2)
+    for frow in fronts:
+        frow = list(map(int, frow))
+        odds = sum(1 for x in frow if x % 2)
         odd_pairs[f"{odds}:{5-odds}"] = odd_pairs.get(f"{odds}:{5-odds}", 0) + 1
-        big = sum(1 for x in row if x >= 18)
+        big = sum(1 for x in frow if x >= 18)
         size_pairs[f"{big}:{5-big}"] = size_pairs.get(f"{big}:{5-big}", 0) + 1
-        sums.append(sum(row))
-        spans.append(max(row) - min(row))
+        sums.append(sum(frow))
+        spans.append(max(frow) - min(frow))
     top_odd = sorted(odd_pairs.items(), key=lambda t: -t[1])[:2]
     top_sz = sorted(size_pairs.items(), key=lambda t: -t[1])[:2]
     s = np.array(sums, dtype=float)
@@ -272,7 +274,7 @@ def prediction_block_dlt(df: pd.DataFrame, n_last: int | None = None, weights: d
 
 # ── 双色球预测 ────────────────────────────────────────────────
 
-def prediction_block_ssq(df: pd.DataFrame, n_last: int | None = None, weights: dict[str, float] | None = None, whiten: bool | None = None) -> str:
+def prediction_block_ssq(df: pd.DataFrame, n_last: int | None = None, weights: dict[str, float] | None = None, whiten: bool | None = None) -> tuple[str, dict[str, Any]]:
     # SSQ: 白化 +4.0%，默认开启
     if n_last is None:
         n_last = adaptive_stats_window(len(df))
@@ -302,14 +304,14 @@ def prediction_block_ssq(df: pd.DataFrame, n_last: int | None = None, weights: d
     size_pairs: dict[str, int] = {}
     sums = []
     spans = []
-    for row in reds:
-        row = list(map(int, row))
-        odds = sum(1 for x in row if x % 2)
+    for rrow in reds:
+        rrow = list(map(int, rrow))
+        odds = sum(1 for x in rrow if x % 2)
         odd_pairs[f"{odds}:{6-odds}"] = odd_pairs.get(f"{odds}:{6-odds}", 0) + 1
-        big = sum(1 for x in row if x >= 17)
+        big = sum(1 for x in rrow if x >= 17)
         size_pairs[f"{big}:{6-big}"] = size_pairs.get(f"{big}:{6-big}", 0) + 1
-        sums.append(sum(row))
-        spans.append(max(row) - min(row))
+        sums.append(sum(rrow))
+        spans.append(max(rrow) - min(rrow))
     top_odd = sorted(odd_pairs.items(), key=lambda t: -t[1])[:2]
     top_sz = sorted(size_pairs.items(), key=lambda t: -t[1])[:2]
     s = np.array(sums, dtype=float)
@@ -468,7 +470,7 @@ def _kl8_collect_one_path_outputs(
     kl8_scores: np.ndarray,
     latest20_set: set[int],
     markov_norm: np.ndarray,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     """单路径：给定活跃十码段，直接生成 11 码、分区校验与马尔可夫因子明细。"""
     eleven, _ = _kl8_eleven_from_patterns(fq, fcur, draws, markov_raw, active_zones)
     eleven = _kl8_eleven_cap_overlap_latest(eleven, latest20_set, kl8_scores, active_zones)
@@ -501,7 +503,7 @@ def _kl8_collect_one_path_outputs_b(
     kl8_scores: np.ndarray,
     latest20_set: set[int],
     markov_norm: np.ndarray,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     """Path B: 先预测 20 码 → 在 20 码池内用完整多因子分数重排位取 11 码。"""
     twenty, _ = _kl8_twenty_from_patterns(fq, fcur, draws, markov_raw, active_zones)
     twenty = _kl8_twenty_cap_overlap_latest(twenty, latest20_set, kl8_scores, active_zones, max_overlap=6)
@@ -535,7 +537,7 @@ def _kl8_collect_one_path_outputs_b(
 
 # ── 快乐八预测 ────────────────────────────────────────────────
 
-def prediction_block_kl8(df: pd.DataFrame, n_last: int | None = None, weights: dict[str, float] | None = None, whiten: bool = False, path: str = "B") -> str:
+def prediction_block_kl8(df: pd.DataFrame, n_last: int | None = None, weights: dict[str, float] | None = None, whiten: bool = False, path: str = "B") -> tuple[str, dict[str, Any]]:
     if n_last is None:
         n_last = adaptive_stats_window(len(df))
     if weights is None:
@@ -544,7 +546,7 @@ def prediction_block_kl8(df: pd.DataFrame, n_last: int | None = None, weights: d
     draws_all, pids_all = _kl8_draw_rows(df)
     full_n = len(draws_all)
     if full_n == 0:
-        return "# 快乐八 — 统计型预测参考归档\n\n（无数据行）\n"
+        return "# 快乐八 — 统计型预测参考归档\n\n（无数据行）\n", {}
     cap = min(n_last, full_n)
     draws = draws_all[-cap:]
     pids = pids_all[-cap:]
@@ -624,7 +626,7 @@ def prediction_block_kl8(df: pd.DataFrame, n_last: int | None = None, weights: d
     miss_line = "；".join([f"`{a}`（**{b}** 期）" for a, b in top_miss])
     wline = _pattern_weight_md_line(weights)
 
-    pred_data: dict[str, object] = {
+    pred_data: dict[str, Any] = {
         "lottery_type": "kl8",
         "prediction_date": pred_ts,
         "window_start": int(pid_min),
@@ -725,7 +727,7 @@ def prediction_block_kl8(df: pd.DataFrame, n_last: int | None = None, weights: d
 
 # ── 排列5 预测 ────────────────────────────────────────────────
 
-def prediction_block_pl5(df: pd.DataFrame, n_last: int | None = None, weights: dict[str, float] | None = None) -> str:
+def prediction_block_pl5(df: pd.DataFrame, n_last: int | None = None, weights: dict[str, float] | None = None) -> tuple[str, dict[str, Any]]:
     if n_last is None:
         n_last = adaptive_stats_window(len(df))
     if weights is None:
@@ -734,7 +736,7 @@ def prediction_block_pl5(df: pd.DataFrame, n_last: int | None = None, weights: d
     df["period_id"] = pd.to_numeric(df["period_id"], errors="coerce")
     full = df.sort_values("period_id").reset_index(drop=True)
     if len(full) == 0:
-        return "# 排列5 — 统计型预测参考归档\n\n（无数据行）\n"
+        return "# 排列5 — 统计型预测参考归档\n\n（无数据行）\n", {}
     tail = full.tail(min(n_last, len(full))).reset_index(drop=True)
     pmin, pmax = int(tail["period_id"].min()), int(tail["period_id"].max())
     cols = [f"d{i}" for i in range(1, 6)]
@@ -876,7 +878,7 @@ def prediction_block_pl5(df: pd.DataFrame, n_last: int | None = None, weights: d
 
 # ── 七星彩 预测 ────────────────────────────────────────────────
 
-def prediction_block_qxc(df: pd.DataFrame, n_last: int | None = None, weights: dict[str, float] | None = None) -> str:
+def prediction_block_qxc(df: pd.DataFrame, n_last: int | None = None, weights: dict[str, float] | None = None) -> tuple[str, dict[str, Any]]:
     if n_last is None:
         n_last = adaptive_stats_window(len(df))
     if weights is None:
@@ -885,7 +887,7 @@ def prediction_block_qxc(df: pd.DataFrame, n_last: int | None = None, weights: d
     df["period_id"] = pd.to_numeric(df["period_id"], errors="coerce")
     full = df.sort_values("period_id").reset_index(drop=True)
     if len(full) == 0:
-        return "# 七星彩 — 统计型预测参考归档\n\n（无数据行）\n"
+        return "# 七星彩 — 统计型预测参考归档\n\n（无数据行）\n", {}
     tail = full.tail(min(n_last, len(full))).reset_index(drop=True)
     pmin, pmax = int(tail["period_id"].min()), int(tail["period_id"].max())
     fcols = [f"d{i}" for i in range(1, 7)]

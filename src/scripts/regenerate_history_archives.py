@@ -13,6 +13,8 @@ import json
 import sys
 from pathlib import Path
 
+import pandas as pd
+
 # 确保 src/ 在 sys.path 中以便直接运行脚本
 _REPO = Path(__file__).resolve().parents[2]
 if str(_REPO / "src") not in sys.path:
