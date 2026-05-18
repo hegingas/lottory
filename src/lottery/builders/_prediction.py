@@ -88,8 +88,6 @@ from ._utils import (
     _pl5_6f_position_scores,
     _pl5_markov_blended,
     _pl5_norm01,
-    _pl5_parity_alignment,
-    _pl5_size_alignment,
     _qxc_6f_position_scores,
 )
 

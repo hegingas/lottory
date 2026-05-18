@@ -638,7 +638,10 @@ def build_qxc_analysis(df: pd.DataFrame, analysis_window: int | None = None) -> 
         return out
 
     pstats = _per_pos_stats(draws)
-    parity_lines = []; size_lines = []; prime_lines = []; mod3_lines = []
+    parity_lines = []
+    size_lines = []
+    prime_lines = []
+    mod3_lines = []
     for i, ps in enumerate(pstats):
         t = ps["total"]
         parity_lines.append(f"- 前区第{i+1}位：奇 {ps['odd']}/{t}（{ps['odd']/t*100:.1f}%），偶 {t-ps['odd']}/{t}（{(t-ps['odd'])/t*100:.1f}%）")
