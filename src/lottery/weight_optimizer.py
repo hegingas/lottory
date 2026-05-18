@@ -12,11 +12,12 @@ from collections.abc import Callable
 
 import numpy as np
 
-from .config import DEFAULT_4F_WEIGHTS, DEFAULT_8F_WEIGHTS
+from .config import DEFAULT_4F_WEIGHTS, DEFAULT_8F_WEIGHTS, DEFAULT_PL5_6F_WEIGHTS, DEFAULT_QXC_6F_WEIGHTS
 from .db import run_backtest
 
 _KEYS_8F = ["markov", "miss", "freq", "zone", "recency", "parity", "size", "sum"]
 _KEYS_4F = ["markov", "miss", "freq", "recency"]
+_KEYS_6F = ["markov", "miss", "freq", "recency", "parity", "size"]
 
 
 def _weights_to_dict(keys: list[str], vec: np.ndarray) -> dict[str, float]:
@@ -37,6 +38,13 @@ def sample_dirichlet_4f(n: int, rng: np.random.Generator | None = None) -> list[
     rng = rng or np.random.default_rng()
     samples = rng.dirichlet(np.ones(4), size=n)
     return [_weights_to_dict(_KEYS_4F, s) for s in samples]
+
+
+def sample_dirichlet_6f(n: int, rng: np.random.Generator | None = None) -> list[dict[str, float]]:
+    """从 Dirichlet(α=1) 采样 n 组 6 因子权重（PL5/QXC 用）。"""
+    rng = rng or np.random.default_rng()
+    samples = rng.dirichlet(np.ones(6), size=n)
+    return [_weights_to_dict(_KEYS_6F, s) for s in samples]
 
 
 # ── 目标函数 ──────────────────────────────────────────────────────
@@ -87,6 +95,21 @@ def objective_qxc(summary: dict) -> float:
     return reg.get("avg_front", 0.0) + reg.get("avg_special", 0.0) * 2.0
 
 
+def objective_pl5_detail(summary: dict) -> float:
+    """PL5 综合目标：avg_pos + 逐位准确率均值，兼顾平均与分布。"""
+    reg = summary.get("regular", {})
+    avg_pos = reg.get("avg_pos", 0.0)
+    ppa = reg.get("per_pos_accuracy", [])
+    ppa_mean = sum(ppa) / max(len(ppa), 1) if ppa else 0.0
+    return avg_pos + ppa_mean
+
+
+def objective_qxc_combined(summary: dict) -> float:
+    """QXC 综合目标：前区命中 + 后区命中 × 3，更重视后区。"""
+    reg = summary.get("regular", {})
+    return reg.get("avg_front", 0.0) + reg.get("avg_special", 0.0) * 3.0
+
+
 def objective_kl8(summary: dict) -> float:
     """KL8：平均重合数（注意受 ≤4 约束影响，意义有限）。"""
     reg = summary.get("regular", {})
@@ -112,14 +135,14 @@ _LOTTERY_SPEC: dict[str, dict] = {
         "objectives": {"overlap": objective_kl8},
     },
     "pl5": {
-        "n_factors": 4,
-        "sampler": sample_dirichlet_4f,
-        "objectives": {"pos": objective_pl5},
+        "n_factors": 6,
+        "sampler": sample_dirichlet_6f,
+        "objectives": {"pos": objective_pl5, "detail": objective_pl5_detail},
     },
     "qxc": {
-        "n_factors": 4,
-        "sampler": sample_dirichlet_4f,
-        "objectives": {"pos": objective_qxc},
+        "n_factors": 6,
+        "sampler": sample_dirichlet_6f,
+        "objectives": {"pos": objective_qxc, "combined": objective_qxc_combined},
     },
 }
 
@@ -157,9 +180,17 @@ def optimize(
         if progress_callback:
             progress_callback(msg)
 
+    if spec["n_factors"] == 6:
+        _default_6f = DEFAULT_PL5_6F_WEIGHTS if lottery_type == "pl5" else DEFAULT_QXC_6F_WEIGHTS
+        _default_w = _default_6f
+    elif spec["n_factors"] == 8:
+        _default_w = DEFAULT_8F_WEIGHTS
+    else:
+        _default_w = DEFAULT_4F_WEIGHTS
+
     results: dict = {
         "lottery_type": lottery_type,
-        "default_weights": DEFAULT_8F_WEIGHTS if spec["n_factors"] == 8 else DEFAULT_4F_WEIGHTS,
+        "default_weights": _default_w,
         "default_results": {},
         "coarse_best": [],
         "fine_best": [],

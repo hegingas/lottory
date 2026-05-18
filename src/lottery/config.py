@@ -83,7 +83,7 @@ KL8_8F_WEIGHTS: dict[str, float] = {
     "recency": 0.016, "parity": 0.207, "size": 0.220, "sum": 0.067,
 }
 
-# 默认 4 因子权重字典（排列5/七星彩）
+# 默认 4 因子权重字典（排列5/七星彩，向后兼容保留）
 DEFAULT_4F_WEIGHTS: dict[str, float] = {
     "markov": 0.40,
     "miss": 0.20,
@@ -101,6 +101,34 @@ QXC_4F_WEIGHTS: dict[str, float] = {
     "markov": 0.701, "miss": 0.087, "freq": 0.180, "recency": 0.032,
 }
 
+# ── 6 因子权重（排列5/七星彩，新增 parity + size） ──
+
+_KEYS_6F: list[str] = ["markov", "miss", "freq", "recency", "parity", "size"]
+
+# 默认 6 因子权重字典（排列5）
+DEFAULT_PL5_6F_WEIGHTS: dict[str, float] = {
+    "markov": 0.09, "miss": 0.42, "freq": 0.41, "recency": 0.02, "parity": 0.03, "size": 0.03,
+}
+
+# 默认 6 因子权重字典（七星彩）
+DEFAULT_QXC_6F_WEIGHTS: dict[str, float] = {
+    "markov": 0.66, "miss": 0.08, "freq": 0.17, "recency": 0.03, "parity": 0.03, "size": 0.03,
+}
+
+# 排列5 6 因子优化权重（Dirichlet 采样+回测搜索，2026-05-18）
+PL5_6F_WEIGHTS: dict[str, float] = {
+    "markov": 0.1050, "miss": 0.3415, "freq": 0.1914, "recency": 0.0643, "parity": 0.1246, "size": 0.1733,
+}
+
+# 七星彩 6 因子优化权重（Dirichlet 采样+回测搜索，2026-05-18）
+QXC_6F_WEIGHTS: dict[str, float] = {
+    "markov": 0.4428, "miss": 0.0989, "freq": 0.3150, "recency": 0.0393, "parity": 0.0234, "size": 0.0806,
+}
+
+# ── 大小阈值 ──
+PL5_BIG_THRESHOLD = 5       # digit >= 5 为"大"
+QXC_BACK_BIG_THRESHOLD = 7  # 后区 >= 7 为"大"（0-14 中点偏右）
+
 # ── 彩种 → 优化权重映射 ──
 
 _OPTIMIZED_8F: dict[str, dict[str, float]] = {
@@ -114,11 +142,32 @@ _OPTIMIZED_4F: dict[str, dict[str, float]] = {
     "qxc": QXC_4F_WEIGHTS,
 }
 
+_OPTIMIZED_6F: dict[str, dict[str, float]] = {
+    "pl5": PL5_6F_WEIGHTS,
+    "qxc": QXC_6F_WEIGHTS,
+}
 
-def get_optimized_weights(lottery_type: str) -> dict[str, float] | None:
-    """返回指定彩种的优化权重字典，无优化数据时返回 None。"""
+
+def get_optimized_weights(lottery_type: str, n_factors: int = 6) -> dict[str, float] | None:
+    """返回指定彩种的优化权重字典，无优化数据时返回 None。
+
+    Args:
+        lottery_type: 彩种标识
+        n_factors: 因子数，4 返回旧4F权重，6 优先返回6F优化权重（回退到默认6F）
+    """
     if lottery_type in _OPTIMIZED_8F:
         return dict(_OPTIMIZED_8F[lottery_type])
+    if n_factors == 4:
+        if lottery_type in _OPTIMIZED_4F:
+            return dict(_OPTIMIZED_4F[lottery_type])
+        return None
+    # 6F: 优先优化权重，其次默认6F，最后回退4F
+    if lottery_type in _OPTIMIZED_6F:
+        return dict(_OPTIMIZED_6F[lottery_type])
+    if lottery_type == "pl5":
+        return dict(DEFAULT_PL5_6F_WEIGHTS) if PL5_6F_WEIGHTS is None else dict(PL5_6F_WEIGHTS)
+    if lottery_type == "qxc":
+        return dict(DEFAULT_QXC_6F_WEIGHTS) if QXC_6F_WEIGHTS is None else dict(QXC_6F_WEIGHTS)
     if lottery_type in _OPTIMIZED_4F:
         return dict(_OPTIMIZED_4F[lottery_type])
     return None

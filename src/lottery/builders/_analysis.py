@@ -415,6 +415,100 @@ def build_pl5_analysis(df: pd.DataFrame, analysis_window: int | None = None) -> 
     spans = np.array([max(map(int, row)) - min(map(int, row)) for row in draws], dtype=float)
     repeat_n = sum(1 for row in draws if len(set(map(int, row))) < 5)
 
+    # ── 新指标：逐位结构分布 ──
+    def _per_pos_stats(draw_rows, n_digits=10):
+        """逐位奇偶/大小/质合/012路计数。返回 list[dict]。"""
+        primes = {2, 3, 5, 7}
+        n_pos = len(draw_rows[0])
+        out = []
+        for p in range(n_pos):
+            digits = [int(r[p]) for r in draw_rows]
+            odd = sum(1 for d in digits if d % 2 == 1)
+            big = sum(1 for d in digits if d >= 5)  # PL5 big threshold
+            prime_n = sum(1 for d in digits if d in primes)
+            mod0 = sum(1 for d in digits if d % 3 == 0)
+            mod1 = sum(1 for d in digits if d % 3 == 1)
+            mod2 = sum(1 for d in digits if d % 3 == 2)
+            out.append({"odd": odd, "big": big, "prime": prime_n,
+                        "mod0": mod0, "mod1": mod1, "mod2": mod2, "total": len(digits)})
+        return out
+
+    pstats = _per_pos_stats(draws)
+    parity_lines = []
+    size_lines = []
+    prime_lines = []
+    mod3_lines = []
+    for i, ps in enumerate(pstats):
+        t = ps["total"]
+        parity_lines.append(f"- 第{i+1}位：奇 {ps['odd']}/{t}（{ps['odd']/t*100:.1f}%），偶 {t-ps['odd']}/{t}（{(t-ps['odd'])/t*100:.1f}%）")
+        size_lines.append(f"- 第{i+1}位：大(≥5) {ps['big']}/{t}（{ps['big']/t*100:.1f}%），小(<5) {t-ps['big']}/{t}（{(t-ps['big'])/t*100:.1f}%）")
+        prime_lines.append(f"- 第{i+1}位：质 {ps['prime']}/{t}（{ps['prime']/t*100:.1f}%），合 {t-ps['prime']}/{t}（{(t-ps['prime'])/t*100:.1f}%）")
+        mod3_lines.append(f"- 第{i+1}位：0路 {ps['mod0']}/{t}（{ps['mod0']/t*100:.1f}%），1路 {ps['mod1']}/{t}（{ps['mod1']/t*100:.1f}%），2路 {ps['mod2']}/{t}（{ps['mod2']/t*100:.1f}%）")
+
+    # ── 和值分带 ──
+    sum_bands = [(0, 9), (10, 15), (16, 20), (21, 25), (26, 30), (31, 35), (36, 45)]
+    sum_band_lines = []
+    for lo, hi in sum_bands:
+        cnt = int(np.sum((sums >= lo) & (sums <= hi)))
+        sum_band_lines.append(f"- [{lo:02d}–{hi:02d}]：{cnt} 期（{cnt/max(n,1)*100:.1f}%）")
+
+    # ── 跨度分布直方图 ──
+    span_bins = [(0, 3), (4, 6), (7, 9)]
+    span_lines = []
+    for lo, hi in span_bins:
+        cnt = int(np.sum((spans >= lo) & (spans <= hi)))
+        span_lines.append(f"- [{lo}–{hi}]：{cnt} 期（{cnt/max(n,1)*100:.1f}%）")
+
+    # ── 重复模式细分 ──
+    from collections import Counter as _Ctr
+    repeat_cats = {"全异(0重)": 0, "1对": 0, "2对": 0, "3同": 0, "葫芦(3+2)": 0, "4同": 0, "5同": 0}
+    for row in draws:
+        cnts = tuple(sorted(_Ctr(map(int, row)).values(), reverse=True))
+        if cnts == (1, 1, 1, 1, 1):
+            repeat_cats["全异(0重)"] += 1
+        elif cnts == (2, 1, 1, 1):
+            repeat_cats["1对"] += 1
+        elif cnts == (2, 2, 1):
+            repeat_cats["2对"] += 1
+        elif cnts == (3, 1, 1):
+            repeat_cats["3同"] += 1
+        elif cnts == (3, 2):
+            repeat_cats["葫芦(3+2)"] += 1
+        elif cnts == (4, 1):
+            repeat_cats["4同"] += 1
+        elif cnts == (5,):
+            repeat_cats["5同"] += 1
+    repeat_detail = "，".join(f"{k}: {v}期 ({v/max(n,1)*100:.1f}%)" for k, v in repeat_cats.items())
+
+    # ── 位间同号相关性 ──
+    corr_pairs = []
+    for i in range(5):
+        for j in range(i + 1, 5):
+            same = sum(1 for row in draws if int(row[i]) == int(row[j]))
+            pct = same / max(n, 1) * 100
+            corr_pairs.append((pct, i, j, same))
+    corr_pairs.sort(reverse=True)
+    corr_lines = [f"- d{c[1]+1}-d{c[2]+1}：{c[3]}/{n} 期同号（{c[0]:.1f}%）" for c in corr_pairs[:5]]
+
+    # ── 多窗口稳定性对比 ──
+    mw_windows = [30, analysis_window, full_n]
+    mw_labels = [f"近{w}期" for w in mw_windows]
+    mw_lines = []
+    mw_lines.append("| 指标 | " + " | ".join(mw_labels) + " |")
+    mw_lines.append("|------|" + "|".join(["------"] * len(mw_windows)) + "|")
+    for metric_label, metric_fn in [
+        ("奇数占比", lambda dr: sum(1 for r in dr for x in r if int(x)%2==1) / max(len(dr)*len(dr[0]), 1)),
+        ("大数占比(≥5)", lambda dr: sum(1 for r in dr for x in r if int(x)>=5) / max(len(dr)*len(dr[0]), 1)),
+        ("质数占比", lambda dr: sum(1 for r in dr for x in r if int(x) in {2,3,5,7}) / max(len(dr)*len(dr[0]), 1)),
+        ("均值和", lambda dr: np.mean([sum(map(int,r)) for r in dr]) if dr else 0.0),
+    ]:
+        vals = []
+        for w in mw_windows:
+            w_data = df.tail(min(w, full_n))[cols].astype(int).values.tolist()
+            vals.append(f"{metric_fn(w_data)*100:.1f}%" if "占比" in metric_label else f"{metric_fn(w_data):.1f}")
+        mw_lines.append(f"| {metric_label} | " + " | ".join(vals) + " |")
+    mw_section = "\n".join(mw_lines)
+
     return f"""# 排列5 — 历史数据分析归档
 
 > **最后更新**：{now_cn_iso()}
@@ -438,6 +532,44 @@ def build_pl5_analysis(df: pd.DataFrame, analysis_window: int | None = None) -> 
 ## 分位热度（Top3）
 
 {chr(10).join(pos_lines)}
+
+## 逐位奇偶分布
+
+{chr(10).join(parity_lines)}
+
+## 逐位大小分布（≥5 为大）
+
+{chr(10).join(size_lines)}
+
+## 逐位质合分布（质数：2,3,5,7）
+
+{chr(10).join(prime_lines)}
+
+## 逐位 012 路分布（除 3 余数）
+
+{chr(10).join(mod3_lines)}
+
+## 和值分带
+
+{chr(10).join(sum_band_lines)}
+
+## 跨度分布
+
+{chr(10).join(span_lines)}
+
+## 重复模式细分
+
+{repeat_detail}
+
+## 位间同号相关性（Top5）
+
+{chr(10).join(corr_lines)}
+
+## 多窗口稳定性对比
+
+{mw_section}
+
+> 说明：多窗口数值为各窗口尾部数据的截面快照，用于观察结构稳定性而非预测趋势。
 
 ## 局限
 
@@ -488,6 +620,107 @@ def build_qxc_analysis(df: pd.DataFrame, analysis_window: int | None = None) -> 
     spans_front = np.array([max(map(int, row)) - min(map(int, row)) for row in draws], dtype=float)
     repeat_n = sum(1 for row in draws if len(set(map(int, row))) < 6)
 
+    # ── 新指标：逐位结构分布（前区6位） ──
+    def _per_pos_stats(draw_rows, n_digits=10):
+        primes = {2, 3, 5, 7}
+        n_pos = len(draw_rows[0])
+        out = []
+        for p in range(n_pos):
+            digits = [int(r[p]) for r in draw_rows]
+            odd = sum(1 for d in digits if d % 2 == 1)
+            big = sum(1 for d in digits if d >= 5)
+            prime_n = sum(1 for d in digits if d in primes)
+            mod0 = sum(1 for d in digits if d % 3 == 0)
+            mod1 = sum(1 for d in digits if d % 3 == 1)
+            mod2 = sum(1 for d in digits if d % 3 == 2)
+            out.append({"odd": odd, "big": big, "prime": prime_n,
+                        "mod0": mod0, "mod1": mod1, "mod2": mod2, "total": len(digits)})
+        return out
+
+    pstats = _per_pos_stats(draws)
+    parity_lines = []; size_lines = []; prime_lines = []; mod3_lines = []
+    for i, ps in enumerate(pstats):
+        t = ps["total"]
+        parity_lines.append(f"- 前区第{i+1}位：奇 {ps['odd']}/{t}（{ps['odd']/t*100:.1f}%），偶 {t-ps['odd']}/{t}（{(t-ps['odd'])/t*100:.1f}%）")
+        size_lines.append(f"- 前区第{i+1}位：大(≥5) {ps['big']}/{t}（{ps['big']/t*100:.1f}%），小(<5) {t-ps['big']}/{t}（{(t-ps['big'])/t*100:.1f}%）")
+        prime_lines.append(f"- 前区第{i+1}位：质 {ps['prime']}/{t}（{ps['prime']/t*100:.1f}%），合 {t-ps['prime']}/{t}（{(t-ps['prime'])/t*100:.1f}%）")
+        mod3_lines.append(f"- 前区第{i+1}位：0路 {ps['mod0']}/{t}（{ps['mod0']/t*100:.1f}%），1路 {ps['mod1']}/{t}（{ps['mod1']/t*100:.1f}%），2路 {ps['mod2']}/{t}（{ps['mod2']/t*100:.1f}%）")
+
+    # ── 后区专项 ──
+    sp_n = len(specials)
+    sp_odd = sum(1 for s in specials if s % 2 == 1)
+    sp_big = sum(1 for s in specials if s >= 7)
+    sp_mod0 = sum(1 for s in specials if s % 3 == 0)
+    sp_mod1 = sum(1 for s in specials if s % 3 == 1)
+    sp_mod2 = sum(1 for s in specials if s % 3 == 2)
+    special_block = f"""- 奇偶：奇 {sp_odd}/{sp_n}（{sp_odd/max(sp_n,1)*100:.1f}%），偶 {sp_n-sp_odd}/{sp_n}（{(sp_n-sp_odd)/max(sp_n,1)*100:.1f}%）
+- 大小（≥7为大）：大 {sp_big}/{sp_n}（{sp_big/max(sp_n,1)*100:.1f}%），小 {sp_n-sp_big}/{sp_n}（{(sp_n-sp_big)/max(sp_n,1)*100:.1f}%）
+- 012 路：0路 {sp_mod0}/{sp_n}（{sp_mod0/max(sp_n,1)*100:.1f}%），1路 {sp_mod1}/{sp_n}（{sp_mod1/max(sp_n,1)*100:.1f}%），2路 {sp_mod2}/{sp_n}（{sp_mod2/max(sp_n,1)*100:.1f}%）"""
+
+    # ── 和值分带 ──
+    sum_bands = [(0, 20), (21, 30), (31, 40), (41, 50), (51, 60), (61, 75)]
+    sum_band_lines = []
+    for lo, hi in sum_bands:
+        cnt = int(np.sum((sums >= lo) & (sums <= hi)))
+        sum_band_lines.append(f"- [{lo}–{hi}]：{cnt} 期（{cnt/max(n,1)*100:.1f}%）")
+
+    # ── 跨度分布直方图 ──
+    span_bins = [(0, 3), (4, 6), (7, 9)]
+    span_lines = []
+    for lo, hi in span_bins:
+        cnt = int(np.sum((spans_front >= lo) & (spans_front <= hi)))
+        span_lines.append(f"- [{lo}–{hi}]：{cnt} 期（{cnt/max(n,1)*100:.1f}%）")
+
+    # ── 前区重复模式细分 ──
+    repeat_cats = {"全异(0重)": 0, "1对": 0, "2对": 0, "3同": 0, "葫芦(3+2)": 0, "4同": 0, "5同": 0, "6同": 0}
+    for row in draws:
+        cnts = tuple(sorted(Counter(map(int, row)).values(), reverse=True))
+        if cnts == (1, 1, 1, 1, 1, 1):
+            repeat_cats["全异(0重)"] += 1
+        elif cnts == (2, 1, 1, 1, 1):
+            repeat_cats["1对"] += 1
+        elif cnts == (2, 2, 1, 1):
+            repeat_cats["2对"] += 1
+        elif cnts == (3, 1, 1, 1):
+            repeat_cats["3同"] += 1
+        elif cnts == (3, 2, 1):
+            repeat_cats["葫芦(3+2)"] += 1
+        elif cnts == (4, 1, 1):
+            repeat_cats["4同"] += 1
+        elif cnts == (5, 1):
+            repeat_cats["5同"] += 1
+        elif cnts == (6,):
+            repeat_cats["6同"] += 1
+    repeat_detail = "，".join(f"{k}: {v}期 ({v/max(n,1)*100:.1f}%)" for k, v in repeat_cats.items())
+
+    # ── 位间同号相关性 ──
+    corr_pairs = []
+    for i in range(6):
+        for j in range(i + 1, 6):
+            same = sum(1 for row in draws if int(row[i]) == int(row[j]))
+            pct = same / max(n, 1) * 100
+            corr_pairs.append((pct, i, j, same))
+    corr_pairs.sort(reverse=True)
+    corr_lines = [f"- d{c[1]+1}-d{c[2]+1}：{c[3]}/{n} 期同号（{c[0]:.1f}%）" for c in corr_pairs[:5]]
+
+    # ── 多窗口稳定性对比 ──
+    mw_windows = [30, analysis_window, full_n]
+    mw_labels = [f"近{w}期" for w in mw_windows]
+    mw_lines = []
+    mw_lines.append("| 指标 | " + " | ".join(mw_labels) + " |")
+    mw_lines.append("|------|" + "|".join(["------"] * len(mw_windows)) + "|")
+    for metric_label, metric_fn in [
+        ("奇数占比(前区)", lambda dr: sum(1 for r in dr for x in r if int(x)%2==1) / max(len(dr)*len(dr[0]), 1)),
+        ("大数占比(前区≥5)", lambda dr: sum(1 for r in dr for x in r if int(x)>=5) / max(len(dr)*len(dr[0]), 1)),
+        ("质数占比(前区)", lambda dr: sum(1 for r in dr for x in r if int(x) in {2,3,5,7}) / max(len(dr)*len(dr[0]), 1)),
+    ]:
+        vals = []
+        for w in mw_windows:
+            w_data = df.tail(min(w, full_n))[fcols].astype(int).values.tolist()
+            vals.append(f"{metric_fn(w_data)*100:.1f}%")
+        mw_lines.append(f"| {metric_label} | " + " | ".join(vals) + " |")
+    mw_section = "\n".join(mw_lines)
+
     return f"""# 七星彩 — 历史数据分析归档
 
 > **最后更新**：{now_cn_iso()}
@@ -513,6 +746,48 @@ def build_qxc_analysis(df: pd.DataFrame, analysis_window: int | None = None) -> 
 ## 分位热度（Top3）
 
 {chr(10).join(pos_lines)}
+
+## 逐位奇偶分布（前区）
+
+{chr(10).join(parity_lines)}
+
+## 逐位大小分布（前区，≥5 为大）
+
+{chr(10).join(size_lines)}
+
+## 逐位质合分布（前区，质数：2,3,5,7）
+
+{chr(10).join(prime_lines)}
+
+## 逐位 012 路分布（前区，除 3 余数）
+
+{chr(10).join(mod3_lines)}
+
+## 后区专项分析（special 0–14）
+
+{special_block}
+
+## 和值分带
+
+{chr(10).join(sum_band_lines)}
+
+## 前区跨度分布
+
+{chr(10).join(span_lines)}
+
+## 前区重复模式细分
+
+{repeat_detail}
+
+## 位间同号相关性（Top5）
+
+{chr(10).join(corr_lines)}
+
+## 多窗口稳定性对比
+
+{mw_section}
+
+> 说明：多窗口数值为各窗口尾部数据的截面快照，用于观察结构稳定性而非预测趋势。
 
 ## 局限
 

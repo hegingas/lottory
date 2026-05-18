@@ -10,6 +10,8 @@ import pandas as pd
 from .. import config as _lottery_config
 from ..config import (
     DEFAULT_4F_WEIGHTS,
+    DEFAULT_PL5_6F_WEIGHTS,
+    DEFAULT_QXC_6F_WEIGHTS,
     DLT_BACK_MAX_ACTIVE_ZONES,
     DLT_BACK_MAX_PER_ZONE,
     DLT_BACK_ZONES_CAP,
@@ -80,7 +82,16 @@ from ..selection import (
     _ssq_ticket_passes_history_rules,
     _zone_index_for_ball,
 )
-from ._utils import _kl8_draw_rows, _norm_df, _pl5_markov_blended, _pl5_norm01
+from ._utils import (
+    _kl8_draw_rows,
+    _norm_df,
+    _pl5_6f_position_scores,
+    _pl5_markov_blended,
+    _pl5_norm01,
+    _pl5_parity_alignment,
+    _pl5_size_alignment,
+    _qxc_6f_position_scores,
+)
 
 # ── 大乐透预测 ────────────────────────────────────────────────
 
@@ -752,31 +763,38 @@ def prediction_block_pl5(df: pd.DataFrame, n_last: int | None = None, weights: d
 
     scores_by_pos: list[np.ndarray] = []
     mk_by_pos: list[np.ndarray] = []
-    for pos in range(5):
-        freq = np.zeros(10, dtype=float)
-        miss = np.zeros(10, dtype=float)
-        rec = np.zeros(10, dtype=float)
-        for row in draws:
-            freq[int(row[pos])] += 1.0
-        for d in range(10):
-            m = n_win
-            for k in range(n_win - 1, -1, -1):
-                if int(draws[k][pos]) == d:
-                    m = n_win - 1 - k
-                    break
-            miss[d] = float(m)
-        for row in draws[-min(PATTERN_RECENT_K, n_win):]:
-            rec[int(row[pos])] += 1.0
-        mk = _pl5_markov_blended(draws_all, pos)
-        mk_by_pos.append(mk)
+    _is_6f = weights is not None and ("parity" in weights or "size" in weights)
+    if _is_6f:
+        for pos in range(5):
+            sc, raw = _pl5_6f_position_scores(draws, draws_all, pos, n_win, PATTERN_RECENT_K, weights)
+            scores_by_pos.append(sc)
+            mk_by_pos.append(raw["markov"])
+    else:
         w4 = weights if weights is not None else DEFAULT_4F_WEIGHTS
-        sc = (
-            w4["miss"]    * _pl5_norm01(miss)
-            + w4["freq"]  * _pl5_norm01(freq)
-            + w4["recency"] * _pl5_norm01(rec)
-            + w4["markov"] * _pl5_norm01(mk)
-        )
-        scores_by_pos.append(sc)
+        for pos in range(5):
+            freq = np.zeros(10, dtype=float)
+            miss = np.zeros(10, dtype=float)
+            rec = np.zeros(10, dtype=float)
+            for row in draws:
+                freq[int(row[pos])] += 1.0
+            for d in range(10):
+                m = n_win
+                for k in range(n_win - 1, -1, -1):
+                    if int(draws[k][pos]) == d:
+                        m = n_win - 1 - k
+                        break
+                miss[d] = float(m)
+            for row in draws[-min(PATTERN_RECENT_K, n_win):]:
+                rec[int(row[pos])] += 1.0
+            mk = _pl5_markov_blended(draws_all, pos)
+            mk_by_pos.append(mk)
+            sc = (
+                w4["miss"]    * _pl5_norm01(miss)
+                + w4["freq"]  * _pl5_norm01(freq)
+                + w4["recency"] * _pl5_norm01(rec)
+                + w4["markov"] * _pl5_norm01(mk)
+            )
+            scores_by_pos.append(sc)
 
     tickets: list[list[int]] = []
     used_pos_counts = np.zeros((5, 10), dtype=float)
@@ -832,6 +850,18 @@ def prediction_block_pl5(df: pd.DataFrame, n_last: int | None = None, weights: d
         "best": {"numbers": {"digits": pref_digits}, "score": float(pl5_pref_tot)},
     }
 
+    w_desc_lines = []
+    if _is_6f:
+        wd = weights if weights is not None else DEFAULT_PL5_6F_WEIGHTS
+        w_desc_lines.append(f"- 因子（**6 因子**）：分位频次、当前遗漏、近 **{PATTERN_RECENT_K}** 期密度、马尔可夫转移概率（一阶+二阶混合，基于全历史重算）、**奇偶对齐**、**大小对齐**")
+        w_desc_lines.append(f"- 评分：`{wd['markov']:.3f}×马尔可夫 + {wd['miss']:.3f}×遗漏 + {wd['freq']:.3f}×频次 + {wd['recency']:.3f}×近端密度 + {wd['parity']:.3f}×奇偶对齐 + {wd['size']:.3f}×大小对齐`，5注间轻度去重惩罚。")
+    else:
+        wd = weights if weights is not None else DEFAULT_4F_WEIGHTS
+        w_desc_lines.append(f"- 因子（**4 因子**）：分位频次、当前遗漏、近 **{PATTERN_RECENT_K}** 期密度、马尔可夫转移概率（一阶+二阶混合，基于全历史重算）")
+        w_desc_lines.append(f"- 评分：`{wd['markov']:.3f}×马尔可夫 + {wd['miss']:.3f}×遗漏 + {wd['freq']:.3f}×频次 + {wd['recency']:.3f}×近端密度`，5注间轻度去重惩罚。")
+    w_desc_section = "\n".join(w_desc_lines)
+    key_factors = "遗漏、频次、近端密度、马尔可夫" + ("、奇偶对齐、大小对齐" if _is_6f else "")
+
     return f"""# 排列5 — 统计型预测参考归档
 
 > **最后更新**：{pred_ts}
@@ -846,8 +876,7 @@ def prediction_block_pl5(df: pd.DataFrame, n_last: int | None = None, weights: d
 
 - 彩种：排列5
 - 窗口：近 **{n_win}** 期（至多 **{n_last}** 期）
-- 因子：分位频次、当前遗漏、近 **{PATTERN_RECENT_K}** 期密度、马尔可夫转移概率（一阶+二阶混合，基于全历史重算）
-- 评分：按 `0.40×马尔可夫（一阶+二阶混合） + 0.20×遗漏 + 0.20×频次 + 0.20×近端密度` 合成分位综合分，5注之间施加轻度去重惩罚。
+{w_desc_section}
 
 ## 结果摘要
 
@@ -865,7 +894,7 @@ def prediction_block_pl5(df: pd.DataFrame, n_last: int | None = None, weights: d
 
 - **号码（5 位）**：**{pl5_pref_num}**（分位：`{pl5_pref_csv}`）
 - **总分（五位综合分之和）**：**{pl5_pref_tot:.3f}**
-- **关键因子**：遗漏、频次、近端密度、马尔可夫（见口径说明）。
+- **关键因子**：{key_factors}（见口径说明）。
 
 ## 使用说明
 
@@ -897,23 +926,39 @@ def prediction_block_qxc(df: pd.DataFrame, n_last: int | None = None, weights: d
     pmin, pmax = int(tail["period_id"].min()), int(tail["period_id"].max())
     fcols = [f"d{i}" for i in range(1, 7)]
     draws = tail[fcols].astype(int).values.tolist()
+    draws_all = full[fcols].astype(int).values.tolist()
     specials_win = tail["special"].astype(int).tolist()
+    specials_all = full["special"].astype(int).tolist()
     n_win = len(draws)
     pred_ts = now_cn_iso()
 
-    from ..scoring import _qxc_position_scores
-
     scores_by_pos: list[np.ndarray] = []
     mk_by_pos: list[np.ndarray] = []
-    for pos in range(6):
-        sc, mk = _qxc_position_scores(draws, pos, 10, _lottery_config.QXC_W_MISS, _lottery_config.QXC_W_FREQ, _lottery_config.QXC_W_RECENCY, _lottery_config.QXC_W_MARKOV, PATTERN_RECENT_K, weights=weights)
-        scores_by_pos.append(sc)
-        mk_by_pos.append(mk)
-    sc_special, mk_special = _qxc_position_scores(
-        [[s] for s in specials_win], 0, 15, _lottery_config.QXC_W_MISS, _lottery_config.QXC_W_FREQ, _lottery_config.QXC_W_RECENCY, _lottery_config.QXC_W_MARKOV, PATTERN_RECENT_K, weights=weights
-    )
-    scores_by_pos.append(sc_special)
-    mk_by_pos.append(mk_special)
+    _is_6f = weights is not None and ("parity" in weights or "size" in weights)
+    if _is_6f:
+        for pos in range(6):
+            sc, raw = _qxc_6f_position_scores(draws, draws_all, pos, 10, n_win, PATTERN_RECENT_K, weights, big_threshold=5)
+            scores_by_pos.append(sc)
+            mk_by_pos.append(raw["markov"])
+        sp_draws = [[s] for s in specials_win]
+        sp_draws_all = [[s] for s in specials_all]
+        sc_special, sp_raw = _qxc_6f_position_scores(sp_draws, sp_draws_all, 0, 15, n_win, PATTERN_RECENT_K, weights, big_threshold=7)
+        scores_by_pos.append(sc_special)
+        mk_special = sp_raw["markov"]
+        mk_by_pos.append(mk_special)
+    else:
+        from ..scoring import _qxc_position_scores
+
+        w4f = weights if weights is not None else DEFAULT_4F_WEIGHTS
+        for pos in range(6):
+            sc, mk = _qxc_position_scores(draws, pos, 10, w4f.get("miss", 0.20), w4f.get("freq", 0.20), w4f.get("recency", 0.20), w4f.get("markov", 0.40), PATTERN_RECENT_K, weights=weights)
+            scores_by_pos.append(sc)
+            mk_by_pos.append(mk)
+        sc_special, mk_special = _qxc_position_scores(
+            [[s] for s in specials_win], 0, 15, w4f.get("miss", 0.20), w4f.get("freq", 0.20), w4f.get("recency", 0.20), w4f.get("markov", 0.40), PATTERN_RECENT_K, weights=weights
+        )
+        scores_by_pos.append(sc_special)
+        mk_by_pos.append(mk_special)
 
     tickets = _qxc_collect_five_tickets(scores_by_pos)
 
@@ -954,6 +999,18 @@ def prediction_block_qxc(df: pd.DataFrame, n_last: int | None = None, weights: d
         f"每组按 **2 元**计，合计 **{PREDICTION_SINGLE_LINES * 2} 元**（落在 10～30 元带内）。"
     )
 
+    w_desc_lines_qxc = []
+    if _is_6f:
+        wd_q = weights if weights is not None else DEFAULT_QXC_6F_WEIGHTS
+        w_desc_lines_qxc.append(f"- 因子（**6 因子**）：分位频次、当前遗漏、近 **{PATTERN_RECENT_K}** 期密度、马尔可夫转移概率（一阶+二阶混合）、**奇偶对齐**、**大小对齐**")
+        w_desc_lines_qxc.append(f"- 评分：`{wd_q['markov']:.3f}×马尔可夫 + {wd_q['miss']:.3f}×遗漏 + {wd_q['freq']:.3f}×频次 + {wd_q['recency']:.3f}×近端密度 + {wd_q['parity']:.3f}×奇偶对齐 + {wd_q['size']:.3f}×大小对齐`，5注间轻度去重惩罚。")
+    else:
+        wd_q = weights if weights is not None else DEFAULT_4F_WEIGHTS
+        w_desc_lines_qxc.append(f"- 因子（**4 因子**）：分位频次、当前遗漏、近 **{PATTERN_RECENT_K}** 期密度、马尔可夫转移概率（一阶+二阶混合，基于全历史重算）")
+        w_desc_lines_qxc.append(f"- 评分：`{wd_q['markov']:.3f}×马尔可夫 + {wd_q['miss']:.3f}×遗漏 + {wd_q['freq']:.3f}×频次 + {wd_q['recency']:.3f}×近端密度`，5注间轻度去重惩罚。")
+    w_desc_section_qxc = "\n".join(w_desc_lines_qxc)
+    qxc_key_factors = "遗漏、频次、近端密度、马尔可夫" + ("、奇偶对齐、大小对齐" if _is_6f else "")
+
     return f"""# 七星彩 — 统计型预测参考归档
 
 > **最后更新**：{pred_ts}
@@ -968,8 +1025,7 @@ def prediction_block_qxc(df: pd.DataFrame, n_last: int | None = None, weights: d
 
 - 彩种：七星彩（前区 6 位 0–9 + 后区 1 位 0–14）
 - 窗口：近 **{n_win}** 期（至多 **{n_last}** 期）
-- 因子：分位频次、当前遗漏、近 **{PATTERN_RECENT_K}** 期密度、马尔可夫转移概率（一阶+二阶混合，基于全历史重算）
-- 评分：按 `0.40×马尔可夫（一阶+二阶混合） + 0.20×遗漏 + 0.20×频次 + 0.20×近端密度` 合成分位综合分，5 注之间施加轻度去重惩罚。
+{w_desc_section_qxc}
 - 七星彩为按位匹配游戏，不适用「与历史开奖完全重合」或「与最新期 ≤3 重合」的防重合约束。
 
 ## 结果摘要
@@ -988,7 +1044,7 @@ def prediction_block_qxc(df: pd.DataFrame, n_last: int | None = None, weights: d
 
 - **号码（7 位）**：**{qxc_pref_full}**（前区：`{qxc_pref_front}`，后区：`{pref_sp}`）
 - **总分（七位综合分之和）**：**{qxc_pref_tot:.3f}**
-- **关键因子**：遗漏、频次、近端密度、马尔可夫（见口径说明）。
+- **关键因子**：{qxc_key_factors}（见口径说明）。
 
 ## 使用说明
 

@@ -487,12 +487,21 @@ def main() -> int:
     p_bt.add_argument("--window", type=int, default=30, help="预测窗口大小（默认 30）")
     p_bt.add_argument("--json", action="store_true", help="以 JSON 格式输出")
     p_bt.add_argument("--no-mask", action="store_true", dest="no_mask", help="不使用区间掩码马尔可夫约束（全号池开放）")
+    p_bt.add_argument("--factors", type=int, choices=[4, 6], default=6, dest="bt_factors", help="因子数：4（旧4F）或 6（新6F，默认），仅 PL5/QXC 有效")
 
     p_btc = sub.add_parser("backtest-compare", help="对比回测：mask vs no-mask 双路径")
     p_btc.add_argument("--type", dest="btc_type", choices=["dlt","ssq","kl8","pl5","qxc"], required=True, metavar="TYPE", help="彩种")
     p_btc.add_argument("--periods", type=int, default=100, help="回测期数（默认 100）")
     p_btc.add_argument("--window", type=int, default=30, help="预测窗口大小（默认 30）")
     p_btc.add_argument("--json", action="store_true", help="以 JSON 格式输出")
+
+    p_btf = sub.add_parser("backtest-factors", help="单因子独立回测 + 可选权重推导与对比")
+    p_btf.add_argument("--type", dest="btf_type", choices=["dlt","ssq","kl8","pl5","qxc"], required=True, metavar="TYPE", help="彩种")
+    p_btf.add_argument("--periods", type=int, default=100, help="回测期数（默认 100）")
+    p_btf.add_argument("--window", type=int, default=30, help="预测窗口大小（默认 30）")
+    p_btf.add_argument("--no-mask", action="store_true", dest="btf_no_mask", help="不使用区间掩码马尔可夫约束")
+    p_btf.add_argument("--json", action="store_true", help="以 JSON 格式输出")
+    p_btf.add_argument("--derive", action="store_true", dest="btf_derive", help="基于单因子表现自动推导新权重并对比回测")
 
     args = p.parse_args()
     if args.command == "inventory":
@@ -514,13 +523,16 @@ def main() -> int:
     if args.command == "prediction-accuracy":
         return cmd_prediction_accuracy(args.pred_type, args.period, as_json=args.json)
     if args.command == "backtest":
-        return cmd_backtest(args.bt_type, args.periods, args.window, as_json=args.json, use_mask=not args.no_mask)
+        return cmd_backtest(args.bt_type, args.periods, args.window, as_json=args.json, use_mask=not args.no_mask, factors=getattr(args, 'bt_factors', 6))
     if args.command == "backtest-compare":
         return cmd_backtest_compare(args.btc_type, args.periods, args.window, as_json=args.json)
+    if args.command == "backtest-factors":
+        return cmd_backtest_factors(args.btf_type, args.periods, args.window, use_mask=not args.btf_no_mask, as_json=args.json, derive=args.btf_derive)
     return 1
 
 
-def cmd_backtest(lottery_type: str, periods: int = 100, window: int = 30, as_json: bool = False, use_mask: bool = True) -> int:
+def cmd_backtest(lottery_type: str, periods: int = 100, window: int = 30, as_json: bool = False, use_mask: bool = True, factors: int = 6) -> int:
+    from lottery.config import get_optimized_weights
     from lottery.db import run_backtest
 
     def progress(current, total, pid):
@@ -529,11 +541,16 @@ def cmd_backtest(lottery_type: str, periods: int = 100, window: int = 30, as_jso
         print(f"\r  [{bar}] {current}/{total} 期 (当前: {pid})", end="", flush=True)
 
     mask_label = "启用区间掩码" if use_mask else "全号池（无掩码）"
+    factor_label = f"{factors}F" if lottery_type in ("pl5", "qxc") else ""
+    header_extra = f"  |  {factor_label}" if factor_label else ""
     print(f"\n{'='*60}")
-    print(f"彩种: {lottery_type}  |  回测范围: 近 {periods} 期  |  窗口: {window} 期  |  {mask_label}")
+    print(f"彩种: {lottery_type}  |  回测范围: 近 {periods} 期  |  窗口: {window} 期  |  {mask_label}{header_extra}")
     print(f"{'='*60}")
 
-    result = run_backtest(lottery_type, periods=periods, window=window, progress_callback=progress, use_mask=use_mask)
+    kwargs: dict = {"periods": periods, "window": window, "progress_callback": progress, "use_mask": use_mask}
+    if lottery_type in ("pl5", "qxc"):
+        kwargs["weights"] = get_optimized_weights(lottery_type, n_factors=factors)
+    result = run_backtest(lottery_type, **kwargs)
     print("\n")
 
     if not result.get("ok"):
@@ -720,6 +737,15 @@ def _print_backtest_summary(lottery_type: str, s: dict) -> None:
         if reg:
             print("--- 5注单式 ---")
             print(f"  共 {reg.get('count', 0)} 注, 平均逐位命中 {reg.get('avg_pos', '-')}/5, 全中 {reg.get('all_matched', 0)} 次")
+            pmd = reg.get("pos_match_dist", {})
+            if pmd:
+                print(f"  命中分布: {' '.join(f'{k}位:{v}' for k,v in pmd.items())}")
+            ppa = reg.get("per_pos_accuracy", [])
+            if ppa and len(ppa) == 5:
+                print(f"  逐位准确率: {' '.join(f'd{i+1}={ppa[i]:.3f}' for i in range(5))}")
+            mge = reg.get("match_ge_3_rate")
+            if mge is not None:
+                print(f"  >=3中率: {mge*100:.1f}%  单注最高: {reg.get('max_pos_hit', '-')} 位")
         if best:
             print("\n--- 单式优选 ---")
             print(f"  共 {best.get('count', 0)} 期, 平均逐位命中 {best.get('avg_pos', '-')}/5")
@@ -728,10 +754,243 @@ def _print_backtest_summary(lottery_type: str, s: dict) -> None:
         if reg:
             print("--- 5注单式 ---")
             print(f"  共 {reg.get('count', 0)} 注, 前区均值 {reg.get('avg_front', '-')}/6, 后区命中率 {reg.get('avg_special', '-')}")
+            fd = reg.get("front_dist", {})
+            if fd:
+                print(f"  前区命中分布: {' '.join(f'{k}位:{v}' for k,v in fd.items())}")
+            ppa = reg.get("per_pos_front_accuracy", [])
+            if ppa and len(ppa) == 6:
+                print(f"  逐位准确率: {' '.join(f'd{i+1}={ppa[i]:.3f}' for i in range(6))}")
+            ch = reg.get("combined_hit_rate")
+            if ch is not None:
+                print(f"  前>=3+后中率: {ch*100:.1f}%  单注最高前区: {reg.get('max_front_hit', '-')} 位")
         if best:
             print("\n--- 单式优选 ---")
             print(f"  共 {best.get('count', 0)} 期, 前区均值 {best.get('avg_front', '-')}/6, 后区命中率 {best.get('avg_special', '-')}")
     print()
+
+
+def cmd_backtest_factors(lottery_type: str, periods: int = 100, window: int = 30, use_mask: bool = True, as_json: bool = False, derive: bool = False) -> int:
+    from lottery.config import get_optimized_weights, DEFAULT_8F_WEIGHTS, DLT_8F_WEIGHTS, SSQ_8F_WEIGHTS, KL8_8F_WEIGHTS
+    from lottery.config import DEFAULT_PL5_6F_WEIGHTS, DEFAULT_QXC_6F_WEIGHTS
+    from lottery.db import run_backtest
+    from lottery.factor_evaluator import (
+        factor_keys,
+        derive_weights_from_single_factor,
+        run_multi_weight_backtest,
+    )
+
+    mask_label = "启用区间掩码" if use_mask else "全号池（无掩码）"
+    print(f"\n{'='*60}")
+    print(f"单因子回测: {lottery_type}  |  范围: 近 {periods} 期  |  窗口: {window} 期  |  {mask_label}")
+    print(f"{'='*60}")
+
+    keys = factor_keys(lottery_type)
+    n_total = len(keys)
+
+    def progress(current, total, pid):
+        pct = current * 100 // total
+        bar = "#" * (pct // 4) + "-" * (25 - pct // 4)
+        print(f"\r  [{bar}] {current}/{total} 期 (当前: {pid})", end="", flush=True)
+
+    # 逐因子回测
+    results = {}
+    for idx, factor in enumerate(keys, 1):
+        print(f"\n--- 因子 {idx}/{n_total}: {factor} ---")
+        weights = {k: 1.0 if k == factor else 0.0 for k in keys}
+        bt = run_backtest(
+            lottery_type=lottery_type,
+            periods=periods,
+            window=window,
+            use_mask=use_mask,
+            weights=weights,
+            progress_callback=progress,
+        )
+        print()
+        results[factor] = {
+            "weights": weights,
+            "summary": bt.get("summary", {}),
+            "periods_tested": bt.get("periods_tested", 0),
+        }
+
+    if as_json:
+        print(json.dumps({
+            "lottery_type": lottery_type, "periods": periods, "window": window,
+            "use_mask": use_mask, "factors": results,
+        }, ensure_ascii=False, indent=2))
+        return 0
+
+    # 打印单因子排名
+    _print_single_factor_table(lottery_type, results, keys)
+
+    if not derive:
+        print()
+        return 0
+
+    # 推导新权重
+    print(f"\n{'='*60}")
+    print("自动推导新权重（proportional 方法）")
+    print(f"{'='*60}")
+    derived_weights = derive_weights_from_single_factor(results, lottery_type, method="proportional")
+
+    # 获取现有权重做对比
+    if lottery_type in ("dlt", "ssq", "kl8"):
+        default_w = DEFAULT_8F_WEIGHTS
+        optimized_w = {"dlt": DLT_8F_WEIGHTS, "ssq": SSQ_8F_WEIGHTS, "kl8": KL8_8F_WEIGHTS}[lottery_type]
+    else:
+        default_w = {"pl5": DEFAULT_PL5_6F_WEIGHTS, "qxc": DEFAULT_QXC_6F_WEIGHTS}[lottery_type]
+        optimized_w = get_optimized_weights(lottery_type) or default_w
+
+    print(f"\n{'权重对比':>12}  {'default':>10}  {'optimized':>10}  {'derived':>10}")
+    for k in keys:
+        print(f"  {k:>10}: {default_w.get(k, 0):>10.4f}  {optimized_w.get(k, 0):>10.4f}  {derived_weights.get(k, 0):>10.4f}")
+
+    # 三组权重对比回测
+    print(f"\n{'='*60}")
+    print("三组权重对比回测:")
+    print(f"{'='*60}")
+
+    compare = run_multi_weight_backtest(
+        lottery_type=lottery_type,
+        weight_sets={
+            "default (硬编码)": default_w,
+            "optimized (Dirichlet)": optimized_w,
+            "derived (单因子推导)": derived_weights,
+        },
+        periods=periods,
+        window=window,
+        use_mask=use_mask,
+        progress_callback=progress,
+    )
+    print()
+
+    _print_multi_weight_comparison(lottery_type, compare)
+
+    print()
+    return 0
+
+
+def _print_single_factor_table(lottery_type: str, results: dict, keys: list[str]) -> None:
+    """打印单因子回测结果排名表。"""
+    from lottery.factor_evaluator import extract_score
+
+    rows = []
+    for factor in keys:
+        r = results.get(factor, {})
+        s = r.get("summary", {})
+        score = extract_score(lottery_type, s)
+        rows.append((factor, score, s))
+
+    ranked = sorted(rows, key=lambda x: -x[1])
+
+    if lottery_type == "dlt":
+        print(f"\n{'因子':>10}  {'综合分':>8}  {'前区命中(/5)':>12}  {'后区命中(/2)':>12}  {'中奖率':>8}")
+        for factor, score, s in ranked:
+            reg = s.get("regular", {})
+            pd = reg.get("prize_dist", {})
+            total = sum(pd.values()) if pd else 0
+            won = sum(v for k, v in pd.items() if k != "未中奖") if pd else 0
+            prize_rate = f"{won/total*100:.1f}%" if total > 0 else "-"
+            print(f"  {factor:>10}  {score:>8.4f}  {reg.get('avg_front', '-'):>12}  {reg.get('avg_back', '-'):>12}  {prize_rate:>8}")
+    elif lottery_type == "ssq":
+        print(f"\n{'因子':>10}  {'综合分':>8}  {'红球命中(/6)':>12}  {'蓝球命中率':>10}  {'中奖率':>8}")
+        for factor, score, s in ranked:
+            reg = s.get("regular", {})
+            pd = reg.get("prize_dist", {})
+            total = sum(pd.values()) if pd else 0
+            won = sum(v for k, v in pd.items() if k != "未中奖") if pd else 0
+            prize_rate = f"{won/total*100:.1f}%" if total > 0 else "-"
+            print(f"  {factor:>10}  {score:>8.4f}  {reg.get('avg_red', '-'):>12}  {reg.get('avg_blue', '-'):>10}  {prize_rate:>8}")
+    elif lottery_type == "kl8":
+        print(f"\n{'因子':>10}  {'综合分':>8}  {'平均重合(/11)':>13}")
+        for factor, score, s in ranked:
+            reg = s.get("regular", {})
+            print(f"  {factor:>10}  {score:>8.4f}  {reg.get('avg_overlap', '-'):>13}")
+    elif lottery_type == "pl5":
+        print(f"\n{'因子':>10}  {'综合分':>8}  {'逐位命中(/5)':>12}  {'全中':>6}  {'>=3位率':>8}")
+        for factor, score, s in ranked:
+            reg = s.get("regular", {})
+            mge = reg.get("match_ge_3_rate", 0) or 0
+            print(f"  {factor:>10}  {score:>8.4f}  {reg.get('avg_pos', '-'):>12}  {reg.get('all_matched', 0):>6}  {mge*100:>7.1f}%")
+    elif lottery_type == "qxc":
+        print(f"\n{'因子':>10}  {'综合分':>8}  {'前区命中(/6)':>12}  {'后区命中率':>10}")
+        for factor, score, s in ranked:
+            reg = s.get("regular", {})
+            print(f"  {factor:>10}  {score:>8.4f}  {reg.get('avg_front', '-'):>12}  {reg.get('avg_special', '-'):>10}")
+
+
+def _print_multi_weight_comparison(lottery_type: str, compare: dict) -> None:
+    """打印多组权重对比回测结果。"""
+    labels = list(compare.keys())
+
+    if lottery_type == "dlt":
+        print(f"\n{'指标':<32}  " + "  ".join(f"{lbl:>22}" for lbl in labels))
+        print(f"{'-'*32}  " + "  ".join(f"{'-'*22}" for _ in labels))
+        for metric, field, fmt in [
+            ("前区平均命中(/5)", "avg_front", lambda v: f"{float(v):.4f}"),
+            ("后区平均命中(/2)", "avg_back", lambda v: f"{float(v):.4f}"),
+        ]:
+            vals = "  ".join(f"{fmt(compare[lbl]['summary'].get('regular', {}).get(field, '-')):>22}" for lbl in labels)
+            print(f"  {metric:<30}  {vals}")
+        for metric, field, fmt in [
+            ("中奖率", None, None),
+        ]:
+            def _prize_rate(lbl):
+                pd = compare[lbl]["summary"].get("regular", {}).get("prize_dist", {})
+                total = sum(pd.values()) if pd else 0
+                won = sum(v for k, v in pd.items() if k != "未中奖") if pd else 0
+                return f"{won/total*100:.1f}%" if total > 0 else "-"
+            vals = "  ".join(f"{_prize_rate(lbl):>22}" for lbl in labels)
+            print(f"  {metric:<30}  {vals}")
+
+    elif lottery_type == "ssq":
+        print(f"\n{'指标':<32}  " + "  ".join(f"{lbl:>22}" for lbl in labels))
+        print(f"{'-'*32}  " + "  ".join(f"{'-'*22}" for _ in labels))
+        for metric, field, fmt in [
+            ("红球平均命中(/6)", "avg_red", lambda v: f"{float(v):.4f}"),
+            ("蓝球命中率", "avg_blue", lambda v: f"{float(v):.4f}"),
+        ]:
+            vals = "  ".join(f"{fmt(compare[lbl]['summary'].get('regular', {}).get(field, '-')):>22}" for lbl in labels)
+            print(f"  {metric:<30}  {vals}")
+        def _ssq_prize_rate(lbl):
+            pd = compare[lbl]["summary"].get("regular", {}).get("prize_dist", {})
+            total = sum(pd.values()) if pd else 0
+            won = sum(v for k, v in pd.items() if k != "未中奖") if pd else 0
+            return f"{won/total*100:.1f}%" if total > 0 else "-"
+        vals = "  ".join(f"{_ssq_prize_rate(lbl):>22}" for lbl in labels)
+        print(f"  {'中奖率':<30}  {vals}")
+
+    elif lottery_type == "kl8":
+        print(f"\n{'指标':<32}  " + "  ".join(f"{lbl:>22}" for lbl in labels))
+        print(f"{'-'*32}  " + "  ".join(f"{'-'*22}" for _ in labels))
+        metric = "平均重合(/11)"
+        field = "avg_overlap"
+        vals = "  ".join(f"{float(compare[lbl]['summary'].get('regular', {}).get(field, 0)):.4f}".rjust(22) for lbl in labels)
+        print(f"  {metric:<30}  {vals}")
+
+    elif lottery_type == "pl5":
+        print(f"\n{'指标':<32}  " + "  ".join(f"{lbl:>22}" for lbl in labels))
+        print(f"{'-'*32}  " + "  ".join(f"{'-'*22}" for _ in labels))
+        for metric, field, fmt in [
+            ("平均逐位命中(/5)", "avg_pos", lambda v: f"{float(v):.4f}"),
+            ("全中次数", "all_matched", lambda v: str(int(v))),
+        ]:
+            vals = "  ".join(f"{fmt(compare[lbl]['summary'].get('regular', {}).get(field, 0)):>22}" for lbl in labels)
+            print(f"  {metric:<30}  {vals}")
+        def _pl5_ge3(lbl):
+            mge = compare[lbl]["summary"].get("regular", {}).get("match_ge_3_rate", 0) or 0
+            return f"{mge*100:.1f}%"
+        vals = "  ".join(f"{_pl5_ge3(lbl):>22}" for lbl in labels)
+        print(f"  {'>=3位率':<30}  {vals}")
+
+    elif lottery_type == "qxc":
+        print(f"\n{'指标':<32}  " + "  ".join(f"{lbl:>22}" for lbl in labels))
+        print(f"{'-'*32}  " + "  ".join(f"{'-'*22}" for _ in labels))
+        for metric, field, fmt in [
+            ("前区平均命中(/6)", "avg_front", lambda v: f"{float(v):.4f}"),
+            ("后区命中率", "avg_special", lambda v: f"{float(v):.4f}"),
+        ]:
+            vals = "  ".join(f"{fmt(compare[lbl]['summary'].get('regular', {}).get(field, 0)):>22}" for lbl in labels)
+            print(f"  {metric:<30}  {vals}")
 
 
 if __name__ == "__main__":

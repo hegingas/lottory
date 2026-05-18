@@ -899,16 +899,18 @@ def _compare_one_ticket(lottery_type: str, numbers: dict, draw: dict) -> dict:
     elif lottery_type == "pl5":
         d_pred = numbers["digits"]
         d_act = [draw["d1"], draw["d2"], draw["d3"], draw["d4"], draw["d5"]]
-        pm = sum(1 for i in range(5) if d_pred[i] == d_act[i])
-        return {"position_matches": pm, "all_matched": pm == 5}
+        per_pos = [d_pred[i] == d_act[i] for i in range(5)]
+        pm = sum(per_pos)
+        return {"position_matches": pm, "all_matched": pm == 5, "per_pos_matches": per_pos}
     elif lottery_type == "qxc":
         qxc_fpred = numbers["front"]
         qxc_fact = [draw["d1"], draw["d2"], draw["d3"], draw["d4"], draw["d5"], draw["d6"]]
         sp = numbers["special"]
         sa = draw["special"]
-        fm = sum(1 for i in range(6) if qxc_fpred[i] == qxc_fact[i])
+        per_pos = [qxc_fpred[i] == qxc_fact[i] for i in range(6)]
+        fm = sum(per_pos)
         sm = 1 if sp == sa else 0
-        return {"front_matches": fm, "special_match": sm}
+        return {"front_matches": fm, "special_match": sm, "per_pos_matches": per_pos}
     return {}
 
 
@@ -1022,7 +1024,27 @@ def _aggregate_backtest(lottery_type: str, regulars: list[dict], bests: list[dic
         if regulars:
             pm_avg = sum(e.get("position_matches", 0) for e in regulars) / len(regulars)
             all_hit = sum(1 for e in regulars if e.get("all_matched"))
-            summary["regular"] = {"count": len(regulars), "avg_pos": round(pm_avg, 2), "all_matched": all_hit}
+            from collections import Counter as _Ctr
+            pm_dist = _Ctr(e.get("position_matches", 0) for e in regulars)
+            per_pos_acc = [0.0] * 5
+            n_pp = 0
+            for e in regulars:
+                ppm = e.get("per_pos_matches")
+                if ppm and len(ppm) == 5:
+                    for j in range(5):
+                        per_pos_acc[j] += 1.0 if ppm[j] else 0.0
+                    n_pp += 1
+            if n_pp > 0:
+                per_pos_acc = [round(v / n_pp, 4) for v in per_pos_acc]
+            match_ge_3 = sum(1 for e in regulars if e.get("position_matches", 0) >= 3) / max(len(regulars), 1)
+            max_pos = max((e.get("position_matches", 0) for e in regulars), default=0)
+            summary["regular"] = {
+                "count": len(regulars), "avg_pos": round(pm_avg, 2), "all_matched": all_hit,
+                "pos_match_dist": {str(k): v for k, v in sorted(pm_dist.items())},
+                "per_pos_accuracy": per_pos_acc,
+                "match_ge_3_rate": round(match_ge_3, 4),
+                "max_pos_hit": max_pos,
+            }
             summary["regular"]["stability"] = _compute_stability(regulars)
         if bests:
             pm_avg = sum(e.get("position_matches", 0) for e in bests) / len(bests)
@@ -1033,7 +1055,27 @@ def _aggregate_backtest(lottery_type: str, regulars: list[dict], bests: list[dic
         if regulars:
             fm_avg = sum(e.get("front_matches", 0) for e in regulars) / len(regulars)
             sm_avg = sum(e.get("special_match", 0) for e in regulars) / len(regulars)
-            summary["regular"] = {"count": len(regulars), "avg_front": round(fm_avg, 2), "avg_special": round(sm_avg, 2)}
+            from collections import Counter as _Ctr
+            front_dist = _Ctr(e.get("front_matches", 0) for e in regulars)
+            per_pos_acc = [0.0] * 6
+            n_pp = 0
+            for e in regulars:
+                ppm = e.get("per_pos_matches")
+                if ppm and len(ppm) == 6:
+                    for j in range(6):
+                        per_pos_acc[j] += 1.0 if ppm[j] else 0.0
+                    n_pp += 1
+            if n_pp > 0:
+                per_pos_acc = [round(v / n_pp, 4) for v in per_pos_acc]
+            combined = sum(1 for e in regulars if e.get("front_matches", 0) >= 3 and e.get("special_match") == 1) / max(len(regulars), 1)
+            max_front = max((e.get("front_matches", 0) for e in regulars), default=0)
+            summary["regular"] = {
+                "count": len(regulars), "avg_front": round(fm_avg, 2), "avg_special": round(sm_avg, 2),
+                "front_dist": {str(k): v for k, v in sorted(front_dist.items())},
+                "per_pos_front_accuracy": per_pos_acc,
+                "combined_hit_rate": round(combined, 4),
+                "max_front_hit": max_front,
+            }
             summary["regular"]["stability"] = _compute_stability(regulars)
         if bests:
             fm_avg = sum(e.get("front_matches", 0) for e in bests) / len(bests)
