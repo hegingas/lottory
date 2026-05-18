@@ -770,12 +770,19 @@ def _print_backtest_summary(lottery_type: str, s: dict) -> None:
 
 
 def cmd_backtest_factors(lottery_type: str, periods: int = 100, window: int = 30, use_mask: bool = True, as_json: bool = False, derive: bool = False) -> int:
-    from lottery.config import get_optimized_weights, DEFAULT_8F_WEIGHTS, DLT_8F_WEIGHTS, SSQ_8F_WEIGHTS, KL8_8F_WEIGHTS
-    from lottery.config import DEFAULT_PL5_6F_WEIGHTS, DEFAULT_QXC_6F_WEIGHTS
+    from lottery.config import (
+        DEFAULT_8F_WEIGHTS,
+        DEFAULT_PL5_6F_WEIGHTS,
+        DEFAULT_QXC_6F_WEIGHTS,
+        DLT_8F_WEIGHTS,
+        KL8_8F_WEIGHTS,
+        SSQ_8F_WEIGHTS,
+        get_optimized_weights,
+    )
     from lottery.db import run_backtest
     from lottery.factor_evaluator import (
-        factor_keys,
         derive_weights_from_single_factor,
+        factor_keys,
         run_multi_weight_backtest,
     )
 
@@ -931,16 +938,13 @@ def _print_multi_weight_comparison(lottery_type: str, compare: dict) -> None:
         ]:
             vals = "  ".join(f"{fmt(compare[lbl]['summary'].get('regular', {}).get(field, '-')):>22}" for lbl in labels)
             print(f"  {metric:<30}  {vals}")
-        for metric, field, fmt in [
-            ("中奖率", None, None),
-        ]:
-            def _prize_rate(lbl):
-                pd = compare[lbl]["summary"].get("regular", {}).get("prize_dist", {})
-                total = sum(pd.values()) if pd else 0
-                won = sum(v for k, v in pd.items() if k != "未中奖") if pd else 0
-                return f"{won/total*100:.1f}%" if total > 0 else "-"
-            vals = "  ".join(f"{_prize_rate(lbl):>22}" for lbl in labels)
-            print(f"  {metric:<30}  {vals}")
+        def _prize_rate(lbl):
+            pd = compare[lbl]["summary"].get("regular", {}).get("prize_dist", {})
+            total = sum(pd.values()) if pd else 0
+            won = sum(v for k, v in pd.items() if k != "未中奖") if pd else 0
+            return f"{won/total*100:.1f}%" if total > 0 else "-"
+        vals = "  ".join(f"{_prize_rate(lbl):>22}" for lbl in labels)
+        print(f"  {'中奖率':<30}  {vals}")
 
     elif lottery_type == "ssq":
         print(f"\n{'指标':<32}  " + "  ".join(f"{lbl:>22}" for lbl in labels))
