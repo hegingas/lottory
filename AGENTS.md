@@ -71,13 +71,14 @@
 
 1. **`lottery-draw-dlt-ssq`**（仅大乐透/双色球）或 **`lottery-draw-sync`**（三彩种）：权威源 → `data/raw/`（不可随意覆盖唯一原件）→ 校验合并 → **`data/processed/`**（规范化主数据，推荐为分析与预测的**单一事实源**）。  
 2. **`lottery-history-analysis`**：优先读 `data/processed/`；若无则 `data/raw/` 或用户指定路径（**本仓库约定不存放 xlsx**）；输出 → `history/*_analysis.md`。  
-3. **`lottery-prediction`**：同样优先 `data/processed/`；输出 → `history/*_prediction.md`。**强制**：每个彩种归档须含 **「明确号码输出」** 节（大乐透、双色球、排列5、七星彩各 **5 注单式**；快乐八含 20 码/11 码参考，并写预测生成时间与说明），规则见 `lottery-prediction-storage` 与对应 Skill。由 `regenerate-history` 机械生成时，大乐透/双色球/快乐八会先经 **区间掩码马尔可夫**（`src/lottery/interval_markov.py`）限定候选号码，再在候选内按多因子取号；快乐八为**单一路径**，**非**「窗口 Top4」与「Top4 状态马尔可夫」并列。  
+3. **`lottery-prediction`**：同样优先 `data/processed/`；输出 → `history/*_prediction.md`。**强制**：每个彩种归档须含 **「明确号码输出」** 节（大乐透、双色球、排列5、七星彩各 **5 注单式**；快乐八含 20 码/11 码参考，并写预测生成时间与说明），规则见 `lottery-prediction-storage` 与对应 Skill。由 `regenerate-history` 机械生成时，大乐透/双色球/快乐八会先经 **区间掩码马尔可夫**（`src/lottery/interval_markov.py`）限定候选号码，再在候选内按多因子取号；也可通过 `use_mask=False` 跳过掩码（全号池开放），100 期回测显示 DLT/SSQ 上 no-mask 中奖率更高（6.20%→9.60%，3.60%→9.00%），详见 `README.md`。快乐八为**单一路径**，**非**「窗口 Top4」与「Top4 状态马尔可夫」并列。  
 4. **`lottery-combo-optimize`**：只组号；若对齐预测须引用 `history/*_prediction.md` 或用户粘贴摘要，**不重算**统计预测。
 
 ### 机械预测口径（与 `builders` / `regenerate-history` 对齐）
 
-- **大乐透、双色球**：全表每期主区/副区（或红/蓝）按配置小区生成命中掩码 → 相邻期一阶马尔可夫 + 拉普拉斯平滑 → 扩展掩码 → **仅在并集内**取满注数；大乐透后区 **4** 段（每段 3 个连续号）。实现见 `interval_markov.py`、`prediction_block_dlt` / `prediction_block_ssq`、`selection`（`allowed_*`）。
-- **快乐八**：**唯一**路径为 8 段掩码马尔可夫 + `expand_kl8_decadic_mask` → 活跃十码段并集 → 20/11 码。
+- **大乐透、双色球**：全表每期主区/副区（或红/蓝）按配置小区生成命中掩码 → 相邻期一阶马尔可夫 + 拉普拉斯平滑 → 扩展掩码 → **仅在并集内**取满注数；大乐透后区 **4** 段（每段 3 个连续号）。实现见 `interval_markov.py`、`prediction_block_dlt` / `prediction_block_ssq`、`selection`（`allowed_*`）。`prediction_block_*` 均支持 `use_mask=False` 跳过区间掩码（全号池开放，仅保留分区上限）。
+- **快乐八**：**唯一**路径为 8 段掩码马尔可夫 + `expand_kl8_decadic_mask` → 活跃十码段并集 → 20/11 码；同样支持 `use_mask=False`。
+- **回测对比**：`python src/scripts/cli.py backtest-compare --type dlt --periods 100` 一键并行 mask vs no-mask；`backtest --type dlt --periods 50 --no-mask` 单路径。
 
 ### Agent 与 Python 协作（必须知晓）
 

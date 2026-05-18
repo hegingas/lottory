@@ -725,6 +725,7 @@ def run_backtest(
     weights: dict[str, float] | None = None,
     whiten: bool | None = None,
     kl8_path: str = "B",
+    use_mask: bool = True,
 ) -> dict:
     """滑动窗口历史回测。
 
@@ -814,7 +815,9 @@ def run_backtest(
                 kwargs["whiten"] = whiten
             if lottery_type == "kl8":
                 kwargs["path"] = kl8_path
-            _md, pred_data = builder(win_df, **kwargs)  # type: ignore[arg-type]
+            if lottery_type in ("dlt", "ssq", "kl8"):
+                kwargs["use_mask"] = use_mask
+            _md, pred_data = builder(win_df, **kwargs)  # type: ignore[arg-type, operator]
         except Exception:
             continue
 
@@ -867,7 +870,7 @@ def run_backtest(
             "median": float(np.median(twenty_hits)),
             "max": int(max(twenty_hits)),
         }
-    return {"ok": True, "lottery_type": lottery_type, "periods_tested": test_count, "window": window, "saved": saved_total, "summary": summary}
+    return {"ok": True, "lottery_type": lottery_type, "periods_tested": test_count, "window": window, "saved": saved_total, "summary": summary, "use_mask": use_mask}
 
 
 def _compare_one_ticket(lottery_type: str, numbers: dict, draw: dict) -> dict:

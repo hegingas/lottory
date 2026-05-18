@@ -478,6 +478,13 @@ def main() -> int:
     p_bt.add_argument("--periods", type=int, default=100, help="回测期数（默认 100）")
     p_bt.add_argument("--window", type=int, default=30, help="预测窗口大小（默认 30）")
     p_bt.add_argument("--json", action="store_true", help="以 JSON 格式输出")
+    p_bt.add_argument("--no-mask", action="store_true", dest="no_mask", help="不使用区间掩码马尔可夫约束（全号池开放）")
+
+    p_btc = sub.add_parser("backtest-compare", help="对比回测：mask vs no-mask 双路径")
+    p_btc.add_argument("--type", dest="btc_type", choices=["dlt","ssq","kl8","pl5","qxc"], required=True, metavar="TYPE", help="彩种")
+    p_btc.add_argument("--periods", type=int, default=100, help="回测期数（默认 100）")
+    p_btc.add_argument("--window", type=int, default=30, help="预测窗口大小（默认 30）")
+    p_btc.add_argument("--json", action="store_true", help="以 JSON 格式输出")
 
     args = p.parse_args()
     if args.command == "inventory":
@@ -499,11 +506,13 @@ def main() -> int:
     if args.command == "prediction-accuracy":
         return cmd_prediction_accuracy(args.pred_type, args.period, as_json=args.json)
     if args.command == "backtest":
-        return cmd_backtest(args.bt_type, args.periods, args.window, as_json=args.json)
+        return cmd_backtest(args.bt_type, args.periods, args.window, as_json=args.json, use_mask=not args.no_mask)
+    if args.command == "backtest-compare":
+        return cmd_backtest_compare(args.btc_type, args.periods, args.window, as_json=args.json)
     return 1
 
 
-def cmd_backtest(lottery_type: str, periods: int = 100, window: int = 30, as_json: bool = False) -> int:
+def cmd_backtest(lottery_type: str, periods: int = 100, window: int = 30, as_json: bool = False, use_mask: bool = True) -> int:
     from lottery.db import run_backtest
 
     def progress(current, total, pid):
@@ -511,11 +520,12 @@ def cmd_backtest(lottery_type: str, periods: int = 100, window: int = 30, as_jso
         bar = "#" * (pct // 4) + "-" * (25 - pct // 4)
         print(f"\r  [{bar}] {current}/{total} 期 (当前: {pid})", end="", flush=True)
 
+    mask_label = "启用区间掩码" if use_mask else "全号池（无掩码）"
     print(f"\n{'='*60}")
-    print(f"彩种: {lottery_type}  |  回测范围: 近 {periods} 期  |  窗口: {window} 期")
+    print(f"彩种: {lottery_type}  |  回测范围: 近 {periods} 期  |  窗口: {window} 期  |  {mask_label}")
     print(f"{'='*60}")
 
-    result = run_backtest(lottery_type, periods=periods, window=window, progress_callback=progress)
+    result = run_backtest(lottery_type, periods=periods, window=window, progress_callback=progress, use_mask=use_mask)
     print("\n")
 
     if not result.get("ok"):
@@ -533,6 +543,123 @@ def cmd_backtest(lottery_type: str, periods: int = 100, window: int = 30, as_jso
 
     _print_backtest_summary(lottery_type, s)
     return 0
+
+
+def cmd_backtest_compare(lottery_type: str, periods: int = 100, window: int = 30, as_json: bool = False) -> int:
+    from lottery.db import run_backtest
+
+    if lottery_type in ("pl5", "qxc"):
+        print(f"\n{lottery_type} 本身不使用区间掩码，跳过对比回测。")
+        return 0
+
+    def progress(current, total, pid):
+        pct = current * 100 // total
+        bar = "#" * (pct // 4) + "-" * (25 - pct // 4)
+        print(f"\r  [{bar}] {current}/{total} 期 (当前: {pid})", end="", flush=True)
+
+    print(f"\n{'='*60}")
+    print(f"彩种: {lottery_type}  |  对比回测: mask vs no-mask")
+    print(f"回测范围: 近 {periods} 期  |  窗口: {window} 期")
+    print(f"{'='*60}")
+
+    print("\n--- 路径 1/2: 启用区间掩码 ---")
+    r_mask = run_backtest(lottery_type, periods=periods, window=window, progress_callback=progress, use_mask=True)
+    print("\n")
+
+    print("--- 路径 2/2: 全号池（无区间掩码）---")
+    r_nomask = run_backtest(lottery_type, periods=periods, window=window, progress_callback=progress, use_mask=False)
+    print("\n")
+
+    if not r_mask.get("ok") or not r_nomask.get("ok"):
+        print(f"回测失败: mask={r_mask.get('error')} nomask={r_nomask.get('error')}")
+        return 1
+
+    if as_json:
+        print(json.dumps({
+            "lottery_type": lottery_type,
+            "periods": periods,
+            "window": window,
+            "mask": {"saved": r_mask["saved"], "summary": r_mask["summary"]},
+            "nomask": {"saved": r_nomask["saved"], "summary": r_nomask["summary"]},
+        }, ensure_ascii=False, indent=2))
+        return 0
+
+    _print_backtest_comparison(lottery_type, r_mask, r_nomask)
+    return 0
+
+
+def _print_backtest_comparison(lottery_type: str, r_mask: dict, r_nomask: dict) -> None:
+    s_m = r_mask.get("summary", {})
+    s_n = r_nomask.get("summary", {})
+
+    print(f"{'='*70}")
+    print(f"对比结果: {lottery_type.upper()}")
+    print(f"{'='*70}")
+    print(f"{'指标':<32} {'mask (启用)':>18} {'no-mask (全池)':>18}")
+    print(f"{'-'*32} {'-'*18} {'-'*18}")
+
+    def _get(d, key, default="-"):
+        return d.get(key, default) if d else default
+
+    if lottery_type == "dlt":
+        rm_reg = s_m.get("regular", {})
+        rn_reg = s_n.get("regular", {})
+        print(f"{'前区平均命中(/5)':<32} {str(_get(rm_reg, 'avg_front', '-')):>18} {str(_get(rn_reg, 'avg_front', '-')):>18}")
+        print(f"{'后区平均命中(/2)':<32} {str(_get(rm_reg, 'avg_back', '-')):>18} {str(_get(rn_reg, 'avg_back', '-')):>18}")
+
+        bm_reg = s_m.get("best", {})
+        bn_reg = s_n.get("best", {})
+        print(f"{'优选-前区平均命中(/5)':<32} {str(_get(bm_reg, 'avg_front', '-')):>18} {str(_get(bn_reg, 'avg_front', '-')):>18}")
+        print(f"{'优选-后区平均命中(/2)':<32} {str(_get(bm_reg, 'avg_back', '-')):>18} {str(_get(bn_reg, 'avg_back', '-')):>18}")
+
+        pm = rm_reg.get("prize_dist", {})
+        pn = rn_reg.get("prize_dist", {})
+        _print_prize_rate(pm, pn)
+
+    elif lottery_type == "ssq":
+        rm_reg = s_m.get("regular", {})
+        rn_reg = s_n.get("regular", {})
+        print(f"{'红球平均命中(/6)':<32} {str(_get(rm_reg, 'avg_red', '-')):>18} {str(_get(rn_reg, 'avg_red', '-')):>18}")
+        print(f"{'蓝球命中率':<32} {str(_get(rm_reg, 'avg_blue', '-')):>18} {str(_get(rn_reg, 'avg_blue', '-')):>18}")
+
+        bm_reg = s_m.get("best", {})
+        bn_reg = s_n.get("best", {})
+        print(f"{'优选-红球平均命中(/6)':<32} {str(_get(bm_reg, 'avg_red', '-')):>18} {str(_get(bn_reg, 'avg_red', '-')):>18}")
+        print(f"{'优选-蓝球命中率':<32} {str(_get(bm_reg, 'avg_blue', '-')):>18} {str(_get(bn_reg, 'avg_blue', '-')):>18}")
+
+        pm = rm_reg.get("prize_dist", {})
+        pn = rn_reg.get("prize_dist", {})
+        _print_prize_rate(pm, pn)
+
+    elif lottery_type == "kl8":
+        rm_reg = s_m.get("regular", {})
+        rn_reg = s_n.get("regular", {})
+        print(f"{'11码vs20码平均重合':<32} {str(_get(rm_reg, 'avg_overlap', '-')):>18} {str(_get(rn_reg, 'avg_overlap', '-')):>18}")
+
+        bm_reg = s_m.get("best", {})
+        bn_reg = s_n.get("best", {})
+        print(f"{'优选-11码vs20码平均重合':<32} {str(_get(bm_reg, 'avg_overlap', '-')):>18} {str(_get(bn_reg, 'avg_overlap', '-')):>18}")
+
+    # Stability
+    sm_stab = s_m.get("regular", {}).get("stability", {})
+    sn_stab = s_n.get("regular", {}).get("stability", {})
+    def _fmt_rate(v):
+        return f"{float(v):.2%}" if isinstance(v, (int, float)) else str(v)
+    print(f"{'最大连续不中期数':<32} {str(_get(sm_stab, 'max_drawdown', '-')):>18} {str(_get(sn_stab, 'max_drawdown', '-')):>18}")
+    print(f"{'平均中奖间隔':<32} {str(_get(sm_stab, 'prize_gap_avg', '-')):>18} {str(_get(sn_stab, 'prize_gap_avg', '-')):>18}")
+
+    print()
+
+
+def _print_prize_rate(pm: dict, pn: dict) -> None:
+    def _rate(pd):
+        if not pd:
+            return "-"
+        total = sum(pd.values())
+        won = sum(v for k, v in pd.items() if k != "未中奖")
+        return f"{won/total:.2%}" if total > 0 else "-"
+
+    print(f"{'中奖率':<32} {_rate(pm):>18} {_rate(pn):>18}")
 
 
 def _print_backtest_summary(lottery_type: str, s: dict) -> None:

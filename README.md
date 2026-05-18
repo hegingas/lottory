@@ -85,6 +85,7 @@ python src/scripts/lottery_web.py
 1. 通过 `/skill-name` 调用对应技能（如 `/lottery-manager`、`/lottery-prediction`）。
 2. CLI 命令直接在终端执行：`python src/scripts/cli.py validate`、`regenerate-history --only all`。
 3. 全局规则自动加载自 `CLAUDE.md`，与 `.cursor/rules/` 保持等效。
+4. **回测对比**：`python src/scripts/cli.py backtest-compare --type dlt --periods 100` 并行跑 mask vs no-mask 双路径对比；`backtest --type dlt --periods 50 --no-mask` 单路径无掩码回测。
 
 ### Web 界面
 
@@ -106,4 +107,27 @@ python src/scripts/lottery_web.py
 
 ## 机械预测口径（摘要）
 
-`regenerate-history` 生成大乐透 / 双色球 / 快乐八预测时：先做**全表**「小区是否出球」**二进制掩码**的相邻期一阶马尔可夫 + 拉普拉斯平滑，再**扩展掩码**得到允许选号集合，最后在集合内按多因子与分区上限取号（`src/lottery/interval_markov.py`、`src/lottery/builders/_prediction.py`、`src/lottery/selection.py`）。快乐八为**单一路径**活跃十码段，**非**旧版「窗口 Top4 + Top4 状态马尔可夫」并列。细则见 `AGENTS.md`（「机械预测口径」）、`CLAUDE.md` 与 `.cursor/rules/lottery-core.mdc`。
+大乐透 / 双色球 / 快乐八 支持两套并行的选号路径：
+
+| 路径 | 参数 | 行为 |
+|------|------|------|
+| **区间掩码（默认）** | `use_mask=True` | 全表「小区是否出球」二进制掩码 → 一阶+二阶马尔可夫混合 → 扩展掩码 → 掩码并集内多因子取号 |
+| **全号池（无掩码）** | `use_mask=False` / `--no-mask` | 跳过掩码约束，全号池开放，仅保留分区上限（每段至多2个）作为结构性多样性约束 |
+
+`regenerate-history` 默认启用区间掩码，保持向后兼容。预测函数 `prediction_block_*` 均接受 `use_mask` 参数；CLI `backtest` 支持 `--no-mask` flag；`backtest-compare` 一键双路径对比。
+
+### 100 期回测对比（窗口 30 期，2026-05-18）
+
+| 彩种 | 指标 | mask（区间掩码） | no-mask（全号池） | 结论 |
+|------|------|:---:|:---:|------|
+| **大乐透** | 中奖率 | 6.20% | **9.60%** | no-mask +3.4% |
+| | 最大连续不中 | 88 期 | **50 期** | no-mask 更稳 |
+| | 平均中奖间隔 | 18.7 期 | **10.8 期** | no-mask 更快 |
+| **双色球** | 中奖率 | 3.60% | **9.00%** | no-mask +5.4% |
+| | 最大连续不中 | 80 期 | 87 期 | 接近 |
+| | 平均中奖间隔 | 24.7 期 | **20.5 期** | no-mask 更快 |
+| **快乐八** | 11码vs20码平均重合 | **2.52** | 2.47 | mask 略优 +0.05 |
+
+> **结论**：大乐透和双色球上，区间掩码过度约束选号空间，去掉后中奖率显著提升；快乐八上掩码仍有微弱优势。所有结论均为历史回测统计，不构成未来走势预测。
+
+核心代码：`src/lottery/interval_markov.py`、`src/lottery/builders/_prediction.py`、`src/lottery/selection.py`。细则见 `AGENTS.md`（「机械预测口径」）、`CLAUDE.md` 与 `.cursor/rules/lottery-core.mdc`。

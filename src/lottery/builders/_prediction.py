@@ -85,7 +85,7 @@ from ._utils import _kl8_draw_rows, _norm_df, _pl5_markov_blended, _pl5_norm01
 # ── 大乐透预测 ────────────────────────────────────────────────
 
 
-def prediction_block_dlt(df: pd.DataFrame, n_last: int | None = None, weights: dict[str, float] | None = None, whiten: bool = False) -> tuple[str, dict[str, Any]]:
+def prediction_block_dlt(df: pd.DataFrame, n_last: int | None = None, weights: dict[str, float] | None = None, whiten: bool = False, use_mask: bool = True) -> tuple[str, dict[str, Any]]:
     # DLT: 白化倒退 -2.7%，保持原始因子空间
     if n_last is None:
         n_last = adaptive_stats_window(len(df))
@@ -189,8 +189,8 @@ def prediction_block_dlt(df: pd.DataFrame, n_last: int | None = None, weights: d
         bs,
         hist_keys=hist_keys_dlt,
         latest_seven=latest_dlt_seven,
-        allowed_front=allowed_front_dlt,
-        allowed_back=allowed_back_dlt,
+        allowed_front=allowed_front_dlt if use_mask else None,
+        allowed_back=allowed_back_dlt if use_mask else None,
     )
     numbers_md = _build_dlt_five_numbers_md(
         five,
@@ -225,6 +225,7 @@ def prediction_block_dlt(df: pd.DataFrame, n_last: int | None = None, weights: d
         "prediction_date": pred_ts,
         "window_start": int(pmin),
         "window_end": int(pmax),
+        "use_mask": use_mask,
         "tickets": [{"index": i, "numbers": {"front": list(f), "back": list(b)}} for i, (f, b) in enumerate(five, 1)],
         "best": {"numbers": {"front": fi_p, "back": bi_p}, "score": best_score},
     }
@@ -274,7 +275,7 @@ def prediction_block_dlt(df: pd.DataFrame, n_last: int | None = None, weights: d
 
 # ── 双色球预测 ────────────────────────────────────────────────
 
-def prediction_block_ssq(df: pd.DataFrame, n_last: int | None = None, weights: dict[str, float] | None = None, whiten: bool | None = None) -> tuple[str, dict[str, Any]]:
+def prediction_block_ssq(df: pd.DataFrame, n_last: int | None = None, weights: dict[str, float] | None = None, whiten: bool | None = None, use_mask: bool = True) -> tuple[str, dict[str, Any]]:
     # SSQ: 白化 +4.0%，默认开启
     if n_last is None:
         n_last = adaptive_stats_window(len(df))
@@ -377,8 +378,8 @@ def prediction_block_ssq(df: pd.DataFrame, n_last: int | None = None, weights: d
         bs_sc,
         hist_keys=hist_keys_ssq,
         latest_seven=latest_ssq_seven,
-        allowed_red=allowed_red_ssq,
-        allowed_blue=allowed_blue_ssq,
+        allowed_red=allowed_red_ssq if use_mask else None,
+        allowed_blue=allowed_blue_ssq if use_mask else None,
     )
     numbers_md = _build_ssq_five_numbers_md(
         five,
@@ -414,6 +415,7 @@ def prediction_block_ssq(df: pd.DataFrame, n_last: int | None = None, weights: d
         "prediction_date": pred_ts,
         "window_start": int(pmin),
         "window_end": int(pmax),
+        "use_mask": use_mask,
         "tickets": [{"index": i, "numbers": {"red": list(r), "blue": int(bl)}} for i, (r, bl) in enumerate(five, 1)],
         "best": {"numbers": {"red": ri_p, "blue": bl_p}, "score": best_score},
     }
@@ -537,7 +539,7 @@ def _kl8_collect_one_path_outputs_b(
 
 # ── 快乐八预测 ────────────────────────────────────────────────
 
-def prediction_block_kl8(df: pd.DataFrame, n_last: int | None = None, weights: dict[str, float] | None = None, whiten: bool = False, path: str = "B") -> tuple[str, dict[str, Any]]:
+def prediction_block_kl8(df: pd.DataFrame, n_last: int | None = None, weights: dict[str, float] | None = None, whiten: bool = False, path: str = "B", use_mask: bool = True) -> tuple[str, dict[str, Any]]:
     if n_last is None:
         n_last = adaptive_stats_window(len(df))
     if weights is None:
@@ -573,6 +575,8 @@ def prediction_block_kl8(df: pd.DataFrame, n_last: int | None = None, weights: d
         s_pred_k, KL8_PICK_ZONES_CAP, 11, KL8_MAX_PER_PICK_ZONE
     )
     active_zones = mask_to_active_zone_ranges(m_exp_k, KL8_PICK_ZONES_CAP)
+    if not use_mask:
+        active_zones = list(KL8_PICK_ZONES_CAP)
     if path == "B":
         w = _kl8_collect_one_path_outputs_b(
             fq, fcur, draws, markov_raw, active_zones, kl8_scores, latest20_set, markov_norm
@@ -631,6 +635,7 @@ def prediction_block_kl8(df: pd.DataFrame, n_last: int | None = None, weights: d
         "prediction_date": pred_ts,
         "window_start": int(pid_min),
         "window_end": int(pid_max),
+        "use_mask": use_mask,
         "tickets": [{"index": 1, "numbers": {"codes": eleven_codes}}],
         "best": {"numbers": {"codes": eleven_codes}, "score": float(pref11)},
         "kl8_path": path,
