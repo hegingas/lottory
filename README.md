@@ -83,9 +83,11 @@ python src/scripts/lottery_web.py
 ### Claude Code
 
 1. 通过 `/skill-name` 调用对应技能（如 `/lottery-manager`、`/lottery-prediction`）。
-2. CLI 命令直接在终端执行：`python src/scripts/cli.py validate`、`regenerate-history --only all`。
+2. CLI 命令直接在终端执行：
+   - **自动择优预测**：`python src/scripts/cli.py regenerate-history --auto-strategy`（自动回测对比，择优预测）
+   - **手动指定**：`regenerate-history --only all --no-mask`（全号池）/ 不带参数（区间掩码，默认）
+   - `python src/scripts/cli.py validate`、`backtest --type dlt --periods 50 --no-mask`、`backtest-compare --type dlt --periods 100`
 3. 全局规则自动加载自 `CLAUDE.md`，与 `.cursor/rules/` 保持等效。
-4. **回测对比**：`python src/scripts/cli.py backtest-compare --type dlt --periods 100` 并行跑 mask vs no-mask 双路径对比；`backtest --type dlt --periods 50 --no-mask` 单路径无掩码回测。
 
 ### Web 界面
 
@@ -113,8 +115,9 @@ python src/scripts/lottery_web.py
 |------|------|------|
 | **区间掩码（默认）** | `use_mask=True` | 全表「小区是否出球」二进制掩码 → 一阶+二阶马尔可夫混合 → 扩展掩码 → 掩码并集内多因子取号 |
 | **全号池（无掩码）** | `use_mask=False` / `--no-mask` | 跳过掩码约束，全号池开放，仅保留分区上限（每段至多2个）作为结构性多样性约束 |
+| **自动择优** | `--auto-strategy` | 内部快速回测对比 mask vs no-mask，自动选取中奖率更高的策略 |
 
-`regenerate-history` 默认启用区间掩码，保持向后兼容。预测函数 `prediction_block_*` 均接受 `use_mask` 参数；CLI `backtest` 支持 `--no-mask` flag；`backtest-compare` 一键双路径对比。
+`regenerate-history` 默认启用区间掩码，保持向后兼容。预测函数 `prediction_block_*` 均接受 `use_mask` 参数；CLI `backtest` 支持 `--no-mask` flag；`backtest-compare` 一键双路径对比；`--auto-strategy` 自动择优免手动选择。
 
 ### 100 期回测对比（窗口 30 期，2026-05-18）
 

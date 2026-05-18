@@ -41,11 +41,11 @@ def cmd_validate() -> int:
     return 0 if r.get("ok") else 1
 
 
-def cmd_regenerate_history(only_api: str, seed: int) -> int:
+def cmd_regenerate_history(only_api: str, seed: int, use_mask: bool = True, auto_strategy: bool = False) -> int:
     from scripts.regenerate_history_archives import main as regen_main
 
     internal = {"all": "all", "kl8": "kl8", "dlt-ssq": "dlt_ssq", "pl5": "pl5", "qxc": "qxc"}[only_api]
-    rc = int(regen_main(only=internal, seed=seed))
+    rc = int(regen_main(only=internal, seed=seed, use_mask=use_mask, auto_strategy=auto_strategy))
     if rc == 0:
         report, _ = _build_doctor_report()
         if isinstance(report, dict):
@@ -456,6 +456,14 @@ def main() -> int:
         default=20260430,
         help="预测随机种子（默认 20260430，可复现）",
     )
+    p_rh.add_argument(
+        "--no-mask", action="store_true", dest="no_mask",
+        help="不使用区间掩码马尔可夫约束（全号池开放；DLT/SSQ 回测中奖率更高）",
+    )
+    p_rh.add_argument(
+        "--auto-strategy", action="store_true", dest="auto_strategy",
+        help="自动回测对比 mask vs no-mask，择优预测（与 --no-mask 互斥）",
+    )
 
     sub.add_parser("regenerate-kl8-prediction", help="[兼容] 等同 regenerate-history --only kl8")
 
@@ -494,9 +502,9 @@ def main() -> int:
     if args.command == "doctor":
         return cmd_doctor(as_json=args.json, auto_fix=args.fix)
     if args.command == "regenerate-history":
-        return cmd_regenerate_history(args.only_scope, args.seed)
+        return cmd_regenerate_history(args.only_scope, args.seed, use_mask=not args.no_mask, auto_strategy=args.auto_strategy)
     if args.command == "regenerate-kl8-prediction":
-        return cmd_regenerate_history("kl8", 20260430)
+        return cmd_regenerate_history("kl8", 20260430, use_mask=True)
     if args.command == "migrate-to-db":
         return cmd_migrate_to_db()
     if args.command == "db-status":

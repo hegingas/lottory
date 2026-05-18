@@ -52,7 +52,7 @@ alwaysApply: true
 
 ## 机械预测：区间掩码马尔可夫（与代码一致）
 
-- **大乐透 / 双色球**：`regenerate-history` 与 `builders.prediction_block_dlt` / `prediction_block_ssq` 在生成单式前，对**全表**每期主区 / 副区（或红 / 蓝）按 `config` 中的小区划分计算「各区是否至少 1 球」的**二进制掩码**，统计相邻期一阶转移并拉普拉斯平滑，再**扩展掩码**直至在分区上限下能取满所需个数；**仅在掩码并集内**调用 `selection` 中带 `allowed_*` 的取号逻辑。后区分段：大乐透后区为 **4** 段（每段 3 个连续号 **01–03 / 04–06 / 07–09 / 10–12**）；双色球蓝球为 **4** 段（每段 4 个连续号）。实现见 `src/lottery/interval_markov.py`。所有 `prediction_block_*` 均支持 `use_mask=False` 跳过掩码（全号池开放，仅保留分区上限）；100 期回测显示 DLT/SSQ 上 no-mask 中奖率更高（6.20%→9.60%，3.60%→9.00%），详见 `README.md`。
+- **大乐透 / 双色球**：`regenerate-history` 与 `builders.prediction_block_dlt` / `prediction_block_ssq` 在生成单式前，对**全表**每期主区 / 副区（或红 / 蓝）按 `config` 中的小区划分计算「各区是否至少 1 球」的**二进制掩码**，统计相邻期一阶转移并拉普拉斯平滑，再**扩展掩码**直至在分区上限下能取满所需个数；**仅在掩码并集内**调用 `selection` 中带 `allowed_*` 的取号逻辑。后区分段：大乐透后区为 **4** 段（每段 3 个连续号 **01–03 / 04–06 / 07–09 / 10–12**）；双色球蓝球为 **4** 段（每段 4 个连续号）。实现见 `src/lottery/interval_markov.py`。所有 `prediction_block_*` 均支持 `use_mask=False` 跳过掩码（全号池开放，仅保留分区上限）；`--auto-strategy` 自动回测择优；100 期回测显示 DLT/SSQ 上 no-mask 中奖率更高（6.20%→9.60%，3.60%→9.00%），详见 `README.md`。
 - **快乐八**：**单一路径**——对 8 个十码段做掩码马尔可夫 + `expand_kl8_decadic_mask` 得活跃段并集，再在并集内取满 20 码并生成 11 码；**不再**采用「窗口 Top4 热度段」与「Top4 状态马尔可夫」**并列**双路径。实现见 `prediction_block_kl8`。同样支持 `use_mask=False`。
 - **与按号马尔可夫因子**：综合分中的按号马尔可夫（一阶 + 二阶混合，见 `config` 权重）仍在评分里占最大权重；**区间掩码**只约束**候选号码集合**，二者并存、层次不同。
 

@@ -78,7 +78,7 @@
 
 - **大乐透、双色球**：全表每期主区/副区（或红/蓝）按配置小区生成命中掩码 → 相邻期一阶马尔可夫 + 拉普拉斯平滑 → 扩展掩码 → **仅在并集内**取满注数；大乐透后区 **4** 段（每段 3 个连续号）。实现见 `interval_markov.py`、`prediction_block_dlt` / `prediction_block_ssq`、`selection`（`allowed_*`）。`prediction_block_*` 均支持 `use_mask=False` 跳过区间掩码（全号池开放，仅保留分区上限）。
 - **快乐八**：**唯一**路径为 8 段掩码马尔可夫 + `expand_kl8_decadic_mask` → 活跃十码段并集 → 20/11 码；同样支持 `use_mask=False`。
-- **回测对比**：`python src/scripts/cli.py backtest-compare --type dlt --periods 100` 一键并行 mask vs no-mask；`backtest --type dlt --periods 50 --no-mask` 单路径。
+- **回测对比**：`python src/scripts/cli.py backtest-compare --type dlt --periods 100` 一键并行 mask vs no-mask；`backtest --type dlt --periods 50 --no-mask` 单路径。**自动择优**：`regenerate-history --auto-strategy` 内部快速回测后自动选取最优策略。
 
 ### Agent 与 Python 协作（必须知晓）
 

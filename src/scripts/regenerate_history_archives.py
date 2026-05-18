@@ -77,7 +77,67 @@ def _save_prediction_to_db(lottery_type: str, pred_data: dict) -> dict[str, int]
     )
 
 
-def main(only: str = "all", seed: int | None = DEFAULT_RANDOM_SEED) -> int:
+def _auto_select_strategies(only_n: str) -> dict[str, bool]:
+    """快速回测对比，自动选取最优策略。返回 {lottery_type: use_mask}。"""
+    from lottery.db import run_backtest
+
+    candidates = []
+    if only_n in ("all", "dlt_ssq"):
+        candidates.extend(["dlt", "ssq"])
+    if only_n in ("all", "kl8"):
+        candidates.append("kl8")
+    # PL5/QXC 没有区间掩码，不参与
+
+    if not candidates:
+        return {}
+
+    result: dict[str, bool] = {}
+    for lt in candidates:
+        r_mask = run_backtest(lt, periods=min(30, _available_periods(lt)), window=30, use_mask=True)
+        r_nomask = run_backtest(lt, periods=min(30, _available_periods(lt)), window=30, use_mask=False)
+
+        if not r_mask.get("ok") or not r_nomask.get("ok"):
+            result[lt] = True  # fallback to default
+            continue
+
+        sm = r_mask.get("summary", {}).get("regular", {})
+        sn = r_nomask.get("summary", {}).get("regular", {})
+
+        if lt in ("dlt", "ssq"):
+            # 以 prize_dist 中奖率判断
+            pm = sm.get("prize_dist", {})
+            pn = sn.get("prize_dist", {})
+            wr_m = _win_rate(pm)
+            wr_n = _win_rate(pn)
+            better = wr_n > wr_m
+        elif lt == "kl8":
+            better = sm.get("avg_overlap", 0) > sn.get("avg_overlap", 0)
+        else:
+            better = True  # default
+
+        result[lt] = not better  # better=False means no-mask won → use_mask=False
+
+    return result
+
+
+def _win_rate(prize_dist: dict) -> float:
+    if not prize_dist:
+        return 0.0
+    total = sum(prize_dist.values())
+    won = sum(v for k, v in prize_dist.items() if k != "未中奖")
+    return won / total if total > 0 else 0.0
+
+
+def _available_periods(lottery_type: str) -> int:
+    """返回该彩种可用于回测的最大期数。"""
+    try:
+        df = _load_draws(lottery_type)
+        return max(0, len(df) - 30)
+    except Exception:
+        return 0
+
+
+def main(only: str = "all", seed: int | None = DEFAULT_RANDOM_SEED, use_mask: bool = True, auto_strategy: bool = False) -> int:
     only_n = _normalize_only(only)
     used_seed = _set_random_seed(seed)
     if only_n not in ("all", "kl8", "dlt_ssq", "pl5", "qxc"):
@@ -88,6 +148,13 @@ def main(only: str = "all", seed: int | None = DEFAULT_RANDOM_SEED) -> int:
             )
         )
         return 1
+
+    # ── 自动策略选择 ──
+    strategy_override: dict[str, bool] = {}
+    if auto_strategy:
+        _set_random_seed(seed)
+        strategy_override = _auto_select_strategies(only_n)
+        print(json.dumps({"auto_strategy": strategy_override}, ensure_ascii=True))
 
     HIST.mkdir(parents=True, exist_ok=True)
     wrote: list[str] = []
@@ -131,11 +198,11 @@ def main(only: str = "all", seed: int | None = DEFAULT_RANDOM_SEED) -> int:
         (HIST / "daletou_analysis.md").write_text(build_dlt_analysis(dlt, manifest_excl), encoding="utf-8")
         (HIST / "shuangseqiu_analysis.md").write_text(build_ssq_analysis(ssq), encoding="utf-8")
 
-        dlt_pred_md, dlt_pred_data = prediction_block_dlt(dlt)
+        dlt_pred_md, dlt_pred_data = prediction_block_dlt(dlt, use_mask=strategy_override.get("dlt", use_mask))
         (HIST / "daletou_prediction.md").write_text(dlt_pred_md, encoding="utf-8")
         saved["dlt"] = _save_prediction_to_db("dlt", dlt_pred_data)
 
-        ssq_pred_md, ssq_pred_data = prediction_block_ssq(ssq)
+        ssq_pred_md, ssq_pred_data = prediction_block_ssq(ssq, use_mask=strategy_override.get("ssq", use_mask))
         (HIST / "shuangseqiu_prediction.md").write_text(ssq_pred_md, encoding="utf-8")
         saved["ssq"] = _save_prediction_to_db("ssq", ssq_pred_data)
 
@@ -166,7 +233,7 @@ def main(only: str = "all", seed: int | None = DEFAULT_RANDOM_SEED) -> int:
                 return 1
             (HIST / "kuaileba_analysis.md").write_text(build_kl8_analysis(kl8), encoding="utf-8")
 
-            kl8_pred_md, kl8_pred_data = prediction_block_kl8(kl8)
+            kl8_pred_md, kl8_pred_data = prediction_block_kl8(kl8, use_mask=strategy_override.get("kl8", use_mask))
             (HIST / "kuaileba_prediction.md").write_text(kl8_pred_md, encoding="utf-8")
             saved["kl8"] = _save_prediction_to_db("kl8", kl8_pred_data)
 
