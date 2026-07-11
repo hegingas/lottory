@@ -106,19 +106,18 @@ while (round < MAX_ROUNDS && !converged) {
   round++;
   log(`━━━ 第 ${round} 轮 ━━━`);
 
-  // Step A: 每人审核所有其他4人
-  const allReviewsThisRound = [];
+  // Step A: N×(N-1) 条全并发审核
+  const reviewMeta = [], reviewTasks = [];
   for (let i = 0; i < N; i++) {
-    const reviewer = ROLES[i];
-    const myPick = picks[i];
-    const others = ROLES.map((r, j) => ({ ...r, pick: picks[j] })).filter((_, j) => j !== i);
-
-    const reviewsFromThis = await parallel(
-      others.map(target => () =>
+    for (let j = 0; j < N; j++) {
+      if (i === j) continue;
+      const reviewer = ROLES[i], target = ROLES[j];
+      reviewMeta.push({ reviewerIdx: i, targetIdx: j, reviewerName: reviewer.name, targetName: target.name });
+      reviewTasks.push(() =>
         agent(
-          `你是${reviewer.name}，你的提名：前区 ${myPick.fronts.join(' ')} | 后区 ${myPick.backs.join(' ')}
+          `你是${reviewer.name}，你的提名：前区 ${picks[i].fronts.join(' ')} | 后区 ${picks[i].backs.join(' ')}
 
-🔥 严厉审核 ${target.name}：前区 ${target.pick.fronts.join(' ')} | 后区 ${target.pick.backs.join(' ')}
+🔥 严厉审核 ${target.name}：前区 ${picks[j].fronts.join(' ')} | 后区 ${picks[j].backs.join(' ')}
 
 别客气！用你的专业视角狠狠怼他的方案：
 1. 同意哪些（≥2个）—— 好的要认，数据说话
@@ -130,28 +129,29 @@ while (round < MAX_ROUNDS && !converged) {
 📢 中文口语，像真实会议吵架一样。`,
           { label: `${reviewer.name}→${target.name}`, phase: '对抗验证', agentType: reviewer.agentType, schema: REVIEW_ONE_SCHEMA }
         )
-      )
-    );
-    allReviewsThisRound.push({ reviewer: reviewer.name, reviews: reviewsFromThis.filter(Boolean) });
+      );
+    }
   }
-  log(`审核完成：${allReviewsThisRound.reduce((s, r) => s + r.reviews.length, 0)} 条点评`);
+  const allReviewResults = await parallel(reviewTasks);
+  log(`审核完成：${allReviewResults.filter(Boolean).length}/${reviewTasks.length} 条`);
 
-  // Step B: 自证
-  const newPicks = [];
-  for (let i = 0; i < N; i++) {
-    const defender = ROLES[i];
-    const reviewsAboutMe = [];
-    for (const r of allReviewsThisRound)
-      for (const rev of r.reviews)
-        if (rev && rev.target === defender.name)
-          reviewsAboutMe.push({ from: r.reviewer, ...rev });
-
-    const reviewsText = reviewsAboutMe.map(r =>
+  // Step B: N 人全并发自辩
+  const reviewsAboutEach = ROLES.map(() => []);
+  for (let k = 0; k < reviewMeta.length; k++) {
+    const rev = allReviewResults[k];
+    if (rev) {
+      const { targetName, reviewerName } = reviewMeta[k];
+      const idx = ROLES.findIndex(r => r.name === targetName);
+      reviewsAboutEach[idx].push({ from: reviewerName, ...rev });
+    }
+  }
+  const defenseTasks = ROLES.map((role, i) => {
+    const aboutMe = reviewsAboutEach[i];
+    const reviewsText = aboutMe.map(r =>
       `【${r.from}】同意:${r.agree_numbers.join(',')} | 反对:${r.disagree_numbers.join(',')} | 理由:${r.critique} | 建议替换:${r.suggest_replace || '无'}`
     ).join('\n');
-
-    const defense = await agent(
-      `你是${defender.name}。你的提名：前区 ${picks[i].fronts.join(' ')} | 后区 ${picks[i].backs.join(' ')}
+    return () => agent(
+      `你是${role.name}。你的提名：前区 ${picks[i].fronts.join(' ')} | 后区 ${picks[i].backs.join(' ')}
 
 ⚔️ 有人对你开火！所有点评：
 ${reviewsText}
@@ -162,11 +162,16 @@ ${reviewsText}
 3. 输出最终号码
 
 🎭 保持人设！中文口语，像真实吵架。`,
-      { label: `${defender.name}自证`, phase: '对抗验证', agentType: defender.agentType, schema: DEFENSE_SCHEMA }
+      { label: `${role.name}自证`, phase: '对抗验证', agentType: role.agentType, schema: DEFENSE_SCHEMA }
     );
+  });
+  const allDefenses = await parallel(defenseTasks);
 
+  const newPicks = [];
+  for (let i = 0; i < N; i++) {
+    const defense = allDefenses[i];
     if (defense?.new_pick?.fronts) {
-      allDebates.push({ round, role: defender.name, defense: defense.defense, concessions: defense.concessions, adjustments: defense.adjustments_made });
+      allDebates.push({ round, role: ROLES[i].name, defense: defense.defense, concessions: defense.concessions, adjustments: defense.adjustments_made });
       newPicks.push({ fronts: defense.new_pick.fronts, backs: defense.new_pick.backs, reasoning: picks[i].reasoning });
     } else {
       newPicks.push(picks[i]);

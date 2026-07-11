@@ -90,16 +90,17 @@ while (round < MAX_ROUNDS && !converged) {
   round++;
   log(`━━━ 第 ${round} 轮 ━━━`);
 
-  const allReviewsThisRound = [];
+  const reviewMeta = [], reviewTasks = [];
   for (let i = 0; i < N; i++) {
-    const reviewer = ROLES[i];
-    const others = ROLES.map((r, j) => ({ ...r, pick: picks[j] })).filter((_, j) => j !== i);
-    const reviewsFromThis = await parallel(
-      others.map(target => () =>
+    for (let j = 0; j < N; j++) {
+      if (i === j) continue;
+      const reviewer = ROLES[i], target = ROLES[j];
+      reviewMeta.push({ reviewerIdx: i, targetIdx: j, reviewerName: reviewer.name, targetName: target.name });
+      reviewTasks.push(() =>
         agent(
           `你是${reviewer.name}，提名：${picks[i].numbers.join(' ')}
 
-🔥 严厉审核 ${target.name}：${target.pick.numbers.join(' ')}
+🔥 严厉审核 ${target.name}：${picks[j].numbers.join(' ')}
 
 别客气！用你的专业视角怼：
 1. 同意≥2个 —— 数据说话
@@ -111,25 +112,21 @@ while (round < MAX_ROUNDS && !converged) {
 📢 中文口语，像真实会议吵架。`,
           { label: `${reviewer.name}→${target.name}`, phase: '对抗验证', agentType: reviewer.agentType, schema: REVIEW_ONE_SCHEMA }
         )
-      )
-    );
-    allReviewsThisRound.push({ reviewer: reviewer.name, reviews: reviewsFromThis.filter(Boolean) });
+      );
+    }
   }
+  const allReviewResults = await parallel(reviewTasks);
 
-  const newPicks = [];
-  for (let i = 0; i < N; i++) {
-    const defender = ROLES[i];
-    const reviewsAboutMe = [];
-    for (const r of allReviewsThisRound)
-      for (const rev of r.reviews)
-        if (rev?.target === defender.name) reviewsAboutMe.push({ from: r.reviewer, ...rev });
-
-    const reviewsText = reviewsAboutMe.map(r =>
-      `【${r.from}】同意:${r.agree_numbers.join(',')} | 反对:${r.disagree_numbers.join(',')} | ${r.critique}`
-    ).join('\n');
-
-    const defense = await agent(
-      `你是${defender.name}。当前提名：${picks[i].numbers.join(' ')}
+  const reviewsAboutEach = ROLES.map(() => []);
+  for (let k = 0; k < reviewMeta.length; k++) {
+    const rev = allReviewResults[k];
+    if (rev) { const { targetName, reviewerName } = reviewMeta[k]; const idx = ROLES.findIndex(r => r.name === targetName); reviewsAboutEach[idx].push({ from: reviewerName, ...rev }); }
+  }
+  const defenseTasks = ROLES.map((role, i) => {
+    const aboutMe = reviewsAboutEach[i];
+    const reviewsText = aboutMe.map(r => `【${r.from}】同意:${r.agree_numbers.join(',')} | 反对:${r.disagree_numbers.join(',')} | ${r.critique}`).join('\n');
+    return () => agent(
+      `你是${role.name}。当前提名：${picks[i].numbers.join(' ')}
 
 ⚔️ 有人对你开火！
 ${reviewsText}
@@ -140,10 +137,15 @@ ${reviewsText}
 3. 输出最终号码
 
 🎭 保持人设！中文口语像吵架。`,
-      { label: `${defender.name}自证`, phase: '对抗验证', agentType: defender.agentType, schema: DEFENSE_SCHEMA }
+      { label: `${role.name}自证`, phase: '对抗验证', agentType: role.agentType, schema: DEFENSE_SCHEMA }
     );
+  });
+  const allDefenses = await parallel(defenseTasks);
+  const newPicks = [];
+  for (let i = 0; i < N; i++) {
+    const defense = allDefenses[i];
     if (defense?.new_pick?.numbers) {
-      allDebates.push({ round, role: defender.name, defense: defense.defense, concessions: defense.concessions, adjustments: defense.adjustments_made });
+      allDebates.push({ round, role: ROLES[i].name, defense: defense.defense, concessions: defense.concessions, adjustments: defense.adjustments_made });
       newPicks.push({ numbers: defense.new_pick.numbers, reasoning: picks[i].reasoning });
     } else { newPicks.push(picks[i]); }
   }
