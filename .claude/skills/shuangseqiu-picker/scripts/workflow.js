@@ -223,8 +223,64 @@ ${reviewsText}
     converged = true;
     log(`✅ 第${round}轮达成收敛！`);
   } else if (round >= MAX_ROUNDS) {
-    log(`⚠ 已达最大轮次(${MAX_ROUNDS})，强制进入裁定`);
+    log(`⚠ 已达最大轮次(${MAX_ROUNDS})，未收敛，启动兜底机制`);
   }
+}
+
+// ═══════════════════════════════════════
+// Phase 3.5: 未收敛兜底 — B(加权投票) + D(最终陈述)
+// ═══════════════════════════════════════
+let weightedScores = [];
+let finalStatements = [];
+
+if (!converged) {
+  phase('未收敛兜底');
+
+  // ── B: 加权投票 ──
+  // 权重 = 该委员的号码中有多少个是共识号(≥3票)
+  const allReds2 = picks.flatMap(p => p.reds);
+  const rc = {}; for (const r of allReds2) rc[r] = (rc[r] || 0) + 1;
+  const consensusSet = new Set(Object.entries(rc).filter(([,c]) => c >= 3).map(([r]) => r));
+
+  weightedScores = ROLES.map((role, i) => {
+    const score = picks[i].reds.filter(r => consensusSet.has(r)).length;
+    const blueVotes = picks.filter(p => p.blue === picks[i].blue).length;
+    return { role: role.name, consensusHits: score, blueVotes, weight: score * 0.7 + blueVotes * 0.3 };
+  });
+  weightedScores.sort((a, b) => b.weight - a.weight);
+  log(`权重排名: ${weightedScores.map(w => `${w.role}(${w.weight.toFixed(1)})`).join(' > ')}`);
+
+  // ── D: 最终陈述 ──
+  const otherPicks = picks.map((p, i) => `${ROLES[i].name}: 红球 ${p.reds.join(' ')} | 蓝球 ${p.blue}`).join('\n');
+  finalStatements = await parallel(
+    ROLES.map((role, i) => () =>
+      agent(
+        `你是${role.name}。经过 ${round} 轮对抗仍未达成一致。现在是最后机会！
+
+## 所有委员最终方案
+${otherPicks}
+
+## 你的方案
+红球 ${picks[i].reds.join(' ')} | 蓝球 ${picks[i].blue}
+
+## 共识号（≥3票）
+${[...consensusSet].join(', ') || '无'}
+
+## 你的权重得分
+共识命中: ${weightedScores.find(w=>w.role===role.name)?.consensusHits || 0}个 | 蓝球票数: ${weightedScores.find(w=>w.role===role.name)?.blueVotes || 0}
+
+## 任务
+这是你最后一次说服首席的机会！请做最终陈述：
+1. 为什么你的方案比其他人的更好？用数据说话，不要谦虚
+2. 你的方案中哪些号是共识号（权重加分项），哪些是独到之见（别人没看到的价值）
+3. 如果首席要在你的方案和权重最高的方案之间抉择，为什么应该选你的
+
+🔥 全力以赴！这是 final pitch，不许留余力！保持人设！`,
+        { label: `${role.name}最终陈述`, phase: '未收敛兜底', agentType: role.agentType }
+      )
+    )
+  );
+  log('最终陈述完成');
 }
 
 // ═══════════════════════════════════════
@@ -240,22 +296,33 @@ const debatesText = allDebates
   .map(d => `[第${d.round}轮] ${d.role}: 被${d.reviews_received.length}人点评 | 自辩: ${d.defense?.slice(0, 150)} | 让步: ${d.concessions?.slice(0, 100)} | 调整: ${d.adjustments?.join(',') || '无'}`)
   .join('\n');
 
+const weightText = converged ? '' : `
+## 加权投票排名（共识命中数×0.7 + 蓝球票数×0.3）
+${weightedScores.map((w,i) => `${i+1}. ${w.role}: 共识命中${w.consensusHits}个 蓝球${w.blueVotes}票 综合权重${w.weight.toFixed(1)}`).join('\n')}
+`;
+
+const statementText = converged ? '' : `
+## 委员最终陈述
+${finalStatements.filter(Boolean).map((s,i) => `### ${ROLES[i].name}\n${s?.slice(0, 300)}`).join('\n\n')}
+`;
+
 const finalRuling = await agent(
-  `你是双色球选号委员会的**首席裁判**。经过 ${round} 轮对抗验证后${converged ? '已达成收敛' : '未完全收敛'}，现在由你做最终裁定。
+  `你是双色球选号委员会的**首席裁判**。经过 ${round} 轮对抗验证后${converged ? '已达成收敛✅' : '未收敛⚠️，以下为兜底数据'}。
 
 ## 最终提名方案
 ${nominationsText}
+${weightText}
+${statementText}
 
 ## 全部辩论记录
 ${debatesText}
 
 ## 裁定要求
 1. 统计每个号码的最终票数（共识号高亮）
-2. 综合全部辩论，裁定最终一注（红6+蓝1）
-3. 硬约束（至少满足一个）：一组连号 或 与上期重叠1-2个号（两者都满足更好，但必须至少一个）
-4. 每个选定号标注来源（哪位委员的观点被采纳）
-5. 贡献统计表
-6. 如未收敛，说明你为何在分歧中选择某方观点`,
+2. ${converged ? '基于共识裁定' : '⚠️ 未收敛！综合权重排名+最终陈述+辩论记录，强制裁定'}最终一注（红6+蓝1）
+3. 硬约束（至少满足一个）：一组连号 或 与上期重叠1-2个号
+4. 每个选定号标注来源+权重数据支撑
+5. 贡献统计表`,
   { label: '首席裁定', phase: '首席裁定', model: 'opus', effort: 'high' }
 );
 

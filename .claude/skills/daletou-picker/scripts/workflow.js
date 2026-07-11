@@ -191,29 +191,56 @@ ${reviewsText}
   if (consensusFronts.length >= CONVERGE_THRESHOLD && topBack[1] >= 3) { converged = true; log(`✅ 第${round}轮收敛！`); }
 }
 
+// ══ Phase 3.5: 未收敛兜底 — B(加权投票) + D(最终陈述) ══
+let weightedScores = [], finalStatements = [];
+if (!converged) {
+  phase('未收敛兜底');
+  const fc = {}; for (const f of picks.flatMap(p => p.fronts)) fc[f] = (fc[f] || 0) + 1;
+  const consensusSet = new Set(Object.entries(fc).filter(([,c]) => c >= 3).map(([r]) => r));
+  weightedScores = ROLES.map((role, i) => {
+    const hits = picks[i].fronts.filter(f => consensusSet.has(f)).length;
+    const bv = picks[i].backs.reduce((s, b) => s + picks.filter(p => p.backs.includes(b)).length, 0);
+    return { role: role.name, consensusHits: hits, backVotes: bv, weight: hits * 0.7 + bv * 0.3 };
+  });
+  weightedScores.sort((a, b) => b.weight - a.weight);
+  log(`权重排名: ${weightedScores.map(w => `${w.role}(${w.weight.toFixed(1)})`).join(' > ')}`);
+
+  const otherPicks = picks.map((p, i) => `${ROLES[i].name}: 前区 ${p.fronts.join(' ')} + 后区 ${p.backs.join(' ')}`).join('\n');
+  finalStatements = await parallel(
+    ROLES.map((role, i) => () =>
+      agent(
+        `你是${role.name}。${round}轮仍未一致，最后机会！\n所有方案:\n${otherPicks}\n你的方案: 前区 ${picks[i].fronts.join(' ')} + 后区 ${picks[i].backs.join(' ')}\n共识号: ${[...consensusSet].join(',') || '无'}\n你的权重: ${weightedScores.find(w=>w.role===role.name)?.weight.toFixed(1)}\n做最终陈述: 为什么你的方案最好？共识号有哪些？独到之见是什么？全力以赴！保持人设！`,
+        { label: `${role.name}最终陈述`, phase: '未收敛兜底', agentType: role.agentType }
+      )
+    )
+  );
+  log('最终陈述完成');
+}
+
 // ══ Phase 4: 首席裁定 ══
 phase('首席裁定');
 const latestDrawInfo = dataContext.match(/最新一期[^:]*[：:]\s*[^0-9]*(\d+)[^0-9]*前区[^0-9]*([\d\s]+)[^0-9]*后区[^0-9]*([\d\s]+)/i) || [];
 const latestFronts = latestDrawInfo[2] ? latestDrawInfo[2].trim().split(/\s+/) : [];
 const latestBacks = latestDrawInfo[3] ? latestDrawInfo[3].trim().split(/\s+/) : [];
 
-const finalRuling = await agent(
-  `你是大乐透选号委员会首席裁判。${round}轮后${converged ? '已收敛' : '未完全收敛'}。
+const wText = converged ? '' : `\n## 加权投票排名\n${weightedScores.map((w,i) => `${i+1}. ${w.role}: 共识${w.consensusHits}个 后区${w.backVotes}票 权重${w.weight.toFixed(1)}`).join('\n')}\n`;
+const sText = converged ? '' : `\n## 委员最终陈述\n${finalStatements.filter(Boolean).map((s,i) => `### ${ROLES[i].name}\n${s?.slice(0, 250)}`).join('\n\n')}\n`;
 
-## 最新一期（用于约束校验）
-上期前区：${latestFronts.join(' ')}
-上期后区：${latestBacks.join(' ')}
+const finalRuling = await agent(
+  `你是大乐透选号委员会首席裁判。${round}轮后${converged ? '已收敛✅' : '未收敛⚠️'}。
+
+## 最新一期
+上期前区：${latestFronts.join(' ')} | 后区：${latestBacks.join(' ')}
 
 ## 最终方案
 ${picks.map((p, i) => `${ROLES[i].name}: 前区 ${p.fronts.join(' ')} + 后区 ${p.backs.join(' ')}`).join(' | ')}
-辩论：${allDebates.map(d => `[R${d.round}] ${d.role}: ${d.defense?.slice(0, 100)}`).join('\n')}
+${wText}${sText}
+辩论：${allDebates.map(d => `[R${d.round}] ${d.role}: ${d.defense?.slice(0, 80)}`).join('\n')}
 
 ## 裁定要求
-1. 综合辩论裁定最终一注（前5+后2）
-2. ⚠️ 硬约束强制校验（至少满足一个，不满足必须重选）：
-   - 前区至少一组连号 或 前区与上期(${latestFronts.join(' ')})重叠1-2个
-   - 两者都满足更好，但不能两个都不满足
-3. 每个号标注来源+贡献统计`,
+1. ${converged ? '基于共识裁定' : '⚠️ 未收敛！综合权重排名+最终陈述+辩论记录，强制裁定'}最终一注（前5+后2）
+2. 硬约束（至少满足一个）：前区连号 或 与上期重叠1-2个
+3. 每个号标注来源+权重数据支撑`,
   { label: '首席裁定', phase: '首席裁定', model: 'opus', effort: 'high', schema: RULING_SCHEMA }
 );
 
