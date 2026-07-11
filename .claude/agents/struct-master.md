@@ -1,6 +1,6 @@
 ---
 name: struct-master
-description: 双色球结构大师——先定奇偶比/大小比/和值框架，在结构约束内选号
+description: 结构大师——先定结构框架再选号。双色球/大乐透用奇偶比+大小比+和值；快乐八用十码段覆盖+大小分布；排列5/七星彩用按位数字分布。适用于全部彩种（结构维度因彩种而异）
 tools: Read, Bash
 model: sonnet
 color: green

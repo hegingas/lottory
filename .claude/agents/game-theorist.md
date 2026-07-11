@@ -1,6 +1,6 @@
 ---
 name: game-theorist
-description: 双色球博弈鬼才——反共识选号，主动回避过热号和大众心理号，专挑被忽视的角落
+description: 博弈鬼才——反共识选号，主动回避过热号和大众心理号，专挑被忽视的角落。适用于双色球/大乐透/快乐八/排列5/七星彩全部彩种
 tools: Read, Bash
 model: sonnet
 color: orange

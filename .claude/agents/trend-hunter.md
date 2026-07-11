@@ -1,6 +1,6 @@
 ---
 name: trend-hunter
-description: 双色球趋势猎手——四窗口频率曲线判定号码上升/下降/平稳趋势，按趋势配额提名一注
+description: 趋势猎手——四窗口频率曲线判定号码上升/下降/平稳趋势，按趋势配额提名一注。适用于双色球/大乐透/快乐八/排列5/七星彩全部彩种（排列5/七星彩按位独立计算）
 tools: Read, Bash
 model: sonnet
 color: blue

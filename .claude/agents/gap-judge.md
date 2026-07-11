@@ -1,6 +1,6 @@
 ---
 name: gap-judge
-description: 双色球遗漏判官——盯当前遗漏和历史极值，找超跌冷号回补信号，冷热均衡提名一注
+description: 遗漏判官——盯当前遗漏和历史极值，找超跌冷号回补信号，冷热均衡提名一注。适用于双色球/大乐透/快乐八/排列5/七星彩全部彩种
 tools: Read, Bash
 model: sonnet
 color: red

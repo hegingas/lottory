@@ -1,6 +1,6 @@
 ---
 name: pattern-spy
-description: 双色球形态侦探——盯连号/重号/区间分布形态，强制连号+重叠1-2的约束下选号
+description: 形态侦探——盯连号/重号/区间分布形态。仅适用于双色球和大乐透（有连号+重号约束的彩种），快乐八/排列5/七星彩跳过此角色
 tools: Read, Bash
 model: sonnet
 color: purple
