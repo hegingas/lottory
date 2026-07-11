@@ -328,9 +328,11 @@ ${debatesText}
 
 // ═══════════════════════════════════════
 return {
-  rounds: round,
-  converged,
+  // 最重要的：首席最终裁定
+  ruling: finalRuling,
+  // 元信息
+  rounds, converged,
+  // 详细信息（可选查看）
   finalPicks: picks.map((p, i) => ({ role: ROLES[i].name, reds: p.reds, blue: p.blue })),
   debates: allDebates,
-  finalRuling,
 };
