@@ -63,7 +63,7 @@ const ROLES = [
   { name: '博弈鬼才', agentType: 'game-theorist' },
 ];
 const N = ROLES.length;
-const MAX_ROUNDS = 3;
+const MAX_ROUNDS = 5;
 const CONVERGE_THRESHOLD = 3; // 至少3个红球被3+人同意才算收敛
 
 // ═══════════════════════════════════════
