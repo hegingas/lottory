@@ -52,7 +52,7 @@ const ROLES = [
   { name: '博弈鬼才', agentType: 'game-theorist' },
 ];
 const N = ROLES.length;
-const MAX_ROUNDS = 5;
+const MAX_ROUNDS = 1;
 const CONVERGE_THRESHOLD = 5; // 10码中至少5个被3+人同意
 
 // ══ Phase 1 ══
