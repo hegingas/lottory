@@ -52,23 +52,6 @@ const DEFENSE_SCHEMA = {
   required: ['role', 'current_pick', 'adjustments_made', 'new_pick', 'defense', 'concessions'],
 };
 
-// ── 首席裁定结构 ──
-const RULING_SCHEMA = {
-  type: 'object',
-  properties: {
-    final_reds: { type: 'array', items: { type: 'string' }, description: '最终红球6码升序' },
-    final_blue: { type: 'string', description: '最终蓝球1码' },
-    has_consecutive: { type: 'boolean', description: '是否包含至少一组连号' },
-    consecutive_pair: { type: 'string', description: '连号位置，如14,15' },
-    overlap_count: { type: 'number', description: '与上期重叠个数(1-2)' },
-    overlap_numbers: { type: 'array', items: { type: 'string' }, description: '重叠的具体号码' },
-    sources: { type: 'array', items: { type: 'object', properties: { number: { type: 'string' }, from: { type: 'string' }, reason: { type: 'string' } } } },
-    contributions: { type: 'array', items: { type: 'object', properties: { role: { type: 'string' }, count: { type: 'number' } } } },
-    verdict_summary: { type: 'string', description: '裁定总结' },
-  },
-  required: ['final_reds', 'final_blue', 'has_consecutive', 'consecutive_pair', 'overlap_count', 'overlap_numbers', 'sources', 'contributions'],
-};
-
 // ═══════════════════════════════════════
 // 五人角色
 // ═══════════════════════════════════════
@@ -130,20 +113,19 @@ while (round < MAX_ROUNDS && !converged) {
   round++;
   log(`━━━ 第 ${round} 轮对抗验证 ━━━`);
 
-  // ── Step A: 全面审核 — 每人审核所有其他4人 ──
-  const allReviewsThisRound = [];
-
+  // ── Step A: 全面审核 — N×(N-1) 条全并发 ──
+  const reviewMeta = []; // [{reviewerIdx, targetIdx, reviewerName, targetName}]
+  const reviewTasks = [];
   for (let i = 0; i < N; i++) {
-    const reviewer = ROLES[i];
-    const myPick = picks[i];
-    const others = ROLES.map((r, j) => ({ ...r, pick: picks[j] })).filter((_, j) => j !== i);
-
-    const reviewsFromThis = await parallel(
-      others.map(target => () =>
+    for (let j = 0; j < N; j++) {
+      if (i === j) continue;
+      const reviewer = ROLES[i], target = ROLES[j];
+      reviewMeta.push({ reviewerIdx: i, targetIdx: j, reviewerName: reviewer.name, targetName: target.name });
+      reviewTasks.push(() =>
         agent(
-          `你是${reviewer.name}，你的提名：红球 ${myPick.reds.join(' ')} | 蓝球 ${myPick.blue}
+          `你是${reviewer.name}，你的提名：红球 ${picks[i].reds.join(' ')} | 蓝球 ${picks[i].blue}
 
-🔥 你要**严厉审核** ${target.name} 的方案：红球 ${target.pick.reds.join(' ')} | 蓝球 ${target.pick.blue}
+🔥 你要**严厉审核** ${target.name} 的方案：红球 ${picks[j].reds.join(' ')} | 蓝球 ${picks[j].blue}
 
 别客气！把你的专业脾气拿出来。用你的专业视角怼他的方案：
 1. 同意哪些号（至少2个）—— 也别光怼，好的要认，用数据说话
@@ -155,40 +137,31 @@ while (round < MAX_ROUNDS && !converged) {
 📢 用中文口语风格，像真实会议里吵架一样。`,
           { label: `${reviewer.name}→${target.name}`, phase: '对抗验证', agentType: reviewer.agentType, schema: REVIEW_ONE_SCHEMA }
         )
-      )
-    );
+      );
+    }
+  }
+  const allReviewResults = await parallel(reviewTasks);
+  log(`第${round}轮审核完成：${allReviewResults.filter(Boolean).length}/${reviewTasks.length} 条`);
 
-    allReviewsThisRound.push({
-      reviewer: reviewer.name,
-      reviews: reviewsFromThis.filter(Boolean),
-    });
+  // ── Step B: 自证 — N 人全并发自辩 ──
+  // 按人汇总点评（从 reviewMeta + allReviewResults 重建）
+  const reviewsAboutEach = ROLES.map(() => []);
+  for (let k = 0; k < reviewMeta.length; k++) {
+    const rev = allReviewResults[k];
+    if (rev) {
+      const { targetName, reviewerName } = reviewMeta[k];
+      const idx = ROLES.findIndex(r => r.name === targetName);
+      reviewsAboutEach[idx].push({ from: reviewerName, ...rev });
+    }
   }
 
-  log(`第${round}轮审核完成：${allReviewsThisRound.reduce((s, r) => s + r.reviews.length, 0)} 条点评`);
-
-  // ── Step B: 自证 — 每人收到所有对自己的点评后自辩/调整 ──
-  const newPicks = [];
-
-  for (let i = 0; i < N; i++) {
-    const defender = ROLES[i];
-    const myPick = picks[i];
-
-    // 收集所有对我的点评
-    const reviewsAboutMe = [];
-    for (const r of allReviewsThisRound) {
-      for (const rev of r.reviews) {
-        if (rev && rev.target === defender.name) {
-          reviewsAboutMe.push({ from: r.reviewer, ...rev });
-        }
-      }
-    }
-
-    const reviewsText = reviewsAboutMe
+  const defenseTasks = ROLES.map((role, i) => {
+    const aboutMe = reviewsAboutEach[i];
+    const reviewsText = aboutMe
       .map(r => `【${r.from}】同意:${r.agree_numbers.join(',')} | 反对:${r.disagree_numbers.join(',')} | 理由:${r.critique} | 建议替换:${r.suggest_replace || '无'}`)
       .join('\n');
-
-    const defense = await agent(
-      `你是${defender.name}。你的提名：红球 ${myPick.reds.join(' ')} | 蓝球 ${myPick.blue}
+    return () => agent(
+      `你是${role.name}。你的提名：红球 ${picks[i].reds.join(' ')} | 蓝球 ${picks[i].blue}
 
 ⚔️ 有人对你开火了！以下是所有委员对你方案的点评：
 ${reviewsText}
@@ -201,32 +174,25 @@ ${reviewsText}
 
 🎭 保持你的人设性格！该暴躁暴躁，该沉稳沉稳，该阴阳怪气就阴阳怪气。
 📢 中文口语，像真实吵架一样说话。可以说"离谱""搞笑""你认真的？""数据拍脸上"这种口语。`,
-      { label: `${defender.name}自证`, phase: '对抗验证', agentType: defender.agentType, schema: DEFENSE_SCHEMA }
+      { label: `${role.name}自证`, phase: '对抗验证', agentType: role.agentType, schema: DEFENSE_SCHEMA }
     );
+  });
+  const allDefenses = await parallel(defenseTasks);
 
+  const newPicks = [];
+  for (let i = 0; i < N; i++) {
+    const defense = allDefenses[i], myPick = picks[i], aboutMe = reviewsAboutEach[i];
     if (defense) {
       allDebates.push({
-        round,
-        role: defender.name,
-        reviews_received: reviewsAboutMe.map(r => ({ from: r.from, agree: r.agree_numbers, disagree: r.disagree_numbers })),
-        defense: defense.defense,
-        concessions: defense.concessions,
-        adjustments: defense.adjustments_made,
+        round, role: ROLES[i].name,
+        reviews_received: aboutMe.map(r => ({ from: r.from, agree: r.agree_numbers, disagree: r.disagree_numbers })),
+        defense: defense.defense, concessions: defense.concessions, adjustments: defense.adjustments_made,
       });
-
-      // 使用调整后的号码（如有）
       if (defense.new_pick && defense.new_pick.reds && defense.new_pick.reds.length === 6) {
-        newPicks.push({
-          reds: defense.new_pick.reds,
-          blue: defense.new_pick.blue,
-          reasoning: myPick.reasoning + `\n[第${round}轮调整: ${(defense.adjustments_made || []).join('; ')}]`,
-        });
-      } else {
-        newPicks.push(myPick);
-      }
-    } else {
-      newPicks.push(myPick);
-    }
+        newPicks.push({ reds: defense.new_pick.reds, blue: defense.new_pick.blue,
+          reasoning: myPick.reasoning + `\n[第${round}轮调整: ${(defense.adjustments_made || []).join('; ')}]` });
+      } else { newPicks.push(myPick); }
+    } else { newPicks.push(myPick); }
   }
 
   picks = newPicks;
@@ -274,17 +240,8 @@ const debatesText = allDebates
   .map(d => `[第${d.round}轮] ${d.role}: 被${d.reviews_received.length}人点评 | 自辩: ${d.defense?.slice(0, 150)} | 让步: ${d.concessions?.slice(0, 100)} | 调整: ${d.adjustments?.join(',') || '无'}`)
   .join('\n');
 
-// 提取最新期数据用于约束校验
-const latestDrawInfo = dataContext.match(/最新一期[^:]*[：:]\s*[^0-9]*(\d+)[^0-9]*红球[^0-9]*([\d\s]+)[^0-9]*蓝球[^0-9]*(\d+)/i) || [];
-const latestReds = latestDrawInfo[2] ? latestDrawInfo[2].trim().split(/\s+/) : [];
-const latestBlue = latestDrawInfo[3] || '';
-
 const finalRuling = await agent(
-  `你是双色球选号委员会的**首席裁判**。经过 ${round} 轮对抗后${converged ? '已达成收敛' : '未完全收敛'}。
-
-## 最新一期开奖数据（用于校验约束）
-上期红球：${latestReds.join(' ')}
-上期蓝球：${latestBlue}
+  `你是双色球选号委员会的**首席裁判**。经过 ${round} 轮对抗验证后${converged ? '已达成收敛' : '未完全收敛'}，现在由你做最终裁定。
 
 ## 最终提名方案
 ${nominationsText}
@@ -292,15 +249,14 @@ ${nominationsText}
 ## 全部辩论记录
 ${debatesText}
 
-## 裁定要求（严格执行）
-1. 统计每个号码的最终票数
-2. 综合辩论，裁定最终一注（红6+蓝1升序）
-3. ⚠️ 硬约束强制校验（不满足则重选直到满足）：
-   - 至少一组连号（相邻两个号连续，如14,15或28,29）
-   - 与上期(${latestReds.join(' ')})重叠1-2个红球，不能0个也不能3个及以上
-4. 每个号标注采纳来源+理由
-5. 贡献统计`,
-  { label: '首席裁定', phase: '首席裁定', model: 'opus', effort: 'high', schema: RULING_SCHEMA }
+## 裁定要求
+1. 统计每个号码的最终票数（共识号高亮）
+2. 综合全部辩论，裁定最终一注（红6+蓝1）
+3. 硬约束：至少一组连号 + 与上期重叠1-2个号
+4. 每个选定号标注来源（哪位委员的观点被采纳）
+5. 贡献统计表
+6. 如未收敛，说明你为何在分歧中选择某方观点`,
+  { label: '首席裁定', phase: '首席裁定', model: 'opus', effort: 'high' }
 );
 
 // ═══════════════════════════════════════
