@@ -1,0 +1,182 @@
+{
+  "fetched_at": "2026-07-11T22:25:35.047323+08:00",
+  "source": "https://www.zhcw.com/kjxx/dlt/",
+  "draws": [
+    {
+      "lottery_type": "dlt",
+      "period_id": "26062",
+      "front_1": "07",
+      "front_2": "15",
+      "front_3": "20",
+      "front_4": "24",
+      "front_5": "29",
+      "back_1": "04",
+      "back_2": "10"
+    },
+    {
+      "lottery_type": "dlt",
+      "period_id": "26063",
+      "front_1": "03",
+      "front_2": "15",
+      "front_3": "20",
+      "front_4": "29",
+      "front_5": "31",
+      "back_1": "01",
+      "back_2": "12"
+    },
+    {
+      "lottery_type": "dlt",
+      "period_id": "26064",
+      "front_1": "03",
+      "front_2": "13",
+      "front_3": "15",
+      "front_4": "17",
+      "front_5": "21",
+      "back_1": "02",
+      "back_2": "07"
+    },
+    {
+      "lottery_type": "dlt",
+      "period_id": "26065",
+      "front_1": "04",
+      "front_2": "11",
+      "front_3": "12",
+      "front_4": "13",
+      "front_5": "25",
+      "back_1": "04",
+      "back_2": "08"
+    },
+    {
+      "lottery_type": "dlt",
+      "period_id": "26066",
+      "front_1": "10",
+      "front_2": "13",
+      "front_3": "19",
+      "front_4": "21",
+      "front_5": "30",
+      "back_1": "04",
+      "back_2": "05"
+    },
+    {
+      "lottery_type": "dlt",
+      "period_id": "26067",
+      "front_1": "06",
+      "front_2": "16",
+      "front_3": "18",
+      "front_4": "19",
+      "front_5": "28",
+      "back_1": "07",
+      "back_2": "11"
+    },
+    {
+      "lottery_type": "dlt",
+      "period_id": "26068",
+      "front_1": "03",
+      "front_2": "11",
+      "front_3": "12",
+      "front_4": "21",
+      "front_5": "22",
+      "back_1": "06",
+      "back_2": "10"
+    },
+    {
+      "lottery_type": "dlt",
+      "period_id": "26069",
+      "front_1": "12",
+      "front_2": "19",
+      "front_3": "21",
+      "front_4": "24",
+      "front_5": "29",
+      "back_1": "03",
+      "back_2": "10"
+    },
+    {
+      "lottery_type": "dlt",
+      "period_id": "26070",
+      "front_1": "04",
+      "front_2": "05",
+      "front_3": "15",
+      "front_4": "21",
+      "front_5": "32",
+      "back_1": "02",
+      "back_2": "11"
+    },
+    {
+      "lottery_type": "dlt",
+      "period_id": "26071",
+      "front_1": "05",
+      "front_2": "13",
+      "front_3": "22",
+      "front_4": "26",
+      "front_5": "32",
+      "back_1": "02",
+      "back_2": "03"
+    },
+    {
+      "lottery_type": "dlt",
+      "period_id": "26072",
+      "front_1": "01",
+      "front_2": "13",
+      "front_3": "26",
+      "front_4": "29",
+      "front_5": "30",
+      "back_1": "09",
+      "back_2": "11"
+    },
+    {
+      "lottery_type": "dlt",
+      "period_id": "26073",
+      "front_1": "04",
+      "front_2": "10",
+      "front_3": "22",
+      "front_4": "23",
+      "front_5": "33",
+      "back_1": "02",
+      "back_2": "12"
+    },
+    {
+      "lottery_type": "dlt",
+      "period_id": "26074",
+      "front_1": "01",
+      "front_2": "04",
+      "front_3": "10",
+      "front_4": "23",
+      "front_5": "25",
+      "back_1": "01",
+      "back_2": "12"
+    },
+    {
+      "lottery_type": "dlt",
+      "period_id": "26075",
+      "front_1": "01",
+      "front_2": "06",
+      "front_3": "16",
+      "front_4": "18",
+      "front_5": "26",
+      "back_1": "04",
+      "back_2": "10"
+    },
+    {
+      "lottery_type": "dlt",
+      "period_id": "26076",
+      "front_1": "15",
+      "front_2": "20",
+      "front_3": "27",
+      "front_4": "28",
+      "front_5": "35",
+      "back_1": "02",
+      "back_2": "11"
+    },
+    {
+      "lottery_type": "dlt",
+      "period_id": "26077",
+      "front_1": "04",
+      "front_2": "14",
+      "front_3": "19",
+      "front_4": "24",
+      "front_5": "27",
+      "back_1": "06",
+      "back_2": "07"
+    }
+  ]
+}
