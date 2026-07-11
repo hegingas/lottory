@@ -45,6 +45,21 @@ const DEFENSE_SCHEMA = {
   required: ['role', 'adjustments_made', 'new_pick', 'defense', 'concessions'],
 };
 
+const RULING_SCHEMA = {
+  type: 'object',
+  properties: {
+    final_fronts: { type: 'array', items: { type: 'string' }, description: '最终前区5码升序' },
+    final_backs: { type: 'array', items: { type: 'string' }, description: '最终后区2码升序' },
+    has_consecutive: { type: 'boolean', description: '前区是否包含至少一组连号' },
+    consecutive_pair: { type: 'string', description: '前区连号位置' },
+    overlap_count: { type: 'number', description: '前区与上期重叠个数(1-2)' },
+    overlap_numbers: { type: 'array', items: { type: 'string' } },
+    sources: { type: 'array', items: { type: 'object', properties: { number: { type: 'string' }, from: { type: 'string' }, reason: { type: 'string' } } } },
+    contributions: { type: 'array', items: { type: 'object', properties: { role: { type: 'string' }, count: { type: 'number' } } } },
+  },
+  required: ['final_fronts', 'final_backs', 'has_consecutive', 'consecutive_pair', 'overlap_count', 'overlap_numbers', 'sources', 'contributions'],
+};
+
 const ROLES = [
   { name: '趋势猎手', agentType: 'trend-hunter' },
   { name: '遗漏判官', agentType: 'gap-judge' },
@@ -173,12 +188,28 @@ ${reviewsText}
 
 // ══ Phase 4: 首席裁定 ══
 phase('首席裁定');
+const latestDrawInfo = dataContext.match(/最新一期[^:]*[：:]\s*[^0-9]*(\d+)[^0-9]*前区[^0-9]*([\d\s]+)[^0-9]*后区[^0-9]*([\d\s]+)/i) || [];
+const latestFronts = latestDrawInfo[2] ? latestDrawInfo[2].trim().split(/\s+/) : [];
+const latestBacks = latestDrawInfo[3] ? latestDrawInfo[3].trim().split(/\s+/) : [];
+
 const finalRuling = await agent(
-  `你是大乐透选号委员会首席裁判。经过 ${round} 轮对抗${converged ? '已收敛' : '未完全收敛'}。
-最终方案：${picks.map((p, i) => `${ROLES[i].name}: 前区 ${p.fronts.join(' ')} + 后区 ${p.backs.join(' ')}`).join(' | ')}
+  `你是大乐透选号委员会首席裁判。${round}轮后${converged ? '已收敛' : '未完全收敛'}。
+
+## 最新一期（用于约束校验）
+上期前区：${latestFronts.join(' ')}
+上期后区：${latestBacks.join(' ')}
+
+## 最终方案
+${picks.map((p, i) => `${ROLES[i].name}: 前区 ${p.fronts.join(' ')} + 后区 ${p.backs.join(' ')}`).join(' | ')}
 辩论：${allDebates.map(d => `[R${d.round}] ${d.role}: ${d.defense?.slice(0, 100)}`).join('\n')}
-裁定最终一注（前5+后2），硬约束：至少一组前区连号 + 与上期重叠1-2号。标注来源+贡献统计。`,
-  { label: '首席裁定', phase: '首席裁定', model: 'opus', effort: 'high' }
+
+## 裁定要求
+1. 综合辩论裁定最终一注（前5+后2）
+2. ⚠️ 硬约束强制校验（不满足必须重选）：
+   - 前区至少一组连号
+   - 前区与上期(${latestFronts.join(' ')})重叠1-2个，不能0不能≥3
+3. 每个号标注来源+贡献统计`,
+  { label: '首席裁定', phase: '首席裁定', model: 'opus', effort: 'high', schema: RULING_SCHEMA }
 );
 
 return { rounds: round, converged, finalPicks: picks.map((p, i) => ({ role: ROLES[i].name, fronts: p.fronts, backs: p.backs })), debates: allDebates, finalRuling };

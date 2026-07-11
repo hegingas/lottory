@@ -52,6 +52,23 @@ const DEFENSE_SCHEMA = {
   required: ['role', 'current_pick', 'adjustments_made', 'new_pick', 'defense', 'concessions'],
 };
 
+// ── 首席裁定结构 ──
+const RULING_SCHEMA = {
+  type: 'object',
+  properties: {
+    final_reds: { type: 'array', items: { type: 'string' }, description: '最终红球6码升序' },
+    final_blue: { type: 'string', description: '最终蓝球1码' },
+    has_consecutive: { type: 'boolean', description: '是否包含至少一组连号' },
+    consecutive_pair: { type: 'string', description: '连号位置，如14,15' },
+    overlap_count: { type: 'number', description: '与上期重叠个数(1-2)' },
+    overlap_numbers: { type: 'array', items: { type: 'string' }, description: '重叠的具体号码' },
+    sources: { type: 'array', items: { type: 'object', properties: { number: { type: 'string' }, from: { type: 'string' }, reason: { type: 'string' } } } },
+    contributions: { type: 'array', items: { type: 'object', properties: { role: { type: 'string' }, count: { type: 'number' } } } },
+    verdict_summary: { type: 'string', description: '裁定总结' },
+  },
+  required: ['final_reds', 'final_blue', 'has_consecutive', 'consecutive_pair', 'overlap_count', 'overlap_numbers', 'sources', 'contributions'],
+};
+
 // ═══════════════════════════════════════
 // 五人角色
 // ═══════════════════════════════════════
@@ -257,8 +274,17 @@ const debatesText = allDebates
   .map(d => `[第${d.round}轮] ${d.role}: 被${d.reviews_received.length}人点评 | 自辩: ${d.defense?.slice(0, 150)} | 让步: ${d.concessions?.slice(0, 100)} | 调整: ${d.adjustments?.join(',') || '无'}`)
   .join('\n');
 
+// 提取最新期数据用于约束校验
+const latestDrawInfo = dataContext.match(/最新一期[^:]*[：:]\s*[^0-9]*(\d+)[^0-9]*红球[^0-9]*([\d\s]+)[^0-9]*蓝球[^0-9]*(\d+)/i) || [];
+const latestReds = latestDrawInfo[2] ? latestDrawInfo[2].trim().split(/\s+/) : [];
+const latestBlue = latestDrawInfo[3] || '';
+
 const finalRuling = await agent(
-  `你是双色球选号委员会的**首席裁判**。经过 ${round} 轮对抗验证后${converged ? '已达成收敛' : '未完全收敛'}，现在由你做最终裁定。
+  `你是双色球选号委员会的**首席裁判**。经过 ${round} 轮对抗后${converged ? '已达成收敛' : '未完全收敛'}。
+
+## 最新一期开奖数据（用于校验约束）
+上期红球：${latestReds.join(' ')}
+上期蓝球：${latestBlue}
 
 ## 最终提名方案
 ${nominationsText}
@@ -266,14 +292,15 @@ ${nominationsText}
 ## 全部辩论记录
 ${debatesText}
 
-## 裁定要求
-1. 统计每个号码的最终票数（共识号高亮）
-2. 综合全部辩论，裁定最终一注（红6+蓝1）
-3. 硬约束：至少一组连号 + 与上期重叠1-2个号
-4. 每个选定号标注来源（哪位委员的观点被采纳）
-5. 贡献统计表
-6. 如未收敛，说明你为何在分歧中选择某方观点`,
-  { label: '首席裁定', phase: '首席裁定', model: 'opus', effort: 'high' }
+## 裁定要求（严格执行）
+1. 统计每个号码的最终票数
+2. 综合辩论，裁定最终一注（红6+蓝1升序）
+3. ⚠️ 硬约束强制校验（不满足则重选直到满足）：
+   - 至少一组连号（相邻两个号连续，如14,15或28,29）
+   - 与上期(${latestReds.join(' ')})重叠1-2个红球，不能0个也不能3个及以上
+4. 每个号标注采纳来源+理由
+5. 贡献统计`,
+  { label: '首席裁定', phase: '首席裁定', model: 'opus', effort: 'high', schema: RULING_SCHEMA }
 );
 
 // ═══════════════════════════════════════
