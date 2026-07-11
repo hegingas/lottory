@@ -102,8 +102,17 @@ while (round < MAX_ROUNDS && !converged) {
       others.map(target => () =>
         agent(
           `你是${reviewer.name}，你的提名：前区 ${myPick.fronts.join(' ')} | 后区 ${myPick.backs.join(' ')}
-审核 ${target.name}：前区 ${target.pick.fronts.join(' ')} | 后区 ${target.pick.backs.join(' ')}
-从你的专业视角点评：同意哪些（≥2个）、反对哪些（≥1个）、建议替换什么。必须引用数据。`,
+
+🔥 严厉审核 ${target.name}：前区 ${target.pick.fronts.join(' ')} | 后区 ${target.pick.backs.join(' ')}
+
+别客气！用你的专业视角狠狠怼他的方案：
+1. 同意哪些（≥2个）—— 好的要认，数据说话
+2. 反对哪些（≥1个）—— 狠狠批！他的方法论哪里出错了？数据哪里不支持？
+3. 建议换成什么号 —— 别光说不练
+
+⚠️ 拿数据砸！频率、遗漏、ratio、历史分布。不准说"我觉得""可能"。
+🎭 保持你的人设性格！该暴躁暴躁，该嘲讽嘲讽。
+📢 中文口语，像真实会议吵架一样。`,
           { label: `${reviewer.name}→${target.name}`, phase: '对抗验证', agentType: reviewer.agentType, schema: REVIEW_ONE_SCHEMA }
         )
       )
@@ -127,9 +136,17 @@ while (round < MAX_ROUNDS && !converged) {
     ).join('\n');
 
     const defense = await agent(
-      `你是${defender.name}。当前提名：前区 ${picks[i].fronts.join(' ')} | 后区 ${picks[i].backs.join(' ')}
-所有点评：\n${reviewsText}
-逐一自证每个被反对的号，接受有道理的反对并调整号码。`,
+      `你是${defender.name}。你的提名：前区 ${picks[i].fronts.join(' ')} | 后区 ${picks[i].backs.join(' ')}
+
+⚔️ 有人对你开火！所有点评：
+${reviewsText}
+
+现在反击：
+1. 每个被反对的号，用数据狠狠怼回去。对手有道理就认，胡说八道就拍回去
+2. 多人同时怼同一个号？认真想想。坚信自己就死保，数据比他们更强就赢了
+3. 输出最终号码
+
+🎭 保持人设！中文口语，像真实吵架。`,
       { label: `${defender.name}自证`, phase: '对抗验证', agentType: defender.agentType, schema: DEFENSE_SCHEMA }
     );
 

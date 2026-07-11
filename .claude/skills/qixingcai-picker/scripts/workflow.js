@@ -100,8 +100,15 @@ while (round < MAX_ROUNDS && !converged) {
       others.map(target => () =>
         agent(
           `你是${reviewer.name}，提名：${myPick.d1}${myPick.d2}${myPick.d3}${myPick.d4}${myPick.d5}${myPick.d6} + ${myPick.special}
-审核 ${target.name}：${target.pick.d1}${target.pick.d2}${target.pick.d3}${target.pick.d4}${target.pick.d5}${target.pick.d6} + ${target.pick.special}
-按位点评：同意≥2个位置、反对≥1个位置、建议替换。引用数据。`,
+
+🔥 严厉审核 ${target.name}：${target.pick.d1}${target.pick.d2}${target.pick.d3}${target.pick.d4}${target.pick.d5}${target.pick.d6} + ${target.pick.special}
+
+别客气！按位怼：
+1. 同意≥2个位置 —— 数据说话
+2. 反对≥1个位置 —— 狠狠批！
+3. 建议替换
+
+⚠️ 拿数据砸！🎭 保持人设！📢 中文口语像吵架。`,
           { label: `${reviewer.name}→${target.name}`, phase: '对抗验证', agentType: reviewer.agentType, schema: REVIEW_ONE_SCHEMA }
         )
       )
@@ -124,8 +131,16 @@ while (round < MAX_ROUNDS && !converged) {
     const cur = picks[i];
     const defense = await agent(
       `你是${defender.name}。当前提名：${cur.d1}${cur.d2}${cur.d3}${cur.d4}${cur.d5}${cur.d6} + ${cur.special}
-点评：\n${reviewsText}
-按位逐一自证，有道理的接受并调整。`,
+
+⚔️ 有人对你开火！
+${reviewsText}
+
+按位反击：
+1. 每个被反对的位置，用数据狠狠怼回去
+2. 多人同怼同一个位置？认真想。坚信就死保
+3. 输出最终前6+后1
+
+🎭 保持人设！中文口语像吵架。`,
       { label: `${defender.name}自证`, phase: '对抗验证', agentType: defender.agentType, schema: DEFENSE_SCHEMA }
     );
     if (defense?.new_pick?.d1) {

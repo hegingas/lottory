@@ -124,17 +124,18 @@ while (round < MAX_ROUNDS && !converged) {
     const reviewsFromThis = await parallel(
       others.map(target => () =>
         agent(
-          `## 你的身份
-你是${reviewer.name}，你的提名：红球 ${myPick.reds.join(' ')} | 蓝球 ${myPick.blue}
+          `你是${reviewer.name}，你的提名：红球 ${myPick.reds.join(' ')} | 蓝球 ${myPick.blue}
 
-## 你需要审核的目标
-${target.name} 的提名：红球 ${target.pick.reds.join(' ')} | 蓝球 ${target.pick.blue}
+🔥 你要**严厉审核** ${target.name} 的方案：红球 ${target.pick.reds.join(' ')} | 蓝球 ${target.pick.blue}
 
-## 任务
-基于数据(${dataContext.slice(0, 500)})，从你的专业视角点评${target.name}的方案：
-1. 同意哪些号（至少2个）—— 用数据说明为什么这些号选得好
-2. 反对哪些号（至少1个）—— 用数据说明为什么这些号不该选
-3. 如果要替换，建议换成什么号`,
+别客气！把你的专业脾气拿出来。用你的专业视角怼他的方案：
+1. 同意哪些号（至少2个）—— 也别光怼，好的要认，用数据说话
+2. 反对哪些号（至少1个）—— 狠狠批！为什么不该选？数据哪里不支持？他哪里犯了方法论错误？
+3. 建议换成什么号 —— 别光说不练，给出更好的替代方案
+
+⚠️ 不要说"我觉得""可能""大概"——拿数据砸！频率、遗漏、ratio、历史分布，硬数据甩脸上。
+🎭 别忘了你的性格！保持人设——该暴躁就暴躁，该嘲讽就嘲讽，该冷笑就冷笑。
+📢 用中文口语风格，像真实会议里吵架一样。`,
           { label: `${reviewer.name}→${target.name}`, phase: '对抗验证', agentType: reviewer.agentType, schema: REVIEW_ONE_SCHEMA }
         )
       )
@@ -170,16 +171,19 @@ ${target.name} 的提名：红球 ${target.pick.reds.join(' ')} | 蓝球 ${targe
       .join('\n');
 
     const defense = await agent(
-      `## 你的身份
-你是${defender.name}。当前提名：红球 ${myPick.reds.join(' ')} | 蓝球 ${myPick.blue}
+      `你是${defender.name}。你的提名：红球 ${myPick.reds.join(' ')} | 蓝球 ${myPick.blue}
 
-## 所有委员对你的点评
+⚔️ 有人对你开火了！以下是所有委员对你方案的点评：
 ${reviewsText}
 
-## 任务
-1. **逐一自证**：对每个被反对的号，用数据为自己辩护。如果反对确实有道理，坦然承认并接受调整
-2. **决定是否调整**：如果多位委员反对同一个号，诚实考虑替换。如果坚信自己正确，给出强有力的数据支撑
-3. **输出可能调整后的号码**：红球6码升序+蓝球1码`,
+现在轮到你反击！完成以下任务：
+
+1. **逐一反击**：每个被反对的号，用数据狠狠怼回去。如果对手说得有道理——大方认。"行，这个我认栽"不丢人；但如果他们胡说八道——拿数据把他们拍到墙上！
+2. **决定是否调整**：多个委员同时怼同一个号？认真想想是不是真的选错了。如果坚信自己正确——死保！给出比他们更强的数据支撑。如果有人说得对——改！别死要面子。
+3. **输出最终号码**：红球6码升序+蓝球1码
+
+🎭 保持你的人设性格！该暴躁暴躁，该沉稳沉稳，该阴阳怪气就阴阳怪气。
+📢 中文口语，像真实吵架一样说话。可以说"离谱""搞笑""你认真的？""数据拍脸上"这种口语。`,
       { label: `${defender.name}自证`, phase: '对抗验证', agentType: defender.agentType, schema: DEFENSE_SCHEMA }
     );
 
