@@ -171,4 +171,4 @@ const finalRuling = await agent(
   { label: '首席裁定', phase: '首席裁定', model: 'opus', effort: 'high' }
 );
 
-return { ruling: finalRuling, rounds, converged, finalPicks: picks.map((p, i) => ({ role: ROLES[i].name, d1: p.d1, d2: p.d2, d3: p.d3, d4: p.d4, d5: p.d5 })), debates: allDebates };
+return { ruling: finalRuling, round, converged, finalPicks: picks.map((p, i) => ({ role: ROLES[i].name, d1: p.d1, d2: p.d2, d3: p.d3, d4: p.d4, d5: p.d5 })), debates: allDebates };

@@ -244,4 +244,4 @@ ${wText}${sText}
   { label: '首席裁定', phase: '首席裁定', model: 'opus', effort: 'high', schema: RULING_SCHEMA }
 );
 
-return { ruling: finalRuling, rounds, converged, finalPicks: picks.map((p, i) => ({ role: ROLES[i].name, fronts: p.fronts, backs: p.backs })), debates: allDebates };
+return { ruling: finalRuling, round, converged, finalPicks: picks.map((p, i) => ({ role: ROLES[i].name, fronts: p.fronts, backs: p.backs })), debates: allDebates };
