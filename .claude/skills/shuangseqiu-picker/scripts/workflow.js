@@ -1,179 +1,282 @@
 // 双色球选号委员会 Workflow
-// 五人独立提名 → 交叉辩论 → 首席裁定
+// 五人提名 → 全面对抗验证(循环至收敛) → 首席裁定
 export const meta = {
   name: 'ssq-committee-pick',
-  description: '双色球五人委员会选号：趋势猎手/遗漏判官/结构大师/形态侦探/博弈鬼才 独立提名+交叉辩论+首席裁定',
+  description: '双色球五人委员会选号：全面对抗验证——每人审核所有对手+收到点评后自证+循环至收敛+首席裁定',
   phases: [
     { title: '数据准备', detail: '读取 ssq_draws.csv 提取上期+近50期数据' },
     { title: '独立提名', detail: '5 个 Agent 并行分析，各自提名一注' },
-    { title: '交叉辩论', detail: '每人点评一位对手 + 自辩' },
-    { title: '首席裁定', detail: '综合 5 人提名+辩论，裁定最终一注' },
+    { title: '对抗验证', detail: '每人审核所有对手→自证→收敛检查，最多3轮' },
+    { title: '首席裁定', detail: '综合全部提名+辩论记录，裁定最终一注' },
   ],
 };
 
-// ── 提名结构 ──
+// ═══════════════════════════════════════
+// Schema 定义
+// ═══════════════════════════════════════
+
 const NOMINATION_SCHEMA = {
   type: 'object',
   properties: {
-    reds: { type: 'array', items: { type: 'string' }, description: '红球6码，升序' },
+    reds: { type: 'array', items: { type: 'string' }, description: '红球6码升序' },
     blue: { type: 'string', description: '蓝球1码' },
-    reasoning: { type: 'string', description: '每个号的选号理由（含数据引用）' },
+    reasoning: { type: 'string', description: '每个号的数据支撑理由' },
   },
   required: ['reds', 'blue', 'reasoning'],
 };
 
-// ── 辩论结构 ──
-const DEBATE_SCHEMA = {
+// 一人点评另一人
+const REVIEW_ONE_SCHEMA = {
   type: 'object',
   properties: {
     target: { type: 'string', description: '被点评的委员名' },
-    agree_numbers: { type: 'array', items: { type: 'string' }, description: '同意的号码' },
-    disagree_numbers: { type: 'array', items: { type: 'string' }, description: '反对的号码' },
-    critique: { type: 'string', description: '点评理由（引用数据）' },
-    self_defense: { type: 'string', description: '自辩：针对自己方案的弱点用数据回应' },
+    agree_numbers: { type: 'array', items: { type: 'string' }, description: '同意的号码（至少2个）' },
+    disagree_numbers: { type: 'array', items: { type: 'string' }, description: '反对的号码（至少1个）' },
+    critique: { type: 'string', description: '反对理由，引用数据' },
+    suggest_replace: { type: 'string', description: '如果要替换，建议换成什么号' },
   },
-  required: ['target', 'agree_numbers', 'disagree_numbers', 'critique', 'self_defense'],
+  required: ['target', 'agree_numbers', 'disagree_numbers', 'critique'],
 };
 
-// ── 五人角色定义 ──
-const ROLES = [
-  { name: '趋势猎手', agentType: 'trend-hunter', color: 'blue' },
-  { name: '遗漏判官', agentType: 'gap-judge', color: 'red' },
-  { name: '结构大师', agentType: 'struct-master', color: 'green' },
-  { name: '形态侦探', agentType: 'pattern-spy', color: 'purple' },
-  { name: '博弈鬼才', agentType: 'game-theorist', color: 'orange' },
-];
+// 一人收到所有对自己的点评后的自证
+const DEFENSE_SCHEMA = {
+  type: 'object',
+  properties: {
+    role: { type: 'string', description: '委员名' },
+    current_pick: { type: 'object', properties: { reds: { type: 'array', items: { type: 'string' } }, blue: { type: 'string' } } },
+    adjustments_made: { type: 'array', items: { type: 'string' }, description: '本轮调整了哪些号（如有）' },
+    new_pick: { type: 'object', properties: { reds: { type: 'array', items: { type: 'string' } }, blue: { type: 'string' } }, description: '调整后的号码（如无调整则与current_pick相同）' },
+    defense: { type: 'string', description: '对每个被反对的号逐一自证，用数据说话' },
+    concessions: { type: 'string', description: '承认哪些反对有理，为什么接受调整' },
+  },
+  required: ['role', 'current_pick', 'adjustments_made', 'new_pick', 'defense', 'concessions'],
+};
 
-// ═══════════════════════════════════════════════
+// ═══════════════════════════════════════
+// 五人角色
+// ═══════════════════════════════════════
+const ROLES = [
+  { name: '趋势猎手', agentType: 'trend-hunter' },
+  { name: '遗漏判官', agentType: 'gap-judge' },
+  { name: '结构大师', agentType: 'struct-master' },
+  { name: '形态侦探', agentType: 'pattern-spy' },
+  { name: '博弈鬼才', agentType: 'game-theorist' },
+];
+const N = ROLES.length;
+const MAX_ROUNDS = 3;
+const CONVERGE_THRESHOLD = 3; // 至少3个红球被3+人同意才算收敛
+
+// ═══════════════════════════════════════
 // Phase 1: 数据准备
-// ═══════════════════════════════════════════════
+// ═══════════════════════════════════════
 phase('数据准备');
 
-const DATA_PROMPT = `读取 data/processed/ssq_draws.csv：
-1. 全历史期数，最新一期期号+开奖号码
-2. 近50期所有红球和蓝球的频次
-3. 每个红球01-33和蓝球01-16的当前遗漏期数
-4. 近50期奇偶比/大小比/和值分布
+const dataContext = await agent(
+  `读取 data/processed/ssq_draws.csv：
+1. 全历史期数，最新一期期号 + 开奖号码（红球+蓝球）
+2. 近50期每个红球01-33和蓝球01-16的出现频次
+3. 每个号码的当前遗漏期数
+4. 近50期奇偶比分布、大小比分布(01-16小/17-33大)、和值均值+范围
+5. 近50期连号出现频率
 
-将以上数据返回为结构化摘要。`;
+返回结构化摘要。`,
+  { label: '数据准备', phase: '数据准备', model: 'haiku' }
+);
+log(`数据就绪`);
 
-const dataContext = await agent(DATA_PROMPT, {
-  label: '数据准备',
-  phase: '数据准备',
-  model: 'haiku',
-});
-
-log(`数据就绪：${dataContext.slice(0, 100)}...`);
-
-// ═══════════════════════════════════════════════
+// ═══════════════════════════════════════
 // Phase 2: 五人并行独立提名
-// ═══════════════════════════════════════════════
+// ═══════════════════════════════════════
 phase('独立提名');
 
-const NOMINATION_PROMPT = (role, data) => `
-## 数据背景
-${data}
-
-## 你的任务
-作为${role.name}，按你的专属方法论分析数据，提名一注双色球号码（红球6码+蓝球1码）。
-
-每个号码必须附带数据支撑的理由。输出红球升序排列。
-`;
-
-const nominations = await parallel(
+let picks = await parallel(
   ROLES.map(role => () =>
-    agent(NOMINATION_PROMPT(role, dataContext), {
-      label: role.name,
-      phase: '独立提名',
-      agentType: role.agentType,
-      schema: NOMINATION_SCHEMA,
-    })
+    agent(
+      `## 数据背景\n${dataContext}\n\n## 任务\n作为${role.name}，按你的专属方法论独立分析数据，提名一注双色球（红球6码升序+蓝球1码）。每个号必须附带数据理由。`,
+      { label: role.name, phase: '独立提名', agentType: role.agentType, schema: NOMINATION_SCHEMA }
+    )
   )
 );
+picks = picks.filter(Boolean);
+log(`提名完成：${picks.length}/5 人提交`);
 
-// 过滤掉 null（被跳过的 agent）
-const validNominations = nominations.filter(Boolean);
-log(`提名完成：${validNominations.length}/5 人提交`);
+// ═══════════════════════════════════════
+// Phase 3: 对抗验证循环
+// ═══════════════════════════════════════
+phase('对抗验证');
 
-// ═══════════════════════════════════════════════
-// Phase 3: 交叉辩论
-// ═══════════════════════════════════════════════
-phase('交叉辩论');
+let round = 0;
+let converged = false;
+const allDebates = []; // 累积所有轮次的辩论记录
 
-const allNominationsSummary = validNominations
-  .map((n, i) => `${ROLES[i].name}: 红球 ${n.reds.join(' ')} | 蓝球 ${n.blue}`)
-  .join('\n');
+while (round < MAX_ROUNDS && !converged) {
+  round++;
+  log(`━━━ 第 ${round} 轮对抗验证 ━━━`);
 
-const DEBATE_PROMPT = (role, ownPick, othersSummary) => `
-## 全部提名方案
-${othersSummary}
+  // ── Step A: 全面审核 — 每人审核所有其他4人 ──
+  const allReviewsThisRound = [];
 
-## 你的任务
-作为${role.name}，你的提名是：红球 ${ownPick.reds.join(' ')} | 蓝球 ${ownPick.blue}
+  for (let i = 0; i < N; i++) {
+    const reviewer = ROLES[i];
+    const myPick = picks[i];
+    const others = ROLES.map((r, j) => ({ ...r, pick: picks[j] })).filter((_, j) => j !== i);
 
-请完成两项：
-1. **选一位其他委员点评**：指出你同意哪些号（至少2个）、反对哪些号（至少1个），必须引用数据
-2. **自辩**：针对你的方案中最可能被攻击的弱点，用数据回应
-`;
+    const reviewsFromThis = await parallel(
+      others.map(target => () =>
+        agent(
+          `## 你的身份
+你是${reviewer.name}，你的提名：红球 ${myPick.reds.join(' ')} | 蓝球 ${myPick.blue}
 
-const debates = await parallel(
-  validNominations.map((nom, i) => () =>
-    agent(DEBATE_PROMPT(ROLES[i], nom, allNominationsSummary), {
-      label: `辩论:${ROLES[i].name}`,
-      phase: '交叉辩论',
-      agentType: ROLES[i].agentType,
-      schema: DEBATE_SCHEMA,
-    })
-  )
-);
+## 你需要审核的目标
+${target.name} 的提名：红球 ${target.pick.reds.join(' ')} | 蓝球 ${target.pick.blue}
 
-const validDebates = debates.filter(Boolean);
-log(`辩论完成：${validDebates.length}/5 人参与`);
+## 任务
+基于数据(${dataContext.slice(0, 500)})，从你的专业视角点评${target.name}的方案：
+1. 同意哪些号（至少2个）—— 用数据说明为什么这些号选得好
+2. 反对哪些号（至少1个）—— 用数据说明为什么这些号不该选
+3. 如果要替换，建议换成什么号`,
+          { label: `${reviewer.name}→${target.name}`, phase: '对抗验证', agentType: reviewer.agentType, schema: REVIEW_ONE_SCHEMA }
+        )
+      )
+    );
 
-// ═══════════════════════════════════════════════
+    allReviewsThisRound.push({
+      reviewer: reviewer.name,
+      reviews: reviewsFromThis.filter(Boolean),
+    });
+  }
+
+  log(`第${round}轮审核完成：${allReviewsThisRound.reduce((s, r) => s + r.reviews.length, 0)} 条点评`);
+
+  // ── Step B: 自证 — 每人收到所有对自己的点评后自辩/调整 ──
+  const newPicks = [];
+
+  for (let i = 0; i < N; i++) {
+    const defender = ROLES[i];
+    const myPick = picks[i];
+
+    // 收集所有对我的点评
+    const reviewsAboutMe = [];
+    for (const r of allReviewsThisRound) {
+      for (const rev of r.reviews) {
+        if (rev && rev.target === defender.name) {
+          reviewsAboutMe.push({ from: r.reviewer, ...rev });
+        }
+      }
+    }
+
+    const reviewsText = reviewsAboutMe
+      .map(r => `【${r.from}】同意:${r.agree_numbers.join(',')} | 反对:${r.disagree_numbers.join(',')} | 理由:${r.critique} | 建议替换:${r.suggest_replace || '无'}`)
+      .join('\n');
+
+    const defense = await agent(
+      `## 你的身份
+你是${defender.name}。当前提名：红球 ${myPick.reds.join(' ')} | 蓝球 ${myPick.blue}
+
+## 所有委员对你的点评
+${reviewsText}
+
+## 任务
+1. **逐一自证**：对每个被反对的号，用数据为自己辩护。如果反对确实有道理，坦然承认并接受调整
+2. **决定是否调整**：如果多位委员反对同一个号，诚实考虑替换。如果坚信自己正确，给出强有力的数据支撑
+3. **输出可能调整后的号码**：红球6码升序+蓝球1码`,
+      { label: `${defender.name}自证`, phase: '对抗验证', agentType: defender.agentType, schema: DEFENSE_SCHEMA }
+    );
+
+    if (defense) {
+      allDebates.push({
+        round,
+        role: defender.name,
+        reviews_received: reviewsAboutMe.map(r => ({ from: r.from, agree: r.agree_numbers, disagree: r.disagree_numbers })),
+        defense: defense.defense,
+        concessions: defense.concessions,
+        adjustments: defense.adjustments_made,
+      });
+
+      // 使用调整后的号码（如有）
+      if (defense.new_pick && defense.new_pick.reds && defense.new_pick.reds.length === 6) {
+        newPicks.push({
+          reds: defense.new_pick.reds,
+          blue: defense.new_pick.blue,
+          reasoning: myPick.reasoning + `\n[第${round}轮调整: ${(defense.adjustments_made || []).join('; ')}]`,
+        });
+      } else {
+        newPicks.push(myPick);
+      }
+    } else {
+      newPicks.push(myPick);
+    }
+  }
+
+  picks = newPicks;
+  log(`第${round}轮自证完成`);
+
+  // ── Step C: 检查收敛 ──
+  // 收敛条件：至少 CONVERGE_THRESHOLD 个红球被3+人同时选中
+  const allReds = picks.flatMap(p => p.reds);
+  const redCounts = {};
+  for (const r of allReds) {
+    redCounts[r] = (redCounts[r] || 0) + 1;
+  }
+  const consensusReds = Object.entries(redCounts)
+    .filter(([, c]) => c >= 3)
+    .map(([r]) => r);
+
+  // 蓝球收敛
+  const allBlues = picks.map(p => p.blue);
+  const blueCounts = {};
+  for (const b of allBlues) {
+    blueCounts[b] = (blueCounts[b] || 0) + 1;
+  }
+  const topBlue = Object.entries(blueCounts).sort((a, b) => b[1] - a[1])[0];
+
+  log(`收敛状态: ${consensusReds.length}个红球共识(≥3票), 蓝球共识 ${topBlue[0]}(${topBlue[1]}票)`);
+
+  if (consensusReds.length >= CONVERGE_THRESHOLD && topBlue[1] >= 3) {
+    converged = true;
+    log(`✅ 第${round}轮达成收敛！`);
+  } else if (round >= MAX_ROUNDS) {
+    log(`⚠ 已达最大轮次(${MAX_ROUNDS})，强制进入裁定`);
+  }
+}
+
+// ═══════════════════════════════════════
 // Phase 4: 首席裁定
-// ═══════════════════════════════════════════════
+// ═══════════════════════════════════════
 phase('首席裁定');
 
-const CHIEF_PROMPT = `
-你是双色球选号委员会的**首席裁判**。你不参与提名，只做裁定。
+const nominationsText = picks
+  .map((p, i) => `${ROLES[i].name}: 红球 ${p.reds.join(' ')} | 蓝球 ${p.blue}`)
+  .join('\n');
 
-## 五人提名
-${validNominations.map((n, i) => `${ROLES[i].name}: 红球 ${n.reds.join(' ')} | 蓝球 ${n.blue} | 理由: ${n.reasoning.slice(0, 200)}`).join('\n\n')}
+const debatesText = allDebates
+  .map(d => `[第${d.round}轮] ${d.role}: 被${d.reviews_received.length}人点评 | 自辩: ${d.defense?.slice(0, 150)} | 让步: ${d.concessions?.slice(0, 100)} | 调整: ${d.adjustments?.join(',') || '无'}`)
+  .join('\n');
 
-## 辩论摘要
-${validDebates.map(d => `${d.target}: 同意[${d.agree_numbers.join(',')}] 反对[${d.disagree_numbers.join(',')}] | 点评: ${d.critique.slice(0, 200)} | 自辩: ${d.self_defense.slice(0, 200)}`).join('\n\n')}
+const finalRuling = await agent(
+  `你是双色球选号委员会的**首席裁判**。经过 ${round} 轮对抗验证后${converged ? '已达成收敛' : '未完全收敛'}，现在由你做最终裁定。
+
+## 最终提名方案
+${nominationsText}
+
+## 全部辩论记录
+${debatesText}
 
 ## 裁定要求
-1. 统计每个号码被提名次数（共识号）
-2. 综合各方观点，裁定最终一注（红6+蓝1）
-3. 必须满足：至少一组连号 + 与上期重叠1-2个号
-4. 说明每个选定号的来源（采纳了哪位委员的观点）
-5. 输出贡献统计（每位委员入选了几个号）
+1. 统计每个号码的最终票数（共识号高亮）
+2. 综合全部辩论，裁定最终一注（红6+蓝1）
+3. 硬约束：至少一组连号 + 与上期重叠1-2个号
+4. 每个选定号标注来源（哪位委员的观点被采纳）
+5. 贡献统计表
+6. 如未收敛，说明你为何在分歧中选择某方观点`,
+  { label: '首席裁定', phase: '首席裁定', model: 'opus', effort: 'high' }
+);
 
-最终号码直接决定，不考虑委员面子。
-`;
-
-const finalRuling = await agent(CHIEF_PROMPT, {
-  label: '首席裁定',
-  phase: '首席裁定',
-  model: 'opus',
-  effort: 'high',
-});
-
-// ═══════════════════════════════════════════════
-// 返回结果
-// ═══════════════════════════════════════════════
+// ═══════════════════════════════════════
 return {
-  nominations: validNominations.map((n, i) => ({
-    role: ROLES[i].name,
-    reds: n.reds,
-    blue: n.blue,
-    reasoning: n.reasoning,
-  })),
-  debates: validDebates.map((d, i) => ({
-    from: ROLES[i].name,
-    ...d,
-  })),
+  rounds: round,
+  converged,
+  finalPicks: picks.map((p, i) => ({ role: ROLES[i].name, reds: p.reds, blue: p.blue })),
+  debates: allDebates,
   finalRuling,
 };

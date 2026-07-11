@@ -1,6 +1,6 @@
 ---
 name: 选双色球
-description: 双色球选号——Dynamic Workflow 编排五人委员会（trend-hunter/gap-judge/struct-master/pattern-spy/game-theorist），并行提名+交叉辩论+首席裁定，一注定乾坤。当用户说"选双色球"、"双色球选号"、"双色球预测"、"双色球推荐号码"、"帮我选双色球"、"双色球买什么"时使用。
+description: 双色球选号——Dynamic Workflow 全面对抗验证：五人委员会每人审核所有对手→收到点评后自证→循环至收敛(≥3红球共识+蓝球多数)→首席裁定。当用户说"选双色球"、"双色球选号"、"双色球预测"、"双色球推荐号码"、"帮我选双色球"、"双色球买什么"时使用。
 ---
 
 # 双色球选号（五人委员会 · Dynamic Workflow · 一注定乾坤）
@@ -26,20 +26,20 @@ description: 双色球选号——Dynamic Workflow 编排五人委员会（trend
     │
     └─→ Workflow 脚本 (scripts/workflow.js)
            │
-           ├─ Phase 1: 数据准备 (haiku, 快速)
+           ├─ Phase 1: 数据准备 (haiku)
            │
            ├─ Phase 2: parallel(5 Agent 独立提名)
-           │    ├─ trend-hunter   (sonnet) 趋势猎手
-           │    ├─ gap-judge      (sonnet) 遗漏判官
-           │    ├─ struct-master  (sonnet) 结构大师
-           │    ├─ pattern-spy    (sonnet) 形态侦探
-           │    └─ game-theorist  (sonnet) 博弈鬼才
            │
-           ├─ Phase 3: parallel(5 Agent 交叉辩论)
-           │    每人点评一位对手 + 自辩
+           ├─ Phase 3: 对抗验证循环 (最多3轮)
+           │    ┌─────────────────────────────────┐
+           │    │  Step A: 每人审核所有其他4人      │
+           │    │  Step B: 每人收到所有点评后自证    │
+           │    │  Step C: 检查收敛                  │
+           │    │    ≥3红球共识 + 蓝球多数 → 收敛    │
+           │    │    未收敛 → 下一轮                  │
+           │    └─────────────────────────────────┘
            │
            └─ Phase 4: 首席裁定 (opus, high effort)
-                综合提名+辩论 → 最终一注
 ```
 
 ## 自定义 Agent 清单
