@@ -160,9 +160,9 @@
       "lottery_type": "kl8",
       "output": "data/processed/kl8_draws.csv",
       "source": "user_screenshots_917500.cn_batch_2026-05-01",
-      "rows_out": 1992,
+      "rows_out": 1993,
       "period_id_min": 2020012,
-      "period_id_max": 2026182,
+      "period_id_max": 2026183,
       "generated_at": "2026-06-06T14:36:20+08:00",
       "note": "第三方页面截图录入+websearch采集，建议与福彩官方公告抽样核对",
       "supplement": {
