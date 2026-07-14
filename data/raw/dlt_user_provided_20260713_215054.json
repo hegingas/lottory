@@ -1,0 +1,17 @@
+{
+  "fetched_at": "2026-07-13T21:50:54.982937+08:00",
+  "source": "user_provided",
+  "draws": [
+    {
+      "lottery_type": "dlt",
+      "period_id": "26078",
+      "front_1": "02",
+      "front_2": "13",
+      "front_3": "20",
+      "front_4": "25",
+      "front_5": "32",
+      "back_1": "08",
+      "back_2": "11"
+    }
+  ]
+}
