@@ -24,11 +24,11 @@
       "lottery_type": "ssq",
       "output": "data/processed/ssq_draws.csv",
       "source": "maintained_processed_csv",
-      "rows_out": 3476,
+      "rows_out": 3477,
       "rows_in": 3438,
       "excluded": [],
       "period_id_min": 2003001,
-      "period_id_max": 2026079,
+      "period_id_max": 2026080,
       "supplement": {
         "rows_added": 17,
         "period_ids": [
@@ -79,9 +79,9 @@
         "api_sync": {
           "rows_added": 1,
           "period_ids": [
-            "2026079"
+            "2026080"
           ],
-          "source_note": "cwl.gov.cn API auto-fetch 2026-07-12",
+          "source_note": "cwl.gov.cn API auto-fetch 2026-07-14",
           "official_verify": "已与中彩网官方API数据核对"
         }
       }
