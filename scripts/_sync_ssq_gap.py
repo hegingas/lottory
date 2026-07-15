@@ -51,6 +51,11 @@ for d in api_draws:
 
 # 按期号升序排列
 new_draws.sort(key=lambda x: x["period_id"])
+
+if not new_draws:
+    print("✅ 已是最新，无需同步")
+    exit(0)
+
 print(f"缺失期数: {len(new_draws)}, 范围: {new_draws[0]['period_id']} ~ {new_draws[-1]['period_id']}")
 
 # 4. 写入 raw 层备份

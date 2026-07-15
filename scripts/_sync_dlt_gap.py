@@ -44,7 +44,7 @@ new_draws = []
 pattern = re.compile(r'(\d{5})\s+\d{4}-\d{2}-\d{2}[^0-9]*\s+(\d{10})\s+(\d{4})')
 
 for m in pattern.finditer(raw_text):
-    pid = m.group(1)
+    pid = "20" + m.group(1)  # zhcw 页面为 5 位期号(26078)，CSV 统一为 7 位(2026078)
     front_str = m.group(2)   # e.g. "0414192427"
     back_str = m.group(3)    # e.g. "0607"
 
@@ -69,7 +69,7 @@ for m in pattern.finditer(raw_text):
         }
         new_draws.append(row)
 
-new_draws.sort(key=lambda x: x["period_id"])
+new_draws.sort(key=lambda x: int(x["period_id"]))
 
 if not new_draws:
     print("✅ 已是最新，无需同步")
@@ -88,7 +88,7 @@ print(f"raw 备份: {raw_file}")
 # ── 5. 写入 processed CSV ──
 FIELD_NAMES = ["lottery_type", "period_id", "front_1", "front_2", "front_3", "front_4", "front_5", "back_1", "back_2"]
 all_rows = list(existing.values()) + new_draws
-all_rows.sort(key=lambda x: x["period_id"])
+all_rows.sort(key=lambda x: int(x["period_id"]))
 
 with open(CSV_PATH, "w", encoding="utf-8", newline="") as f:
     writer = csv.DictWriter(f, fieldnames=FIELD_NAMES)
@@ -110,7 +110,7 @@ for block in manifest.get("outputs", []):
         block["period_id_max"] = int(all_rows[-1]["period_id"])
         if "supplement" not in block:
             block["supplement"] = {}
-        block["supplement"]["zhcw_sync_20260711"] = {
+        block["supplement"][f"zhcw_sync_{datetime.now(BJT).strftime('%Y%m%d')}"] = {
             "rows_added": len(new_draws),
             "period_ids": [d["period_id"] for d in new_draws],
             "source_note": f"zhcw.com 中彩网页面抓取 {datetime.now(BJT).strftime('%Y-%m-%d')}",
