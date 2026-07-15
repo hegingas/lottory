@@ -1,1 +1,3 @@
 data/lottery.db binary
+# Workflow 脚本必须 LF：CRLF 的 \r 会被权限层判为隐藏控制字符导致 Workflow 调用被拒
+*.js text eol=lf
