@@ -1,0 +1,129 @@
+{
+  "generatedAt": "2026-07-19T23:16:59.538740+08:00",
+  "types": {
+    "ssq": {
+      "name": "双色球",
+      "totalDraws": 3478,
+      "latestPeriod": "2026081",
+      "latestDraw": {
+        "period": "2026081",
+        "main": [
+          6,
+          10,
+          12,
+          15,
+          24,
+          27
+        ],
+        "sub": [
+          12
+        ]
+      },
+      "periodRange": [
+        "2003001",
+        "2026081"
+      ]
+    },
+    "dlt": {
+      "name": "大乐透",
+      "totalDraws": 2898,
+      "latestPeriod": "2026080",
+      "latestDraw": {
+        "period": "2026080",
+        "main": [
+          5,
+          10,
+          15,
+          21,
+          23
+        ],
+        "sub": [
+          7,
+          8
+        ]
+      },
+      "periodRange": [
+        "2007001",
+        "2026080"
+      ]
+    },
+    "kl8": {
+      "name": "快乐八",
+      "totalDraws": 1999,
+      "latestPeriod": "2026189",
+      "latestDraw": {
+        "period": "2026189",
+        "main": [
+          1,
+          5,
+          6,
+          12,
+          14,
+          18,
+          22,
+          27,
+          29,
+          32,
+          35,
+          42,
+          49,
+          55,
+          57,
+          59,
+          69,
+          71,
+          74,
+          78
+        ],
+        "sub": []
+      },
+      "periodRange": [
+        "2020012",
+        "2026189"
+      ]
+    },
+    "pl5": {
+      "name": "排列5",
+      "totalDraws": 7658,
+      "latestPeriod": "9358",
+      "latestDraw": {
+        "period": "9358",
+        "main": [
+          0,
+          2,
+          3,
+          4,
+          8
+        ],
+        "sub": []
+      },
+      "periodRange": [
+        "10001",
+        "9358"
+      ]
+    },
+    "qxc": {
+      "name": "七星彩",
+      "totalDraws": 869,
+      "latestPeriod": "26081",
+      "latestDraw": {
+        "period": "26081",
+        "main": [
+          2,
+          3,
+          3,
+          4,
+          5,
+          5
+        ],
+        "sub": [
+          8
+        ]
+      },
+      "periodRange": [
+        "20100",
+        "26081"
+      ]
+    }
+  }
+}

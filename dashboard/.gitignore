@@ -1,0 +1,6 @@
+# 截图/测试产物
+screenshot_*.png
+
+# Python cache
+__pycache__/
+*.pyc

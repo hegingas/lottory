@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>彩票数据分析面板</title>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.6.0/dist/echarts.min.js"></script>
+<style>
+/* ═══════════════════════════════════
+   彩票 Dashboard 暗色主题
+   ═══════════════════════════════════ */
+
+:root {
+  --bg-primary: #1a1a2e;
+  --bg-card: #16213e;
+  --bg-hover: #0f3460;
+  --text-primary: #e0e0e0;
+  --text-secondary: #9e9e9e;
+  --border: #2a2a4a;
+  --accent-ssq: #E53935;
+  --accent-dlt: #FB8C00;
+  --accent-kl8: #8E24AA;
+  --accent-pl5: #1E88E5;
+  --accent-qxc: #00897B;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Microsoft YaHei', sans-serif;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  min-height: 100vh;
+  line-height: 1.6;
+}
+
+/* ─── 导航栏 ─── */
+.navbar {
+  position: sticky; top: 0; z-index: 100;
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 24px; height: 56px;
+  backdrop-filter: blur(12px);
+}
+.nav-brand {
+  font-size: 18px; font-weight: 700;
+  display: flex; align-items: center; gap: 8px;
+}
+.nav-brand .icon { font-size: 24px; }
+.nav-links { display: flex; gap: 4px; align-items: center; }
+.nav-link {
+  color: var(--text-secondary); text-decoration: none;
+  padding: 6px 14px; border-radius: 6px; font-size: 14px;
+  transition: all .2s;
+}
+.nav-link:hover { color: var(--text-primary); background: var(--bg-hover); }
+.nav-link.active { color: #fff; font-weight: 600; }
+
+.nav-toggle { display: none; background: none; border: none; color: #fff; font-size: 24px; cursor: pointer; }
+
+/* ─── 视图容器 ─── */
+.view { display: none; }
+.view.active { display: block; }
+.view-container { max-width: 1400px; margin: 0 auto; padding: 24px; }
+
+/* ─── 主页 ─── */
+.home-header { text-align: center; padding: 40px 0 32px; }
+.home-header h1 { font-size: 32px; margin-bottom: 8px; }
+.home-header p { color: var(--text-secondary); font-size: 14px; }
+
+.home-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 16px;
+}
+.home-card {
+  display: block; text-decoration: none;
+  background: var(--bg-card); border-radius: 12px;
+  padding: 20px; border: 2px solid transparent;
+  transition: all .25s; position: relative; overflow: hidden;
+}
+.home-card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  background: var(--card-accent);
+}
+.home-card:hover { border-color: var(--card-accent); transform: translateY(-2px); }
+.home-card-header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.home-card-icon { font-size: 28px; }
+.home-card-name { font-size: 18px; font-weight: 700; color: var(--text-primary); }
+.home-card-badge {
+  margin-left: auto; font-size: 12px; padding: 2px 10px;
+  border-radius: 10px; font-weight: 600;
+}
+.home-card-period { font-size: 14px; color: var(--text-secondary); margin-bottom: 8px; }
+.home-card-balls { font-size: 16px; margin-bottom: 6px; }
+.home-card-range { font-size: 12px; color: var(--text-secondary); }
+
+.ball-sm {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 26px; height: 26px; border-radius: 50%;
+  font-size: 12px; font-weight: 700; color: #fff; margin: 0 1px;
+}
+.ball-sm-sub {
+  background: #1565C0 !important;
+}
+.ball-plus { color: var(--text-secondary); margin: 0 4px; }
+
+.home-footer { text-align: center; padding: 32px 0; color: var(--text-secondary); font-size: 12px; }
+.home-footer span { margin: 0 12px; }
+
+/* ─── 详情页（公共） ─── */
+.detail-header { display: flex; align-items: center; gap: 16px; margin-bottom: 16px; flex-wrap: wrap; }
+.back-btn {
+  color: var(--text-secondary); text-decoration: none;
+  font-size: 14px; padding: 6px 14px; border-radius: 6px;
+  background: var(--bg-card); transition: all .2s;
+}
+.back-btn:hover { color: #fff; background: var(--bg-hover); }
+.detail-title { font-size: 22px; font-weight: 700; }
+.detail-period-range { margin-left: auto; font-size: 13px; color: var(--text-secondary); }
+
+.latest-draw {
+  background: var(--bg-card); border-radius: 10px;
+  padding: 14px 20px; margin-bottom: 16px;
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+}
+.latest-label { font-size: 14px; color: var(--text-secondary); }
+.latest-balls { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.ball-md {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px; border-radius: 50%;
+  font-size: 14px; font-weight: 700; color: #fff;
+  box-shadow: 0 2px 6px rgba(0,0,0,.3);
+}
+.ball-plus-md { margin: 0 6px; color: var(--text-secondary); font-size: 18px; }
+
+/* ─── 统计卡片 ─── */
+.stat-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.stat-card { background: var(--bg-card); border-radius: 8px; padding: 14px; text-align: center; }
+.stat-label { font-size: 12px; color: var(--text-secondary); margin-bottom: 4px; }
+.stat-value { font-size: 22px; font-weight: 700; }
+.stat-value.hot { color: var(--accent-ssq); }
+.stat-value.cold { color: #78909C; }
+
+/* ─── 图表标签 ─── */
+.chart-tabs { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 12px; }
+.chart-tab {
+  background: var(--bg-card); border: 1px solid var(--border);
+  color: var(--text-secondary); padding: 6px 14px;
+  border-radius: 6px; font-size: 13px; cursor: pointer;
+  transition: all .2s;
+}
+.chart-tab:hover { color: #fff; border-color: #fff3; }
+.chart-tab.active { color: #fff; font-weight: 600; }
+
+/* ─── 图表区 ─── */
+.chart-area {
+  background: var(--bg-card); border-radius: 10px;
+  padding: 12px; margin-bottom: 16px; min-height: 420px;
+}
+
+/* ─── 号码网格 ─── */
+.number-grid-section { margin-bottom: 20px; }
+.grid-header { font-size: 16px; font-weight: 700; margin-bottom: 10px; }
+.grid-scroll { overflow-x: auto; border-radius: 8px; }
+.num-grid { border-collapse: collapse; font-size: 12px; white-space: nowrap; }
+.num-grid th, .num-grid td { padding: 3px 5px; text-align: center; border: 1px solid var(--border); }
+.num-grid th { background: var(--bg-card); color: var(--text-secondary); font-weight: 600; position: sticky; top: 0; }
+.grid-period-th, .grid-period { min-width: 55px; font-weight: 600; }
+.grid-num-th { min-width: 24px; font-size: 10px; }
+.grid-sub-th { color: #1565C0; }
+.grid-gap { border: none !important; width: 10px; background: transparent !important; }
+.grid-cell { font-size: 11px; font-weight: 600; min-width: 24px; }
+.grid-hit { color: #fff; font-weight: 700; border-radius: 2px; }
+.grid-omit-cold { color: #81C784; }
+.grid-omit-warm { color: #FFB74D; }
+.grid-omit-hot { color: #E57373; }
+
+/* ─── 数据表格 ─── */
+.data-table-section { margin-top: 20px; }
+.table-header { font-size: 16px; font-weight: 700; margin-bottom: 10px; }
+.table-pagination { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; font-size: 14px; }
+.page-btn {
+  background: var(--bg-card); border: 1px solid var(--border);
+  color: var(--text-primary); padding: 4px 14px; border-radius: 6px;
+  cursor: pointer; font-size: 13px; transition: all .2s;
+}
+.page-btn:hover:not([disabled]) { background: var(--bg-hover); }
+.page-btn[disabled] { opacity: 0.4; cursor: default; }
+.table-scroll { overflow-x: auto; border-radius: 8px; }
+.data-table { border-collapse: collapse; font-size: 13px; width: 100%; }
+.data-table th, .data-table td { padding: 6px 10px; text-align: center; border: 1px solid var(--border); }
+.data-table th { background: var(--bg-card); color: var(--text-secondary); font-weight: 600; position: sticky; top: 0; }
+.data-table tr:hover td { background: var(--bg-hover); }
+.table-sub-header { color: #1565C0; }
+.table-sub-cell { color: #42A5F5; font-weight: 600; }
+
+/* ─── 错误页 ─── */
+.error-view { text-align: center; padding: 80px 24px; }
+.error-view h2 { font-size: 48px; margin-bottom: 16px; }
+.error-view p { color: var(--text-secondary); }
+
+/* ─── 移动端适配 ─── */
+@media (max-width: 768px) {
+  .nav-links { display: none; flex-direction: column; position: absolute; top: 56px; left: 0; right: 0;
+    background: var(--bg-card); border-bottom: 1px solid var(--border); padding: 8px; }
+  .nav-links.open { display: flex; }
+  .nav-toggle { display: block; }
+  .home-cards { grid-template-columns: 1fr; }
+  .stat-cards { grid-template-columns: repeat(2, 1fr); }
+  .detail-header { flex-direction: column; align-items: flex-start; }
+  .detail-period-range { margin-left: 0; }
+  .chart-tabs { gap: 2px; }
+  .chart-tab { padding: 4px 8px; font-size: 11px; }
+}
+</style>
+</head>
+<body>
+
+<!-- ═══════════ 导航栏 ═══════════ -->
+<nav class="navbar">
+  <div class="nav-brand">
+    <span class="icon">🎰</span>
+    <span>彩票数据面板</span>
+  </div>
+  <button class="nav-toggle" id="nav-toggle" aria-label="菜单">☰</button>
+  <div class="nav-links" id="nav-links">
+    <a href="#/home" class="nav-link active">🏠 首页</a>
+    <a href="#/ssq" class="nav-link" style="--nav-color:var(--accent-ssq)">🔴 双色球</a>
+    <a href="#/dlt" class="nav-link">🟠 大乐透</a>
+    <a href="#/kl8" class="nav-link">🟣 快乐八</a>
+    <a href="#/pl5" class="nav-link">🔵 排列5</a>
+    <a href="#/qxc" class="nav-link">🟢 七星彩</a>
+  </div>
+</nav>
+
+<!-- ═══════════ 视图容器 ═══════════ -->
+<div class="view-container">
+
+  <!-- 主页 -->
+  <div id="view-home" class="view active">
+    <div class="home-header">
+      <h1>🎯 彩票数据分析面板</h1>
+      <p>5 彩种走势图 · 遗漏分析 · 频率统计 · 号码网格</p>
+    </div>
+    <div class="home-cards" id="home-cards"></div>
+    <div class="home-footer">
+      <span>⚠️ 数据仅供参考，彩票为随机游戏</span>
+      <span>数据更新: <span id="update-time">--</span></span>
+    </div>
+  </div>
+
+  <!-- 详情页 -->
+  <div id="view-detail" class="view"></div>
+
+  <!-- 错误页 -->
+  <div id="view-error" class="view">
+    <div class="error-view">
+      <h2>😵</h2>
+      <p>页面加载失败，请检查数据文件是否完整</p>
+      <a href="#/home" class="back-btn" style="margin-top:16px;display:inline-block;">← 返回首页</a>
+    </div>
+  </div>
+
+</div>
+
+<!-- ═══════════ JS ═══════════ -->
+<script src="data/data.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/charts.js"></script>
+<script src="js/app.js"></script>
+<script src="js/renderers.js"></script>
+
+</body>
+</html>
