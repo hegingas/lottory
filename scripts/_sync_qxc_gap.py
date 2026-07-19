@@ -24,9 +24,8 @@ print(f"现有最新期号: {latest_existing}, 总期数: {len(existing)}")
 with sync_playwright() as p:
     browser = p.chromium.launch(headless=True)
     page = browser.new_page()
-    page.goto(URL, timeout=20000)
-    page.wait_for_load_state("networkidle")
-    page.wait_for_timeout(3000)
+    page.goto(URL, timeout=60000, wait_until="domcontentloaded")
+    page.wait_for_timeout(8000)
 
     # 点近100期获取更多数据
     try:

@@ -7,16 +7,25 @@
       "lottery_type": "dlt",
       "output": "data/processed/dlt_draws.csv",
       "source": "maintained_processed_csv",
-      "rows_out": 2896,
+      "rows_out": 2898,
       "rows_in": 2856,
       "excluded": [],
       "period_id_min": 2007001,
-      "period_id_max": 2026078,
+      "period_id_max": 2026080,
       "supplement": {
         "zhcw_sync_20260714": {
           "action": "normalized all period_id to 7-digit YYYYNNN, front/back to 2-digit, deduplicated, sorted",
           "rows_total": 2896,
           "period_range": "2007001~2026078"
+        },
+        "zhcw_sync_20260719": {
+          "rows_added": 2,
+          "period_ids": [
+            "2026079",
+            "2026080"
+          ],
+          "source_note": "zhcw.com 中彩网页面抓取 2026-07-19",
+          "official_verify": "已与 www.zhcw.com 官方开奖页面核对"
         }
       }
     },
@@ -24,11 +33,11 @@
       "lottery_type": "ssq",
       "output": "data/processed/ssq_draws.csv",
       "source": "maintained_processed_csv",
-      "rows_out": 3477,
+      "rows_out": 3478,
       "rows_in": 3438,
       "excluded": [],
       "period_id_min": 2003001,
-      "period_id_max": 2026080,
+      "period_id_max": 2026081,
       "supplement": {
         "rows_added": 17,
         "period_ids": [
@@ -79,9 +88,9 @@
         "api_sync": {
           "rows_added": 1,
           "period_ids": [
-            "2026080"
+            "2026081"
           ],
-          "source_note": "cwl.gov.cn API auto-fetch 2026-07-14",
+          "source_note": "cwl.gov.cn API auto-fetch 2026-07-19",
           "official_verify": "已与中彩网官方API数据核对"
         }
       }
@@ -90,9 +99,9 @@
       "lottery_type": "kl8",
       "output": "data/processed/kl8_draws.csv",
       "source": "user_screenshots_917500.cn_batch_2026-05-01",
-      "rows_out": 1995,
+      "rows_out": 1999,
       "period_id_min": 2020012,
-      "period_id_max": 2026185,
+      "period_id_max": 2026189,
       "generated_at": "2026-06-06T14:36:20+08:00",
       "note": "第三方页面截图录入+websearch采集，建议与福彩官方公告抽样核对",
       "supplement": {
@@ -184,11 +193,14 @@
           "official_verify": "建议与福彩官方公告核对"
         },
         "api_sync_20260711": {
-          "rows_added": 1,
+          "rows_added": 4,
           "period_ids": [
-            "2026185"
+            "2026186",
+            "2026187",
+            "2026188",
+            "2026189"
           ],
-          "source_note": "cwl.gov.cn API auto-fetch 2026-07-14",
+          "source_note": "cwl.gov.cn API auto-fetch 2026-07-19",
           "official_verify": "已与中彩网官方API数据核对"
         },
         "user_provided_2026184": {
@@ -204,9 +216,9 @@
       "lottery_type": "pl5",
       "output": "data/processed/pl5_draws.csv",
       "source": "user_screenshots_pailie5_batch_2026-05-01",
-      "rows_out": 7654,
+      "rows_out": 7658,
       "period_id_min": 4001,
-      "period_id_max": 2026185,
+      "period_id_max": 2026189,
       "generated_at": "2026-06-06T14:29:44+08:00",
       "note": "第三方页面截图录入，建议与体彩官方公告抽样核对",
       "supplement": {
@@ -257,11 +269,14 @@
           "official_verify": "建议与体彩官方公告核对"
         },
         "zhcw_sync_20260711": {
-          "rows_added": 1,
+          "rows_added": 4,
           "period_ids": [
-            "2026185"
+            "2026186",
+            "2026187",
+            "2026188",
+            "2026189"
           ],
-          "source_note": "zhcw.com 中彩网排列5页面抓取 2026-07-14",
+          "source_note": "zhcw.com 中彩网排列5页面抓取 2026-07-19",
           "official_verify": "已与 www.zhcw.com 官方开奖页面核对"
         },
         "user_provided_2026184": {
@@ -277,9 +292,9 @@
       "lottery_type": "qxc",
       "output": "data/processed/qxc_draws.csv",
       "source": "user_screenshot_qxc_batch_2026-05-01_v15_trim_lt_20100",
-      "rows_out": 868,
+      "rows_out": 869,
       "period_id_min": 20100,
-      "period_id_max": 26080,
+      "period_id_max": 26081,
       "generated_at": "2026-06-06T14:32:15+08:00",
       "note": "第三方页面截图录入，建议与体彩官方公告抽样核对；字段口径：前区 6 位（d1–d6，0–9）+ 后区 1 位（special，0–14）；期号已统一为YYXXX格式",
       "supplement": {
@@ -308,9 +323,9 @@
         "zhcw_sync_20260711": {
           "rows_added": 1,
           "period_ids": [
-            "26080"
+            "26081"
           ],
-          "source_note": "zhcw.com 中彩网新版七星彩页面抓取 2026-07-15",
+          "source_note": "zhcw.com 中彩网新版七星彩页面抓取 2026-07-19",
           "official_verify": "已与 www.zhcw.com 官方开奖页面核对"
         }
       }
