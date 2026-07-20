@@ -1,338 +1,257 @@
-// 双色球选号委员会 Workflow
-// 五人提名 → 全面对抗验证(循环至收敛) → 首席裁定
+// 双色球五层漏斗选号
+// 杀号 → 趋势 → 结构 → 形态 → 精选，逐层过滤
 export const meta = {
-  name: 'ssq-committee-pick',
-  description: '双色球五人委员会选号：全面对抗验证——每人审核所有对手+收到点评后自证+循环至收敛+首席裁定',
+  name: 'ssq-funnel-pick',
+  description: '双色球五层漏斗选号：杀号→趋势→结构→形态→精选，逐层过滤，输出1注复式或3注单式',
   phases: [
-    { title: '数据准备', detail: '读取 ssq_draws.csv 提取上期+近50期数据' },
-    { title: '独立提名', detail: '5 个 Agent 并行分析，各自提名一注' },
-    { title: '对抗验证', detail: '每人审核所有对手→自证→收敛检查，最多3轮' },
-    { title: '首席裁定', detail: '综合全部提名+辩论记录，裁定最终一注' },
+    { title: '数据准备', detail: '读取 ssq_draws.csv 计算全维度统计指标' },
+    { title: '五层漏斗', detail: '杀号层→趋势层→结构层→形态层→精选层，逐层过滤出号' },
   ],
 };
-
-// ═══════════════════════════════════════
-// Schema 定义
-// ═══════════════════════════════════════
-
-const NOMINATION_SCHEMA = {
-  type: 'object',
-  properties: {
-    reds: { type: 'array', items: { type: 'string' }, description: '红球6码升序' },
-    blue: { type: 'string', description: '蓝球1码' },
-    reasoning: { type: 'string', description: '每个号的数据支撑理由' },
-  },
-  required: ['reds', 'blue', 'reasoning'],
-};
-
-// 一人点评另一人
-const REVIEW_ONE_SCHEMA = {
-  type: 'object',
-  properties: {
-    target: { type: 'string', description: '被点评的委员名' },
-    agree_numbers: { type: 'array', items: { type: 'string' }, description: '同意的号码（至少2个）' },
-    disagree_numbers: { type: 'array', items: { type: 'string' }, description: '反对的号码（至少1个）' },
-    critique: { type: 'string', description: '反对理由，引用数据' },
-    suggest_replace: { type: 'string', description: '如果要替换，建议换成什么号' },
-  },
-  required: ['target', 'agree_numbers', 'disagree_numbers', 'critique'],
-};
-
-// 一人收到所有对自己的点评后的自证
-const DEFENSE_SCHEMA = {
-  type: 'object',
-  properties: {
-    role: { type: 'string', description: '委员名' },
-    current_pick: { type: 'object', properties: { reds: { type: 'array', items: { type: 'string' } }, blue: { type: 'string' } } },
-    adjustments_made: { type: 'array', items: { type: 'string' }, description: '本轮调整了哪些号（如有）' },
-    new_pick: { type: 'object', properties: { reds: { type: 'array', items: { type: 'string' } }, blue: { type: 'string' } }, description: '调整后的号码（如无调整则与current_pick相同）' },
-    defense: { type: 'string', description: '对每个被反对的号逐一自证，用数据说话' },
-    concessions: { type: 'string', description: '承认哪些反对有理，为什么接受调整' },
-  },
-  required: ['role', 'current_pick', 'adjustments_made', 'new_pick', 'defense', 'concessions'],
-};
-
-// ═══════════════════════════════════════
-// 五人角色
-// ═══════════════════════════════════════
-const ROLES = [
-  { name: '趋势猎手', agentType: 'trend-hunter' },
-  { name: '遗漏判官', agentType: 'gap-judge' },
-  { name: '结构大师', agentType: 'struct-master' },
-  { name: '形态侦探', agentType: 'pattern-spy' },
-  { name: '博弈鬼才', agentType: 'game-theorist' },
-];
-const N = ROLES.length;
-const MAX_ROUNDS = 5;
-const CONVERGE_THRESHOLD = 3; // 至少3个红球被3+人同意才算收敛
 
 // ═══════════════════════════════════════
 // Phase 1: 数据准备
 // ═══════════════════════════════════════
 phase('数据准备');
 
-const dataContext = await agent(
-  `读取 data/processed/ssq_draws.csv：
-1. 全历史期数，最新一期期号 + 开奖号码（红球+蓝球）
-2. 近50期每个红球01-33和蓝球01-16的出现频次
-3. 每个号码的当前遗漏期数
-4. 近50期奇偶比分布、大小比分布(01-16小/17-33大)、和值均值+范围
-5. 近50期连号出现频率
+const dataPackage = await agent(
+  `你是双色球数据统计师。请用 Bash 读取 data/processed/ssq_draws.csv（共3479期），输出以下统计：
 
-返回结构化摘要。`,
+## 1. 基础信息
+- 最新一期期号 + 开奖号码（红球6码+蓝球1码，格式：红XX XX XX XX XX XX + 蓝XX）
+- 上上期开奖号码
+- 近10期开奖明细（期号+红球+蓝球，最近的在前面）
+
+## 2. 频率统计
+计算每个红球01-33和蓝球01-16在以下窗口的出现次数：
+- 近10期、近30期、近50期、近100期
+
+用表格输出：号码 | 近10期 | 近30期 | 近50期 | 近100期
+
+## 3. 遗漏统计
+- 每个号码（红01-33，蓝01-16）的当前遗漏期数（距离上次开出过了多少期）
+- 每个号码的历史最大遗漏期数
+- 标注"超冷预警"：当前遗漏 > 历史最大遗漏×0.8 的号
+
+## 4. 结构统计（近50期）
+- 红球奇偶比分布（如3:3出现X次，4:2出现Y次...）
+- 红球大小比分布（01-16小，17-33大）
+- 红球和值：最小/最大/均值/标准差
+- 红球012路比分布（号码÷3的余数：0路/1路/2路）
+- 红球质数个数分布（质数：02 03 05 07 11 13 17 19 23 29 31共11个）
+
+## 5. 形态统计（近50期）
+- 连号组数分布（0组/1组/2组/3组+各出现多少次）
+- 与上期重号个数分布（重0个/1个/2个/3个+各多少次）
+- 同尾号组数分布（0组/1组/2组/3组+各多少次）
+- 跨度范围（最大号减最小号）：最小/最大/均值
+- 三区间出号分布（01-11为第一区，12-22为第二区，23-33为第三区）
+
+## 6. 关联统计（近100期）
+- 出现次数最多的5组"伴随对"（两个红球号同时出现的次数排名）
+- 蓝球与上期蓝球的关系（重复/邻号/跳号 各占多少）
+
+## 要求
+每个统计给出具体数字，不要模糊描述。用 Bash 命令逐项计算，awk/sort/uniq 组合即可。`,
   { label: '数据准备', phase: '数据准备', model: 'haiku' }
 );
-log(`数据就绪`);
+
+log('统计就绪，开始漏斗筛选');
 
 // ═══════════════════════════════════════
-// Phase 2: 五人并行独立提名
+// Phase 2: 五层漏斗
 // ═══════════════════════════════════════
-phase('独立提名');
+phase('五层漏斗');
 
-let picks = await parallel(
-  ROLES.map(role => () =>
-    agent(
-      `## 数据背景\n${dataContext}\n\n## 任务\n作为${role.name}，按你的专属方法论独立分析数据，提名一注双色球（红球6码升序+蓝球1码）。每个号必须附带数据理由。`,
-      { label: role.name, phase: '独立提名', agentType: role.agentType, schema: NOMINATION_SCHEMA }
-    )
-  )
-);
-picks = picks.filter(Boolean);
-log(`提名完成：${picks.length}/5 人提交`);
+const result = await agent(
+  `你是双色球选号专家。以下统计数据已就绪，请严格按**五层漏斗**逐层过滤，最终给出选号方案。
 
-// ═══════════════════════════════════════
-// Phase 3: 对抗验证循环
-// ═══════════════════════════════════════
-phase('对抗验证');
+---
+${dataPackage}
+---
 
-let round = 0;
-let converged = false;
-const allDebates = []; // 累积所有轮次的辩论记录
+# 🔪 第一层：杀号
 
-while (round < MAX_ROUNDS && !converged) {
-  round++;
-  log(`━━━ 第 ${round} 轮对抗验证 ━━━`);
+## 目标
+从 33红+16蓝 缩减到 ~20红+10蓝，排除"几乎不可能出"的号。
 
-  // ── Step A: 全面审核 — N×(N-1) 条全并发 ──
-  const reviewMeta = []; // [{reviewerIdx, targetIdx, reviewerName, targetName}]
-  const reviewTasks = [];
-  for (let i = 0; i < N; i++) {
-    for (let j = 0; j < N; j++) {
-      if (i === j) continue;
-      const reviewer = ROLES[i], target = ROLES[j];
-      reviewMeta.push({ reviewerIdx: i, targetIdx: j, reviewerName: reviewer.name, targetName: target.name });
-      reviewTasks.push(() =>
-        agent(
-          `你是${reviewer.name}，你的提名：红球 ${picks[i].reds.join(' ')} | 蓝球 ${picks[i].blue}
+## 硬杀规则（满足任一直接排除）
+1. **连续重号过热**：检查近3期——如果一个号连续3期都出（查近10期明细），第4期再出概率极低 → **直接排除**
+2. **深度冷冻**：当前遗漏 > 历史最大遗漏×0.8 **且** 近10期频率=0 → **直接排除**
+3. **百期死号**：近100期频率排名倒数5名 **且** 近10期频率=0 → **直接排除**
+4. **蓝球降温**：近3期内出过的蓝球 → 不是排除，是**标记降权50%**
 
-🔥 你要**严厉审核** ${target.name} 的方案：红球 ${picks[j].reds.join(' ')} | 蓝球 ${picks[j].blue}
+## 软杀规则（满足两条及以上才排除）
+5. 近30期频率 < 近50期频率均值-1个标准差 → 趋势性降温
+6. 012路上该号所在路近10期占比>40% → 该路过热，降权
 
-别客气！把你的专业脾气拿出来。用你的专业视角怼他的方案：
-1. 同意哪些号（至少2个）—— 也别光怼，好的要认，用数据说话
-2. 反对哪些号（至少1个）—— 狠狠批！为什么不该选？数据哪里不支持？他哪里犯了方法论错误？
-3. 建议换成什么号 —— 别光说不练，给出更好的替代方案
+## 输出
+\`\`\`
+🔪 第一层·杀号
+━━━━━━━━━━━━━
+排除红球(N个)：XX(原因), XX(原因), ...
+降权蓝球：XX(近3期出过), XX
+候选红球(N个)：XX, XX, XX, ...
+候选蓝球(N个)：XX, XX, ...
+\`\`\`
 
-⚠️ 不要说"我觉得""可能""大概"——拿数据砸！频率、遗漏、ratio、历史分布，硬数据甩脸上。
-🎭 别忘了你的性格！保持人设——该暴躁就暴躁，该嘲讽就嘲讽，该冷笑就冷笑。
-📢 用中文口语风格，像真实会议里吵架一样。`,
-          { label: `${reviewer.name}→${target.name}`, phase: '对抗验证', agentType: reviewer.agentType, schema: REVIEW_ONE_SCHEMA }
-        )
-      );
-    }
-  }
-  const allReviewResults = await parallel(reviewTasks);
-  log(`第${round}轮审核完成：${allReviewResults.filter(Boolean).length}/${reviewTasks.length} 条`);
+---
 
-  // ── Step B: 自证 — N 人全并发自辩 ──
-  // 按人汇总点评（从 reviewMeta + allReviewResults 重建）
-  const reviewsAboutEach = ROLES.map(() => []);
-  for (let k = 0; k < reviewMeta.length; k++) {
-    const rev = allReviewResults[k];
-    if (rev) {
-      const { targetName, reviewerName } = reviewMeta[k];
-      const idx = ROLES.findIndex(r => r.name === targetName);
-      reviewsAboutEach[idx].push({ from: reviewerName, ...rev });
-    }
-  }
+# 📈 第二层：趋势打分
 
-  const defenseTasks = ROLES.map((role, i) => {
-    const aboutMe = reviewsAboutEach[i];
-    const reviewsText = aboutMe
-      .map(r => `【${r.from}】同意:${r.agree_numbers.join(',')} | 反对:${r.disagree_numbers.join(',')} | 理由:${r.critique} | 建议替换:${r.suggest_replace || '无'}`)
-      .join('\n');
-    return () => agent(
-      `你是${role.name}。你的提名：红球 ${picks[i].reds.join(' ')} | 蓝球 ${picks[i].blue}
+## 目标
+给候选池每个号打分（满分100），取前60-70%，缩减到 ~14红+7蓝。
 
-⚔️ 有人对你开火了！以下是所有委员对你方案的点评：
-${reviewsText}
+## 打分规则
+| 维度 | 满分 | 评分逻辑 |
+|------|:---:|------|
+| 近10期频率 | 30分 | 频率1-2次=满分30；3次=20分；0次=5分；4次+=10分（过热扣分） |
+| 近50期稳定性 | 25分 | 按近50期频率排名，Top10=25分，11-20=18分，21-27=10分，28-33=5分 |
+| 遗漏回补信号 | 25分 | 当前遗漏/历史最大遗漏 < 0.5 且遗漏>5期 → 25分（黄金回补窗口）；比值0.5-0.7 → 15分；比值<0.3 → 可能惯性冷，10分 |
+| 趋势拐点 | 20分 | 近10期频率 > 近30期频率/3 → 上升趋势20分；两者持平→12分；下降→5分 |
 
-现在轮到你反击！完成以下任务：
+## 输出
+\`\`\`
+📈 第二层·趋势打分
+━━━━━━━━━━━━━
+红球Top14：XX(85分·上升📈), XX(82分·平稳➡️), ...
+蓝球Top7：XX(78分), XX(75分), ...
+淘汰红球：XX(XX分), ... — 得分靠后
+晋级红球(N个)：XX, XX, ...
+晋级蓝球(N个)：XX, XX, ...
+\`\`\`
 
-1. **逐一反击**：每个被反对的号，用数据狠狠怼回去。如果对手说得有道理——大方认。"行，这个我认栽"不丢人；但如果他们胡说八道——拿数据把他们拍到墙上！
-2. **决定是否调整**：多个委员同时怼同一个号？认真想想是不是真的选错了。如果坚信自己正确——死保！给出比他们更强的数据支撑。如果有人说得对——改！别死要面子。
-3. **输出最终号码**：红球6码升序+蓝球1码
+---
 
-🎭 保持你的人设性格！该暴躁暴躁，该沉稳沉稳，该阴阳怪气就阴阳怪气。
-📢 中文口语，像真实吵架一样说话。可以说"离谱""搞笑""你认真的？""数据拍脸上"这种口语。`,
-      { label: `${role.name}自证`, phase: '对抗验证', agentType: role.agentType, schema: DEFENSE_SCHEMA }
-    );
-  });
-  const allDefenses = await parallel(defenseTasks);
+# 🏗️ 第三层：结构框架
 
-  const newPicks = [];
-  for (let i = 0; i < N; i++) {
-    const defense = allDefenses[i], myPick = picks[i], aboutMe = reviewsAboutEach[i];
-    if (defense) {
-      allDebates.push({
-        round, role: ROLES[i].name,
-        reviews_received: aboutMe.map(r => ({ from: r.from, agree: r.agree_numbers, disagree: r.disagree_numbers })),
-        defense: defense.defense, concessions: defense.concessions, adjustments: defense.adjustments_made,
-      });
-      if (defense.new_pick && defense.new_pick.reds && defense.new_pick.reds.length === 6) {
-        newPicks.push({ reds: defense.new_pick.reds, blue: defense.new_pick.blue,
-          reasoning: myPick.reasoning + `\n[第${round}轮调整: ${(defense.adjustments_made || []).join('; ')}]` });
-      } else { newPicks.push(myPick); }
-    } else { newPicks.push(myPick); }
-  }
+## 目标
+确定本期最可能的结构范围，用框架反推淘汰不合规的号，缩减到 ~10红+5蓝。
 
-  picks = newPicks;
-  log(`第${round}轮自证完成`);
+## 步骤1：从近50期分布锁定本期结构
+| 结构 | 锁定方法 | 锁定结果 |
+|------|----------|------|
+| 奇偶比 | 排除极端(6:0/5:1/1:5/0:6)，选近50期频率最高的1-2个比例 | |
+| 大小比 | 同理，排除极端 | |
+| 和值 | 近50期均值±1标准差范围 | |
+| 012路 | 每路至少1个号，单路不超过3个 | |
+| 质数 | 通常2-3个（近50期最高频的区间） | |
 
-  // ── Step C: 检查收敛 ──
-  // 收敛条件：至少 CONVERGE_THRESHOLD 个红球被3+人同时选中
-  const allReds = picks.flatMap(p => p.reds);
-  const redCounts = {};
-  for (const r of allReds) {
-    redCounts[r] = (redCounts[r] || 0) + 1;
-  }
-  const consensusReds = Object.entries(redCounts)
-    .filter(([, c]) => c >= 3)
-    .map(([r]) => r);
+## 步骤2：用框架反推淘汰
+- 锁定奇偶比之后，候选池中奇数和偶数各应保留多少个才有组合可能
+- 锁定和值范围后，检查哪些号"无论怎么搭配都会让和值跑偏"→降权
+- 012路要求每路至少1个→确保候选池中每路都有号
 
-  // 蓝球收敛
-  const allBlues = picks.map(p => p.blue);
-  const blueCounts = {};
-  for (const b of allBlues) {
-    blueCounts[b] = (blueCounts[b] || 0) + 1;
-  }
-  const topBlue = Object.entries(blueCounts).sort((a, b) => b[1] - a[1])[0];
+## 输出
+\`\`\`
+🏗️ 第三层·结构框架
+━━━━━━━━━━━━━
+本期锁定：奇偶比=XX或XX | 大小比=XX或XX | 和值范围=XX-XX | 012路=每路≥1 | 质数=X-X个
+框架淘汰：XX(奇偶冲突), XX(和值极端)
+晋级红球(N个)：XX, XX, ...
+晋级蓝球(N个)：XX, XX, ...
+\`\`\`
 
-  log(`收敛状态: ${consensusReds.length}个红球共识(≥3票), 蓝球共识 ${topBlue[0]}(${topBlue[1]}票)`);
+---
 
-  if (consensusReds.length >= CONVERGE_THRESHOLD && topBlue[1] >= 3) {
-    converged = true;
-    log(`✅ 第${round}轮达成收敛！`);
-  } else if (round >= MAX_ROUNDS) {
-    log(`⚠ 已达最大轮次(${MAX_ROUNDS})，未收敛，启动兜底机制`);
-  }
-}
+# 🔍 第四层：形态打磨
 
-// ═══════════════════════════════════════
-// Phase 3.5: 未收敛兜底 — B(加权投票) + D(最终陈述)
-// ═══════════════════════════════════════
-let weightedScores = [];
-let finalStatements = [];
+## 目标
+用形态规则精修候选池，缩减到 ~8红+4蓝。
 
-if (!converged) {
-  phase('未收敛兜底');
+## 逐项检查
+1. **连号预期**：统计近5期连号出现情况——如近3期无连号→本期大概率有连号；如连续出了连号→本期可能断。确定"本期大概率有连号"还是"本期可能无连号"
+2. **重号预期**：与上期重叠0-2个为正常。结合近10期重号个数分布，确定本期重号个数预期
+3. **同尾约束**：候选池中同尾号（如02 12 22 32）不超过2组
+4. **区间覆盖**：三区间不能全空，至少2个区间有号落入
+5. **跨度合理**：结合近50期跨度范围，候选号跨度应在均值±5以内
+6. **龙头凤尾**：结合近10期龙头均值±3、凤尾均值±3
 
-  // ── B: 加权投票 ──
-  // 权重 = 该委员的号码中有多少个是共识号(≥3票)
-  const allReds2 = picks.flatMap(p => p.reds);
-  const rc = {}; for (const r of allReds2) rc[r] = (rc[r] || 0) + 1;
-  const consensusSet = new Set(Object.entries(rc).filter(([,c]) => c >= 3).map(([r]) => r));
+## 输出
+\`\`\`
+🔍 第四层·形态打磨
+━━━━━━━━━━━━━
+连号预期：本期[大概率有/可能无]连号 — 因为近5期连号出现X次
+重号预期：本期重[0/1/2]个 — 因为近10期重号次数分布偏向X
+形态淘汰：XX(同尾冲突), XX(跨度偏激)
+晋级红球(N个)：XX, XX, ...
+晋级蓝球(N个)：XX, XX, ...
+\`\`\`
 
-  weightedScores = ROLES.map((role, i) => {
-    const score = picks[i].reds.filter(r => consensusSet.has(r)).length;
-    const blueVotes = picks.filter(p => p.blue === picks[i].blue).length;
-    return { role: role.name, consensusHits: score, blueVotes, weight: score * 0.7 + blueVotes * 0.3 };
-  });
-  weightedScores.sort((a, b) => b.weight - a.weight);
-  log(`权重排名: ${weightedScores.map(w => `${w.role}(${w.weight.toFixed(1)})`).join(' > ')}`);
+---
 
-  // ── D: 最终陈述 ──
-  const otherPicks = picks.map((p, i) => `${ROLES[i].name}: 红球 ${p.reds.join(' ')} | 蓝球 ${p.blue}`).join('\n');
-  finalStatements = await parallel(
-    ROLES.map((role, i) => () =>
-      agent(
-        `你是${role.name}。经过 ${round} 轮对抗仍未达成一致。现在是最后机会！
+# 🎯 第五层：精选输出
 
-## 所有委员最终方案
-${otherPicks}
+## 目标
+从最终候选池出号，输出选号方案。
 
-## 你的方案
-红球 ${picks[i].reds.join(' ')} | 蓝球 ${picks[i].blue}
+## 步骤1：定胆码（1-2个）
+前四层都排名靠前 + 结构框架支持 + 形态合理 → 定胆码。
+每个胆码标注：趋势面+结构面+形态面的支撑理由。
 
-## 共识号（≥3票）
-${[...consensusSet].join(', ') || '无'}
+## 步骤2：出号
+**复式方案（推荐）**：红球10-12码 + 蓝球2-3码
+**单式方案（备选）**：3注单式，每注红6+蓝1
 
-## 你的权重得分
-共识命中: ${weightedScores.find(w=>w.role===role.name)?.consensusHits || 0}个 | 蓝球票数: ${weightedScores.find(w=>w.role===role.name)?.blueVotes || 0}
+出号时确保：
+- 结构与第三层锁定的范围一致（奇偶/大小/和值/012路）
+- 满足第四层的连号/重号预期
+- 蓝球避开近3期蓝球（至少不要全选近期蓝球）
+- AC值（算术复杂度）在6-10之间
 
-## 任务
-这是你最后一次说服首席的机会！请做最终陈述：
-1. 为什么你的方案比其他人的更好？用数据说话，不要谦虚
-2. 你的方案中哪些号是共识号（权重加分项），哪些是独到之见（别人没看到的价值）
-3. 如果首席要在你的方案和权重最高的方案之间抉择，为什么应该选你的
+## 步骤3：博弈微调
+- 检查是否"太像机选"（全是热号没冷号）→ 换1个冷号进来增加差异性
+- 检查是否"太像热门推荐"（全是大路号）→ 换1个反共识号
 
-🔥 全力以赴！这是 final pitch，不许留余力！保持人设！`,
-        { label: `${role.name}最终陈述`, phase: '未收敛兜底', agentType: role.agentType }
-      )
-    )
-  );
-  log('最终陈述完成');
-}
+## 步骤4：硬约束终检
+- ✅ 至少满足一个：连号 或 与上期重叠1-2个号
+- ✅ 不与历史任一期完全重合（抽查近10期即可）
+- ✅ 号码去重、升序排列
 
-// ═══════════════════════════════════════
-// Phase 4: 首席裁定
-// ═══════════════════════════════════════
-phase('首席裁定');
+## 输出
+\`\`\`
+🎯 第五层·精选结果
+━━━━━━━━━━━━━
 
-const nominationsText = picks
-  .map((p, i) => `${ROLES[i].name}: 红球 ${p.reds.join(' ')} | 蓝球 ${p.blue}`)
-  .join('\n');
+【复式推荐】
+红球(10-12码)：XX XX XX XX XX XX XX XX XX XX (升序)
+蓝球(2-3码)：XX XX
 
-const debatesText = allDebates
-  .map(d => `[第${d.round}轮] ${d.role}: 被${d.reviews_received.length}人点评 | 自辩: ${d.defense?.slice(0, 150)} | 让步: ${d.concessions?.slice(0, 100)} | 调整: ${d.adjustments?.join(',') || '无'}`)
-  .join('\n');
+胆码：XX(理由简述), XX(理由简述)
 
-const weightText = converged ? '' : `
-## 加权投票排名（共识命中数×0.7 + 蓝球票数×0.3）
-${weightedScores.map((w,i) => `${i+1}. ${w.role}: 共识命中${w.consensusHits}个 蓝球${w.blueVotes}票 综合权重${w.weight.toFixed(1)}`).join('\n')}
-`;
+【或3注单式】
+第1注：红 XX XX XX XX XX XX + 蓝 XX
+第2注：红 XX XX XX XX XX XX + 蓝 XX
+第3注：红 XX XX XX XX XX XX + 蓝 XX
 
-const statementText = converged ? '' : `
-## 委员最终陈述
-${finalStatements.filter(Boolean).map((s,i) => `### ${ROLES[i].name}\n${s?.slice(0, 300)}`).join('\n\n')}
-`;
+【最终校验】
+连号：✅/❌
+重号：✅ 重叠X个
+AC值：XX
+结构：奇偶X:X | 大小X:X | 和值≈XX
 
-const finalRuling = await agent(
-  `你是双色球选号委员会的**首席裁判**。经过 ${round} 轮对抗验证后${converged ? '已达成收敛✅' : '未收敛⚠️，以下为兜底数据'}。
+【推荐理由】
+1-2句话总结本期选号核心逻辑。
 
-## 最终提名方案
-${nominationsText}
-${weightText}
-${statementText}
+## ⚠️ 使用说明
+以上为基于历史统计的五层漏斗分析结果。双色球为独立随机游戏，历史统计不构成未来开奖保证。理性购彩，娱乐为主。
+\`\`\`
 
-## 全部辩论记录
-${debatesText}
+---
 
-## 裁定要求
-1. 统计每个号码的最终票数（共识号高亮）
-2. ${converged ? '基于共识裁定' : '⚠️ 未收敛！综合权重排名+最终陈述+辩论记录，强制裁定'}最终一注（红6+蓝1）
-3. 硬约束（至少满足一个）：一组连号 或 与上期重叠1-2个号
-4. 每个选定号标注来源+权重数据支撑
-5. 贡献统计表`,
-  { label: '首席裁定', phase: '首席裁定', model: 'opus', effort: 'high' }
+# ⚠️ 铁律
+- 每一层都必须输出，不能跳过
+- 每层标注淘汰理由，链路可追溯
+- 号码全部两位数字格式（01, 02, ..., 33）
+- 红球升序排列
+- 最终方案必须经过硬约束终检
+- 禁止输出"可能""也许""大概"——用数据说话`,
+  { label: '五层漏斗选号', phase: '五层漏斗' }
 );
 
-// ═══════════════════════════════════════
+log('✅ 五层漏斗选号完成 | 数据来源：data/processed/ssq_draws.csv');
+
 return {
-  // 最重要的：首席最终裁定
-  ruling: finalRuling,
-  // 元信息
-  round, converged,
-  // 详细信息（可选查看）
-  finalPicks: picks.map((p, i) => ({ role: ROLES[i].name, reds: p.reds, blue: p.blue })),
-  debates: allDebates,
+  funnelResult: result,
+  phases: ['杀号', '趋势', '结构', '形态', '精选'],
 };

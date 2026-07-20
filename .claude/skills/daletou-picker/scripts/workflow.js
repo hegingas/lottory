@@ -1,247 +1,220 @@
-// 大乐透选号委员会 Workflow
-// 五人提名 → 全面对抗验证(循环至收敛) → 首席裁定
+// 大乐透五层漏斗选号
+// 杀号 → 趋势 → 结构 → 形态 → 精选，逐层过滤
 export const meta = {
-  name: 'dlt-committee-pick',
-  description: '大乐透五人委员会选号：全面对抗验证——每人审核所有对手→自证→循环至收敛→首席裁定',
+  name: 'dlt-funnel-pick',
+  description: '大乐透五层漏斗选号：杀号→趋势→结构→形态→精选，逐层过滤，输出1注复式或3注单式',
   phases: [
-    { title: '数据准备', detail: '读取 dlt_draws.csv 提取数据' },
-    { title: '独立提名', detail: '5 Agent 并行分析，各提名前5+后2' },
-    { title: '对抗验证', detail: '每人审核所有对手→自证→收敛检查，最多5轮' },
-    { title: '首席裁定', detail: '综合裁定最终一注' },
+    { title: '数据准备', detail: '读取 dlt_draws.csv 计算全维度统计指标' },
+    { title: '五层漏斗', detail: '杀号层→趋势层→结构层→形态层→精选层，逐层过滤出号' },
   ],
 };
 
-const NOMINATION_SCHEMA = {
-  type: 'object',
-  properties: {
-    fronts: { type: 'array', items: { type: 'string' }, description: '前区5码升序' },
-    backs: { type: 'array', items: { type: 'string' }, description: '后区2码升序' },
-    reasoning: { type: 'string' },
-  },
-  required: ['fronts', 'backs', 'reasoning'],
-};
-
-const REVIEW_ONE_SCHEMA = {
-  type: 'object',
-  properties: {
-    target: { type: 'string' },
-    agree_numbers: { type: 'array', items: { type: 'string' } },
-    disagree_numbers: { type: 'array', items: { type: 'string' } },
-    critique: { type: 'string' },
-    suggest_replace: { type: 'string' },
-  },
-  required: ['target', 'agree_numbers', 'disagree_numbers', 'critique'],
-};
-
-const DEFENSE_SCHEMA = {
-  type: 'object',
-  properties: {
-    role: { type: 'string' },
-    adjustments_made: { type: 'array', items: { type: 'string' } },
-    new_pick: { type: 'object', properties: { fronts: { type: 'array', items: { type: 'string' } }, backs: { type: 'array', items: { type: 'string' } } } },
-    defense: { type: 'string' },
-    concessions: { type: 'string' },
-  },
-  required: ['role', 'adjustments_made', 'new_pick', 'defense', 'concessions'],
-};
-
-const RULING_SCHEMA = {
-  type: 'object',
-  properties: {
-    final_fronts: { type: 'array', items: { type: 'string' }, description: '最终前区5码升序' },
-    final_backs: { type: 'array', items: { type: 'string' }, description: '最终后区2码升序' },
-    has_consecutive: { type: 'boolean', description: '前区是否包含至少一组连号' },
-    consecutive_pair: { type: 'string', description: '前区连号位置' },
-    overlap_count: { type: 'number', description: '前区与上期重叠个数(1-2)' },
-    overlap_numbers: { type: 'array', items: { type: 'string' } },
-    sources: { type: 'array', items: { type: 'object', properties: { number: { type: 'string' }, from: { type: 'string' }, reason: { type: 'string' } } } },
-    contributions: { type: 'array', items: { type: 'object', properties: { role: { type: 'string' }, count: { type: 'number' } } } },
-  },
-  required: ['final_fronts', 'final_backs', 'has_consecutive', 'consecutive_pair', 'overlap_count', 'overlap_numbers', 'sources', 'contributions'],
-};
-
-const ROLES = [
-  { name: '趋势猎手', agentType: 'trend-hunter' },
-  { name: '遗漏判官', agentType: 'gap-judge' },
-  { name: '结构大师', agentType: 'struct-master' },
-  { name: '形态侦探', agentType: 'pattern-spy' },
-  { name: '博弈鬼才', agentType: 'game-theorist' },
-];
-const N = ROLES.length;
-const MAX_ROUNDS = 5;
-const CONVERGE_THRESHOLD = 3;
-
 // ══ Phase 1: 数据准备 ══
 phase('数据准备');
-const dataContext = await agent(
-  `读取 data/processed/dlt_draws.csv：
-1. 全历史期数，最新一期期号 + 开奖号码（前区5码+后区2码）
-2. 近50期前区01-35和后区01-12每个号码的频次
-3. 每个号码当前遗漏期数
-4. 近50期前区奇偶比/大小比(01-17小/18-35大)/和值分布，后区奇偶/大小(01-06小/07-12大)
-5. 近50期连号频率`,
+
+const dataPackage = await agent(
+  `你是大乐透数据统计师。请用 Bash 读取 data/processed/dlt_draws.csv，输出以下统计：
+
+## 1. 基础信息
+- 最新一期期号 + 开奖号码（前区5码+后区2码）
+- 上上期开奖号码
+- 近10期开奖明细（期号+前区+后区，最近的在前面）
+
+## 2. 频率统计（前区01-35，后区01-12）
+- 近10期/近30期/近50期/近100期各号码出现次数
+- 表格：号码 | 近10期 | 近30期 | 近50期 | 近100期
+
+## 3. 遗漏统计
+- 每个号码当前遗漏期数 + 历史最大遗漏期数
+- 标注"超冷预警"：当前遗漏 > 历史最大遗漏×0.8
+
+## 4. 结构统计（近50期）
+- 前区奇偶比分布、大小比分布（01-17小/18-35大）
+- 前区和值：最小/最大/均值/标准差
+- 前区012路比分布（号码÷3余数）
+- 前区质数个数分布（质数：02 03 05 07 11 13 17 19 23 29 31）
+- 后区奇偶/大小分布（01-06小/07-12大）
+
+## 5. 形态统计（近50期）
+- 前区连号组数分布（0组/1组/2组+各多少次）
+- 前区与上期重号个数分布
+- 前区同尾号组数分布
+- 前区跨度（最大-最小）范围
+- 前三区间出号分布（01-12/13-24/25-35）
+
+## 6. 关联统计（近100期）
+- 出现最多的5组"前区伴随对"（两个号同时出现）
+- 后区组合模式（奇奇/奇偶/偶奇/偶偶分布）
+
+每个统计给出具体数字，用 Bash 命令逐项计算。`,
   { label: '数据准备', phase: '数据准备', model: 'haiku' }
 );
-log('数据就绪');
 
-// ══ Phase 2: 5人并行独立提名 ══
-phase('独立提名');
-let picks = await parallel(
-  ROLES.map(role => () =>
-    agent(
-      `## 大乐透选号\n## 数据背景\n${dataContext}\n\n作为${role.name}，按你的方法论分析数据，提名一注大乐透：前区5码（01-35升序）+后区2码（01-12升序）。每个号附带数据理由。`,
-      { label: role.name, phase: '独立提名', agentType: role.agentType, schema: NOMINATION_SCHEMA }
-    )
-  )
+log('统计就绪，开始漏斗筛选');
+
+// ══ Phase 2: 五层漏斗 ══
+phase('五层漏斗');
+
+const result = await agent(
+  `你是大乐透选号专家。以下统计数据已就绪，请严格按**五层漏斗**逐层过滤，最终给出选号方案。
+
+前区35选5，后区12选2。前区大小分界01-17/18-35，后区大小分界01-06/07-12。
+
+---
+${dataPackage}
+---
+
+# 🔪 第一层：杀号
+
+## 目标：前区35→~22，后区12→~8
+
+**硬杀（满足任一直接排除）：**
+1. 连续3期出现 → 过热直接排除
+2. 当前遗漏 > 历史最大遗漏×0.8 且 近10期频率=0 → 深度冷冻排除
+3. 近100期频率倒数5名且近10期频率=0 → 死号排除
+4. 后区近3期内出过的 → 降权50%
+
+**软杀（满足两条排除）：**
+5. 近30期频率 < 均值-1标准差
+6. 012路上该路近10期占比>40%
+
+## 输出格式
+\`\`\`
+🔪 第一层·杀号
+排除前区(N个)：XX(原因), ...
+降权后区：XX, XX
+候选前区(N个)：XX, XX, ...
+候选后区(N个)：XX, XX, ...
+\`\`\`
+
+---
+
+# 📈 第二层：趋势打分
+
+## 目标：前区~22→~15，后区~8→~6
+
+**打分（满分100）：**
+- 近10期频率（30分）：1-2次满分，3次=20分，0次=5分
+- 近50期稳定性（25分）：按频率排名，Top10满分
+- 遗漏回补信号（25分）：遗漏/最大遗漏 < 0.5 且>5期→满分
+- 趋势拐点（20分）：近10期频率>近30期频率/3→上升趋势
+
+## 输出格式
+\`\`\`
+📈 第二层·趋势打分
+前区Top15：XX(XX分·📈/➡️/📉), ...
+后区Top6：XX(XX分), ...
+淘汰：XX(XX分), ...
+晋级前区(N个)：XX, XX, ...
+晋级后区(N个)：XX, XX, ...
+\`\`\`
+
+---
+
+# 🏗️ 第三层：结构框架
+
+## 目标：前区~15→~11，后区~6→~5
+
+**锁定本期结构：**
+| 维度 | 方法 | 锁定结果 |
+|------|------|------|
+| 前区奇偶比 | 排除极端(5:0/0:5/4:1/1:4)，选最高频1-2个 | |
+| 前区大小比 | 同理排除极端 | |
+| 前区和值 | 均值±1标准差 | |
+| 前区012路 | 每路至少1个，单路≤3个 | |
+| 前区质数 | 通常1-3个 | |
+| 后区奇偶 | 近50期最高频模式 | |
+
+用框架反推淘汰不符合的号。
+
+## 输出格式
+\`\`\`
+🏗️ 第三层·结构框架
+锁定：奇偶=X:X | 大小=X:X | 和值=XX-XX | 质数=X-X
+框架淘汰：XX(原因), ...
+晋级前区(N个)：XX, ...
+晋级后区(N个)：XX, ...
+\`\`\`
+
+---
+
+# 🔍 第四层：形态打磨
+
+## 目标：前区~11→~8，后区~5→~4
+
+**逐项检查：**
+1. **连号预期**：近5期连号出现情况→判定本期大概率有/可能无
+2. **重号预期**：与上期重叠0-2个，结合近10期分布确定
+3. **同尾约束**：候选池同尾号≤2组
+4. **区间覆盖**：三区间至少2个有号
+5. **跨度合理**：近50期跨度均值±5
+6. **后区约束**：后区与上期重叠≤1个
+
+## 输出格式
+\`\`\`
+🔍 第四层·形态打磨
+连号预期：本期[大概率有/可能无] — 近5期出现X次
+重号预期：重[0/1/2]个 — 近10期偏向X
+形态淘汰：XX(原因), ...
+晋级前区(N个)：XX, ...
+晋级后区(N个)：XX, ...
+\`\`\`
+
+---
+
+# 🎯 第五层：精选输出
+
+## 步骤1：定胆码（1-2个前区胆码）
+前四层都排名靠前+结构框架支持+形态合理→定胆码
+
+## 步骤2：出号
+**复式（推荐）**：前区10-12码 + 后区3-4码
+**单式（备选）**：3注单式，每注前5+后2
+确保结构与第三层一致，满足第四层连号/重号预期。
+
+## 步骤3：博弈微调
+检查是否太像机选（全是热号）→换1个冷号；是否太像热门推荐→换1个反共识号。
+
+## 步骤4：硬约束终检
+- ✅ 前区连号 或 与上期重叠1-2个
+- ✅ 后区与上期重叠≤1个
+- ✅ 不与历史任一期前区完全重合
+
+## 输出格式
+\`\`\`
+🎯 第五层·精选结果
+
+【复式推荐】
+前区(10-12码)：XX XX XX ...（升序）
+后区(3-4码)：XX XX XX（升序）
+胆码：XX(理由), XX(理由)
+
+【或3注单式】
+第1注：前 XX XX XX XX XX + 后 XX XX
+第2注：前 XX XX XX XX XX + 后 XX XX
+第3注：前 XX XX XX XX XX + 后 XX XX
+
+【最终校验】
+连号：✅/❌ | 重号：✅重叠X个 | 后区重叠：≤1✅
+结构：奇偶X:X | 大小X:X | 和值≈XX
+
+【推荐理由】
+1-2句话总结核心逻辑。
+
+## ⚠️ 使用说明
+以上为五层漏斗分析结果。大乐透为独立随机游戏，历史统计不构成开奖保证。理性购彩，娱乐为主。
+\`\`\`
+
+---
+## ⚠️ 铁律
+- 每层必须输出，不能跳过
+- 每层标注淘汰理由，链路可追溯
+- 号码两位数字格式（01-35, 01-12）
+- 前区后区各自升序
+- 最终方案必须经过硬约束终检`,
+  { label: '五层漏斗选号', phase: '五层漏斗' }
 );
-picks = picks.filter(Boolean);
-log(`提名完成：${picks.length}/5 人`);
 
-// ══ Phase 3: 对抗验证循环 ══
-phase('对抗验证');
-let round = 0, converged = false;
-const allDebates = [];
+log('✅ 五层漏斗选号完成');
 
-while (round < MAX_ROUNDS && !converged) {
-  round++;
-  log(`━━━ 第 ${round} 轮 ━━━`);
-
-  // Step A: N×(N-1) 条全并发审核
-  const reviewMeta = [], reviewTasks = [];
-  for (let i = 0; i < N; i++) {
-    for (let j = 0; j < N; j++) {
-      if (i === j) continue;
-      const reviewer = ROLES[i], target = ROLES[j];
-      reviewMeta.push({ reviewerIdx: i, targetIdx: j, reviewerName: reviewer.name, targetName: target.name });
-      reviewTasks.push(() =>
-        agent(
-          `你是${reviewer.name}，你的提名：前区 ${picks[i].fronts.join(' ')} | 后区 ${picks[i].backs.join(' ')}
-
-🔥 严厉审核 ${target.name}：前区 ${picks[j].fronts.join(' ')} | 后区 ${picks[j].backs.join(' ')}
-
-别客气！用你的专业视角狠狠怼他的方案：
-1. 同意哪些（≥2个）—— 好的要认，数据说话
-2. 反对哪些（≥1个）—— 狠狠批！他的方法论哪里出错了？数据哪里不支持？
-3. 建议换成什么号 —— 别光说不练
-
-⚠️ 拿数据砸！频率、遗漏、ratio、历史分布。不准说"我觉得""可能"。
-🎭 保持你的人设性格！该暴躁暴躁，该嘲讽嘲讽。
-📢 中文口语，像真实会议吵架一样。`,
-          { label: `${reviewer.name}→${target.name}`, phase: '对抗验证', agentType: reviewer.agentType, schema: REVIEW_ONE_SCHEMA }
-        )
-      );
-    }
-  }
-  const allReviewResults = await parallel(reviewTasks);
-  log(`审核完成：${allReviewResults.filter(Boolean).length}/${reviewTasks.length} 条`);
-
-  // Step B: N 人全并发自辩
-  const reviewsAboutEach = ROLES.map(() => []);
-  for (let k = 0; k < reviewMeta.length; k++) {
-    const rev = allReviewResults[k];
-    if (rev) {
-      const { targetName, reviewerName } = reviewMeta[k];
-      const idx = ROLES.findIndex(r => r.name === targetName);
-      reviewsAboutEach[idx].push({ from: reviewerName, ...rev });
-    }
-  }
-  const defenseTasks = ROLES.map((role, i) => {
-    const aboutMe = reviewsAboutEach[i];
-    const reviewsText = aboutMe.map(r =>
-      `【${r.from}】同意:${r.agree_numbers.join(',')} | 反对:${r.disagree_numbers.join(',')} | 理由:${r.critique} | 建议替换:${r.suggest_replace || '无'}`
-    ).join('\n');
-    return () => agent(
-      `你是${role.name}。你的提名：前区 ${picks[i].fronts.join(' ')} | 后区 ${picks[i].backs.join(' ')}
-
-⚔️ 有人对你开火！所有点评：
-${reviewsText}
-
-现在反击：
-1. 每个被反对的号，用数据狠狠怼回去。对手有道理就认，胡说八道就拍回去
-2. 多人同时怼同一个号？认真想想。坚信自己就死保，数据比他们更强就赢了
-3. 输出最终号码
-
-🎭 保持人设！中文口语，像真实吵架。`,
-      { label: `${role.name}自证`, phase: '对抗验证', agentType: role.agentType, schema: DEFENSE_SCHEMA }
-    );
-  });
-  const allDefenses = await parallel(defenseTasks);
-
-  const newPicks = [];
-  for (let i = 0; i < N; i++) {
-    const defense = allDefenses[i];
-    if (defense?.new_pick?.fronts) {
-      allDebates.push({ round, role: ROLES[i].name, defense: defense.defense, concessions: defense.concessions, adjustments: defense.adjustments_made });
-      newPicks.push({ fronts: defense.new_pick.fronts, backs: defense.new_pick.backs, reasoning: picks[i].reasoning });
-    } else {
-      newPicks.push(picks[i]);
-    }
-  }
-  picks = newPicks;
-
-  // Step C: 收敛检查
-  const allFronts = picks.flatMap(p => p.fronts);
-  const frontCounts = {}; for (const f of allFronts) frontCounts[f] = (frontCounts[f] || 0) + 1;
-  const consensusFronts = Object.entries(frontCounts).filter(([, c]) => c >= 3).map(([r]) => r);
-  const allBacks = picks.flatMap(p => p.backs);
-  const backCounts = {}; for (const b of allBacks) backCounts[b] = (backCounts[b] || 0) + 1;
-  const topBack = Object.entries(backCounts).sort((a, b) => b[1] - a[1])[0];
-
-  log(`收敛: ${consensusFronts.length}前区共识(≥3票), 后区 ${topBack[0]}(${topBack[1]}票)`);
-  if (consensusFronts.length >= CONVERGE_THRESHOLD && topBack[1] >= 3) { converged = true; log(`✅ 第${round}轮收敛！`); }
-}
-
-// ══ Phase 3.5: 未收敛兜底 — B(加权投票) + D(最终陈述) ══
-let weightedScores = [], finalStatements = [];
-if (!converged) {
-  phase('未收敛兜底');
-  const fc = {}; for (const f of picks.flatMap(p => p.fronts)) fc[f] = (fc[f] || 0) + 1;
-  const consensusSet = new Set(Object.entries(fc).filter(([,c]) => c >= 3).map(([r]) => r));
-  weightedScores = ROLES.map((role, i) => {
-    const hits = picks[i].fronts.filter(f => consensusSet.has(f)).length;
-    const bv = picks[i].backs.reduce((s, b) => s + picks.filter(p => p.backs.includes(b)).length, 0);
-    return { role: role.name, consensusHits: hits, backVotes: bv, weight: hits * 0.7 + bv * 0.3 };
-  });
-  weightedScores.sort((a, b) => b.weight - a.weight);
-  log(`权重排名: ${weightedScores.map(w => `${w.role}(${w.weight.toFixed(1)})`).join(' > ')}`);
-
-  const otherPicks = picks.map((p, i) => `${ROLES[i].name}: 前区 ${p.fronts.join(' ')} + 后区 ${p.backs.join(' ')}`).join('\n');
-  finalStatements = await parallel(
-    ROLES.map((role, i) => () =>
-      agent(
-        `你是${role.name}。${round}轮仍未一致，最后机会！\n所有方案:\n${otherPicks}\n你的方案: 前区 ${picks[i].fronts.join(' ')} + 后区 ${picks[i].backs.join(' ')}\n共识号: ${[...consensusSet].join(',') || '无'}\n你的权重: ${weightedScores.find(w=>w.role===role.name)?.weight.toFixed(1)}\n做最终陈述: 为什么你的方案最好？共识号有哪些？独到之见是什么？全力以赴！保持人设！`,
-        { label: `${role.name}最终陈述`, phase: '未收敛兜底', agentType: role.agentType }
-      )
-    )
-  );
-  log('最终陈述完成');
-}
-
-// ══ Phase 4: 首席裁定 ══
-phase('首席裁定');
-const latestDrawInfo = dataContext.match(/最新一期[^:]*[：:]\s*[^0-9]*(\d+)[^0-9]*前区[^0-9]*([\d\s]+)[^0-9]*后区[^0-9]*([\d\s]+)/i) || [];
-const latestFronts = latestDrawInfo[2] ? latestDrawInfo[2].trim().split(/\s+/) : [];
-const latestBacks = latestDrawInfo[3] ? latestDrawInfo[3].trim().split(/\s+/) : [];
-
-const wText = converged ? '' : `\n## 加权投票排名\n${weightedScores.map((w,i) => `${i+1}. ${w.role}: 共识${w.consensusHits}个 后区${w.backVotes}票 权重${w.weight.toFixed(1)}`).join('\n')}\n`;
-const sText = converged ? '' : `\n## 委员最终陈述\n${finalStatements.filter(Boolean).map((s,i) => `### ${ROLES[i].name}\n${s?.slice(0, 250)}`).join('\n\n')}\n`;
-
-const finalRuling = await agent(
-  `你是大乐透选号委员会首席裁判。${round}轮后${converged ? '已收敛✅' : '未收敛⚠️'}。
-
-## 最新一期
-上期前区：${latestFronts.join(' ')} | 后区：${latestBacks.join(' ')}
-
-## 最终方案
-${picks.map((p, i) => `${ROLES[i].name}: 前区 ${p.fronts.join(' ')} + 后区 ${p.backs.join(' ')}`).join(' | ')}
-${wText}${sText}
-辩论：${allDebates.map(d => `[R${d.round}] ${d.role}: ${d.defense?.slice(0, 80)}`).join('\n')}
-
-## 裁定要求
-1. ${converged ? '基于共识裁定' : '⚠️ 未收敛！综合权重排名+最终陈述+辩论记录，强制裁定'}最终一注（前5+后2）
-2. 硬约束（至少满足一个）：前区连号 或 与上期重叠1-2个
-3. 每个号标注来源+权重数据支撑`,
-  { label: '首席裁定', phase: '首席裁定', model: 'opus', effort: 'high', schema: RULING_SCHEMA }
-);
-
-return { ruling: finalRuling, round, converged, finalPicks: picks.map((p, i) => ({ role: ROLES[i].name, fronts: p.fronts, backs: p.backs })), debates: allDebates };
+return { funnelResult: result, phases: ['杀号', '趋势', '结构', '形态', '精选'] };

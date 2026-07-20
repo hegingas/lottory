@@ -1,173 +1,201 @@
-// 七星彩选号委员会 Workflow
-// 4人(无形态侦探)提名 → 对抗验证 → 首席裁定
+// 七星彩五层漏斗选号
+// 杀号 → 趋势 → 结构 → 形态 → 精选，按位独立过滤
 export const meta = {
-  name: 'qxc-committee-pick',
-  description: '七星彩四人委员会选号：趋势猎手/遗漏判官/结构大师/博弈鬼才 按位对抗验证→收敛→裁定',
+  name: 'qxc-funnel-pick',
+  description: '七星彩五层漏斗选号：按位杀号→趋势→结构→形态→精选，逐层过滤，输出前6+后1',
   phases: [
-    { title: '数据准备', detail: '读取 qxc_draws.csv' },
-    { title: '独立提名', detail: '4 Agent 并行，各提名前6+后1' },
-    { title: '对抗验证', detail: '每人审核所有对手→自证→收敛检查，最多5轮' },
-    { title: '首席裁定', detail: '综合裁定最终前6+后1' },
+    { title: '数据准备', detail: '读取 qxc_draws.csv 按位计算统计指标' },
+    { title: '五层漏斗', detail: '杀号层→趋势层→结构层→形态层→精选层，按位过滤出号' },
   ],
 };
 
-const NOMINATION_SCHEMA = {
-  type: 'object',
-  properties: {
-    d1: { type: 'string' }, d2: { type: 'string' }, d3: { type: 'string' }, d4: { type: 'string' }, d5: { type: 'string' }, d6: { type: 'string' },
-    special: { type: 'string', description: '后区0-14' },
-    reasoning: { type: 'string' },
-  },
-  required: ['d1', 'd2', 'd3', 'd4', 'd5', 'd6', 'special', 'reasoning'],
-};
-
-const REVIEW_ONE_SCHEMA = {
-  type: 'object',
-  properties: {
-    target: { type: 'string' },
-    agree_positions: { type: 'array', items: { type: 'string' } },
-    disagree_positions: { type: 'array', items: { type: 'string' } },
-    critique: { type: 'string' },
-    suggest_replace: { type: 'string' },
-  },
-  required: ['target', 'agree_positions', 'disagree_positions', 'critique'],
-};
-
-const DEFENSE_SCHEMA = {
-  type: 'object',
-  properties: {
-    role: { type: 'string' },
-    adjustments_made: { type: 'array', items: { type: 'string' } },
-    new_pick: { type: 'object', properties: { d1: { type: 'string' }, d2: { type: 'string' }, d3: { type: 'string' }, d4: { type: 'string' }, d5: { type: 'string' }, d6: { type: 'string' }, special: { type: 'string' } } },
-    defense: { type: 'string' },
-    concessions: { type: 'string' },
-  },
-  required: ['role', 'adjustments_made', 'new_pick', 'defense', 'concessions'],
-};
-
-// 七星彩跳过形态侦探（无连号/重号约束，允许重复数字）
-const ROLES = [
-  { name: '趋势猎手', agentType: 'trend-hunter' },
-  { name: '遗漏判官', agentType: 'gap-judge' },
-  { name: '结构大师', agentType: 'struct-master' },
-  { name: '博弈鬼才', agentType: 'game-theorist' },
-];
-const N = ROLES.length;
-const MAX_ROUNDS = 5;
-const CONVERGE_THRESHOLD = 4; // 7位中至少4位被3+人同意
-
-// ══ Phase 1 ══
+// ══ Phase 1: 数据准备 ══
 phase('数据准备');
-const dataContext = await agent(
-  `读取 data/processed/qxc_draws.csv：
-1. 全历史期数，最新一期期号 + 开奖号码（前区d1-d6各0-9 + 后区special 0-14）
-2. 近50期每位(d1-d6)的0-9频次 + special的0-14频次（按位分别统计）
-3. 每位的当前遗漏期数
-4. 近50期前区重复数字频率、奇偶比/大小比(0-4小/5-9大)
-5. 后区special 0-14的冷热分布`,
+
+const dataPackage = await agent(
+  `你是七星彩数据统计师。请用 Bash 读取 data/processed/qxc_draws.csv（d1-d6每位0-9 + special 0-14），输出以下统计：
+
+## 1. 基础信息
+- 最新一期期号 + 开奖号码（d1-d6 + special）
+- 上上期开奖号码
+- 近10期开奖明细（期号+前6+后1，最近的在前面）
+
+## 2. 按位频率统计（关键：每位独立统计）
+前区每位(d1-d6)的0-9 + 后区special的0-14在以下窗口的出现次数：
+- 近10期、近30期、近50期、近100期
+- 表格：位置 | 数字 | 近10 | 近30 | 近50 | 近100
+
+## 3. 按位遗漏统计
+- 每位每个数字当前遗漏期数 + 历史最大遗漏
+- 标注"超冷预警"
+
+## 4. 按位结构统计（近50期）
+- 前区每位的奇偶比、大小比（0-4小/5-9大）
+- 后区special的奇偶比、大小比（0-7小/8-14大）、012路分布
+
+## 5. 跨位形态统计（近50期，仅前区d1-d6）
+- 全6位重复数字频率（≥2个位置同数字）
+- 顺子模式频率（连续递增如345）
+- 对称模式频率
+- 前区奇偶比分布、大小比分布
+
+## 6. 关联统计
+- 近100期special与前区d6的关系（跟随规律）
+- 前区每位最常跟随的数字
+
+每个统计给出具体数字，用 Bash 逐项计算。`,
   { label: '数据准备', phase: '数据准备', model: 'haiku' }
 );
-log('数据就绪');
 
-// ══ Phase 2: 4人并行提名 ══
-phase('独立提名');
-let picks = await parallel(
-  ROLES.map(role => () =>
-    agent(
-      `## 七星彩选号（前区d1-d6各0-9 + 后区special 0-14，前区允许重复）\n## 数据\n${dataContext}\n\n作为${role.name}，按位独立分析，每位取最优数字。提名：d1-d6 + special，每位附理由。`,
-      { label: role.name, phase: '独立提名', agentType: role.agentType, schema: NOMINATION_SCHEMA }
-    )
-  )
+log('统计就绪，开始漏斗筛选');
+
+// ══ Phase 2: 五层漏斗 ══
+phase('五层漏斗');
+
+const result = await agent(
+  `你是七星彩选号专家。以下统计数据已就绪，请严格按**五层漏斗**逐层过滤。
+
+七星彩：前区d1-d6每位0-9独立（允许重复），后区special 0-14独立。**按位分析：每位只跟自己的历史比。**
+
+---
+${dataPackage}
+---
+
+# 🔪 第一层：杀号（按位）
+
+## 目标：前区每位10→~6，后区15→~9
+
+**硬杀（每位独立，满足任一排除）：**
+1. 该位连续3期出同一个数字 → 排除
+2. 该位当前遗漏 > 历史最大遗漏×0.8 且 近10期频率=0 → 排除
+3. 该位近50期频率倒数排名（0-9取倒数2名，special 0-14取倒数3名）且近10期频率=0 → 排除
+
+## 输出格式
+\`\`\`
+🔪 第一层·按位杀号
+d1排除：X(原因), → 候选：X X X X X X
+d2排除：X(原因), → 候选：X X X X X X
+d3-d6：（同样格式）
+special排除：X(原因), → 候选：X X X X X X X X X
+\`\`\`
+
+---
+
+# 📈 第二层：趋势打分（按位）
+
+## 目标：前区每位~6→~4，后区~9→~6
+
+**打分（每位独立，满分100）：**
+- 近10期频率（30分）：1-2次满分
+- 近50期稳定性（25分）：按频率排名
+- 遗漏回补信号（25分）：遗漏/最大遗漏<0.5且遗漏>5期→满分
+- 趋势拐点（20分）：近10期>近30期/3→上升
+
+## 输出格式
+\`\`\`
+📈 第二层·按位趋势
+d1：X(XX分📈), X(XX分➡️), ... → 晋级：X X X X
+d2-d6：（同样）
+special：X(XX分), ... → 晋级：X X X X X X
+\`\`\`
+
+---
+
+# 🏗️ 第三层：结构框架（按位+全局）
+
+## 目标：前区每位~4→~3，后区~6→~4
+
+**按位结构：**
+- 每位锁定奇偶倾向（基于近50期该位奇偶比）
+- 每位锁定大小倾向（前区0-4小/5-9大，后区0-7小/8-14大）
+
+**全局结构：**
+- 前区6位不能全奇或全偶
+- 前区6位不能全大或全小
+- 后区special 012路不能出现极端偏斜
+
+## 输出格式
+\`\`\`
+🏗️ 第三层·结构框架
+d1锁定：奇/偶=X | 大小=X → 晋级：X X X
+d2-d6：（同样）
+special锁定：奇/偶=X | 大小=X | 012路=X → 晋级：X X X X
+全局：前区奇偶≠0:6/6:0 | 大小≠0:6/6:0
+\`\`\`
+
+---
+
+# 🔍 第四层：形态打磨（跨位+后区关联）
+
+## 目标：前区每位~3→~2核心，后区~4→~3
+
+**跨位检查（前区d1-d6）：**
+1. **重复模式**：近10期前区有重复数字的期数占比→判断本期可能/不太可能有重复
+2. **顺子检测**：避免6位中出现3位以上连续递增（如d3=3,d4=4,d5=5）
+3. **对称检测**：避免过于工整的模式
+4. **跨度**：前区6位最大-最小不宜<4或>9
+
+**后区关联：**
+5. special与d6的关系：上期d6→本期special的常见跟随模式
+
+## 输出格式
+\`\`\`
+🔍 第四层·形态打磨
+前区重复预期：本期可能/不太可能有位置重复
+跨位淘汰：dX=X(顺子风险), ...
+d1核心：X X | d2核心：X X | ... | d6核心：X X
+special核心：X X X
+\`\`\`
+
+---
+
+# 🎯 第五层：精选输出
+
+## 步骤1：每位定数字
+从核心候选中综合前四层得分+跨位协调确定
+
+## 步骤2：协调检查
+- 前区6位结构校验
+- 后区与前区协调
+- 不与历史近10期完全重复
+
+## 步骤3：博弈微调
+- 前区是否"太像生日"→调整
+- special是否"太热门"→考虑反共识
+
+## 输出格式
+\`\`\`
+🎯 第五层·精选结果
+
+【最终前6+后1】
+d1=X d2=X d3=X d4=X d5=X d6=X + X
+即：X X X X X X + X
+
+【每位理由】
+d1=X：趋势XX+遗漏XX+结构XX
+...
+special=X：趋势XX+遗漏XX+结构XX
+
+【校验】
+前区奇偶比：X:X ✅ | 大小比：X:X ✅
+前区跨度：X ✅
+后区012路：X ✅
+
+【推荐理由】
+1-2句话总结。
+
+## ⚠️ 使用说明
+以上为五层漏斗分析结果。七星彩为独立随机游戏，历史统计不构成开奖保证。理性购彩，娱乐为主。
+\`\`\`
+
+---
+## ⚠️ 铁律
+- 按位独立分析！d1只跟d1历史比
+- 每层输出每位淘汰理由
+- 前区数字允许跨位重复`,
+  { label: '五层漏斗选号', phase: '五层漏斗' }
 );
-picks = picks.filter(Boolean);
-log(`提名完成：${picks.length}/4 人`);
 
-// ══ Phase 3: 对抗验证循环 ══
-phase('对抗验证');
-let round = 0, converged = false;
-const allDebates = [];
+log('✅ 五层漏斗选号完成');
 
-while (round < MAX_ROUNDS && !converged) {
-  round++;
-  log(`━━━ 第 ${round} 轮 ━━━`);
-
-  const reviewMeta = [], reviewTasks = [];
-  for (let i = 0; i < N; i++) {
-    for (let j = 0; j < N; j++) {
-      if (i === j) continue;
-      const reviewer = ROLES[i], target = ROLES[j];
-      reviewMeta.push({ reviewerIdx: i, targetIdx: j, reviewerName: reviewer.name, targetName: target.name });
-      reviewTasks.push(() =>
-        agent(
-          `你是${reviewer.name}，提名：${picks[i].d1}${picks[i].d2}${picks[i].d3}${picks[i].d4}${picks[i].d5}${picks[i].d6} + ${picks[i].special}
-
-🔥 严厉审核 ${target.name}：${picks[j].d1}${picks[j].d2}${picks[j].d3}${picks[j].d4}${picks[j].d5}${picks[j].d6} + ${picks[j].special}
-
-别客气！按位怼：
-1. 同意≥2个位置 —— 数据说话
-2. 反对≥1个位置 —— 狠狠批！
-3. 建议替换
-
-⚠️ 拿数据砸！🎭 保持人设！📢 中文口语像吵架。`,
-          { label: `${reviewer.name}→${target.name}`, phase: '对抗验证', agentType: reviewer.agentType, schema: REVIEW_ONE_SCHEMA }
-        )
-      );
-    }
-  }
-  const allReviewResults = await parallel(reviewTasks);
-  const reviewsAboutEach = ROLES.map(() => []);
-  for (let k = 0; k < reviewMeta.length; k++) {
-    const rev = allReviewResults[k];
-    if (rev) { const { targetName, reviewerName } = reviewMeta[k]; const idx = ROLES.findIndex(r => r.name === targetName); reviewsAboutEach[idx].push({ from: reviewerName, ...rev }); }
-  }
-  const defenseTasks = ROLES.map((role, i) => {
-    const aboutMe = reviewsAboutEach[i];
-    const reviewsText = aboutMe.map(r => `【${r.from}】同意位:${r.agree_positions.join(',')} | 反对位:${r.disagree_positions.join(',')} | ${r.critique}`).join('\n');
-    const cur = picks[i];
-    return () => agent(
-      `你是${role.name}。当前提名：${cur.d1}${cur.d2}${cur.d3}${cur.d4}${cur.d5}${cur.d6} + ${cur.special}
-
-⚔️ 有人对你开火！
-${reviewsText}
-
-按位反击：
-1. 每个被反对的位置，用数据狠狠怼回去
-2. 多人同怼同一个位置？认真想。坚信就死保
-3. 输出最终前6+后1
-
-🎭 保持人设！中文口语像吵架。`,
-      { label: `${role.name}自证`, phase: '对抗验证', agentType: role.agentType, schema: DEFENSE_SCHEMA }
-    );
-  });
-  const allDefenses = await parallel(defenseTasks);
-  const newPicks = [];
-  for (let i = 0; i < N; i++) {
-    const defense = allDefenses[i], cur = picks[i];
-    if (defense?.new_pick?.d1) {
-      allDebates.push({ round, role: ROLES[i].name, defense: defense.defense, concessions: defense.concessions, adjustments: defense.adjustments_made });
-      const np = defense.new_pick;
-      newPicks.push({ d1: np.d1, d2: np.d2, d3: np.d3, d4: np.d4, d5: np.d5, d6: np.d6, special: np.special, reasoning: cur.reasoning });
-    } else { newPicks.push(cur); }
-  }
-  picks = newPicks;
-
-  let consensusPositions = 0;
-  for (const pos of ['d1', 'd2', 'd3', 'd4', 'd5', 'd6', 'special']) {
-    const vals = picks.map(p => p[pos]);
-    const counts = {}; for (const v of vals) counts[v] = (counts[v] || 0) + 1;
-    if (Math.max(...Object.values(counts)) >= 3) consensusPositions++;
-  }
-  log(`收敛: ${consensusPositions}/7位共识(≥3票)`);
-  if (consensusPositions >= CONVERGE_THRESHOLD) { converged = true; log(`✅ 第${round}轮收敛！`); }
-}
-
-// ══ Phase 4 ══
-phase('首席裁定');
-const finalRuling = await agent(
-  `你是七星彩选号委员会首席裁判。${round}轮后${converged ? '已收敛' : '未完全收敛'}。
-最终方案：${picks.map((p, i) => `${ROLES[i].name}: ${p.d1}${p.d2}${p.d3}${p.d4}${p.d5}${p.d6}+${p.special}`).join(' | ')}
-裁定最终前6+后1，标注来源+贡献统计。`,
-  { label: '首席裁定', phase: '首席裁定', model: 'opus', effort: 'high' }
-);
-
-return { ruling: finalRuling, round, converged, finalPicks: picks.map((p, i) => ({ role: ROLES[i].name, d1: p.d1, d2: p.d2, d3: p.d3, d4: p.d4, d5: p.d5, d6: p.d6, special: p.special })), debates: allDebates };
+return { funnelResult: result, phases: ['杀号', '趋势', '结构', '形态', '精选'] };

@@ -1,170 +1,201 @@
-// 快乐八选号委员会 Workflow
-// 4人(无形态侦探)提名 → 对抗验证 → 首席裁定
+// 快乐八五层漏斗选号
+// 杀号 → 趋势 → 结构 → 形态 → 精选，逐层过滤
 export const meta = {
-  name: 'kl8-committee-pick',
-  description: '快乐八四人委员会选号：趋势猎手/遗漏判官/结构大师/博弈鬼才 对抗验证→收敛→裁定',
+  name: 'kl8-funnel-pick',
+  description: '快乐八五层漏斗选号：杀号→趋势→结构→形态→精选，逐层过滤，输出选十10码',
   phases: [
-    { title: '数据准备', detail: '读取 kl8_draws.csv' },
-    { title: '独立提名', detail: '4 Agent 并行，各提名选十10码' },
-    { title: '对抗验证', detail: '每人审核所有对手→自证→收敛检查，最多5轮' },
-    { title: '首席裁定', detail: '综合裁定最终10码' },
+    { title: '数据准备', detail: '读取 kl8_draws.csv 计算全维度统计指标' },
+    { title: '五层漏斗', detail: '杀号层→趋势层→结构层→形态层→精选层，逐层过滤出号' },
   ],
 };
 
-const NOMINATION_SCHEMA = {
-  type: 'object',
-  properties: {
-    numbers: { type: 'array', items: { type: 'string' }, description: '选十10码升序' },
-    reasoning: { type: 'string' },
-  },
-  required: ['numbers', 'reasoning'],
-};
-
-const REVIEW_ONE_SCHEMA = {
-  type: 'object',
-  properties: {
-    target: { type: 'string' },
-    agree_numbers: { type: 'array', items: { type: 'string' } },
-    disagree_numbers: { type: 'array', items: { type: 'string' } },
-    critique: { type: 'string' },
-    suggest_replace: { type: 'string' },
-  },
-  required: ['target', 'agree_numbers', 'disagree_numbers', 'critique'],
-};
-
-const DEFENSE_SCHEMA = {
-  type: 'object',
-  properties: {
-    role: { type: 'string' },
-    adjustments_made: { type: 'array', items: { type: 'string' } },
-    new_pick: { type: 'object', properties: { numbers: { type: 'array', items: { type: 'string' } } } },
-    defense: { type: 'string' },
-    concessions: { type: 'string' },
-  },
-  required: ['role', 'adjustments_made', 'new_pick', 'defense', 'concessions'],
-};
-
-// 快乐八跳过形态侦探（无连号/重号约束）
-const ROLES = [
-  { name: '趋势猎手', agentType: 'trend-hunter' },
-  { name: '遗漏判官', agentType: 'gap-judge' },
-  { name: '结构大师', agentType: 'struct-master' },
-  { name: '博弈鬼才', agentType: 'game-theorist' },
-];
-const N = ROLES.length;
-const MAX_ROUNDS = 5;
-const CONVERGE_THRESHOLD = 5; // 10码中至少5个被3+人同意
-
-// ══ Phase 1 ══
+// ══ Phase 1: 数据准备 ══
 phase('数据准备');
-const dataContext = await agent(
-  `读取 data/processed/kl8_draws.csv：
-1. 全历史期数，最新一期期号 + 20个开奖号码
-2. 近50期01-80每个号码频次
-3. 每个号码当前遗漏
-4. 近50期奇偶比/大小比(01-40小/41-80大)/和值分布
-5. 8个十码段(01-10/11-20/.../71-80)每段活跃度`,
+
+const dataPackage = await agent(
+  `你是快乐八数据统计师。请用 Bash 读取 data/processed/kl8_draws.csv（每期20个开奖号），输出以下统计：
+
+## 1. 基础信息
+- 最新一期期号 + 20个开奖号码（升序）
+- 近10期开奖明细（期号+20个号，最近的在前面）
+
+## 2. 频率统计（01-80）
+- 近10期/近30期/近50期/近100期各号码出现次数
+- 表格：号码 | 近10期 | 近30期 | 近50期 | 近100期
+
+## 3. 遗漏统计
+- 每个号码当前遗漏期数 + 历史最大遗漏
+- 标注"超冷预警"：当前遗漏 > 历史最大遗漏×0.8
+
+## 4. 结构统计（近50期）
+- 奇偶比分布（20个开奖号的奇偶个数分布）
+- 大小比分布（01-40小/41-80大）
+- 和值范围：最小/最大/均值/标准差
+- 8个十码段各段出号数分布（01-10/11-20/.../71-80）
+
+## 5. 形态统计（近50期）
+- 同尾号组数分布（0-9尾各出几个号）
+- 跨度范围（最大-最小）
+- 质数个数分布（01-80中共22个质数：2,3,5,7,11,13,17,19,23,29,31,37,41,43,47,53,59,61,67,71,73,79）
+
+## 6. 关联统计（近100期）
+- 出现最多的5组"伴随对"（两个号同时出现在开奖20码中的次数）
+- 十码段轮动：近10期各段活跃度变化趋势
+
+每个统计给出具体数字，用 Bash 逐项计算。`,
   { label: '数据准备', phase: '数据准备', model: 'haiku' }
 );
-log('数据就绪');
 
-// ══ Phase 2: 4人并行提名 ══
-phase('独立提名');
-let picks = await parallel(
-  ROLES.map(role => () =>
-    agent(
-      `## 快乐八选号（选十玩法）\n## 数据\n${dataContext}\n\n作为${role.name}，提名选十10码（01-80升序）。每个号附数据理由。`,
-      { label: role.name, phase: '独立提名', agentType: role.agentType, schema: NOMINATION_SCHEMA }
-    )
-  )
+log('统计就绪，开始漏斗筛选');
+
+// ══ Phase 2: 五层漏斗 ══
+phase('五层漏斗');
+
+const result = await agent(
+  `你是快乐八选号专家。以下统计数据已就绪，请严格按**五层漏斗**逐层过滤。
+
+快乐八每期开20个号（01-80），我们选十玩法自选10个号。大小分界01-40/41-80，8个十码段01-10/11-20/.../71-80。
+
+---
+${dataPackage}
+---
+
+# 🔪 第一层：杀号
+
+## 目标：80→~50
+
+**硬杀（满足任一排除）：**
+1. 连续4期都出现（在近10期中检查）→ 过热排除
+2. 当前遗漏 > 历史最大遗漏×0.8 且 近10期频率=0 → 深度冷冻排除
+3. 近100期频率倒数10名且近10期频率=0 → 死号排除
+
+**软杀（满足两条排除）：**
+4. 近30期频率 < 近50期频率均值-1标准差
+5. 所在十码段近10期活跃度>35%（该段占了>7个号）→ 段过热，段内号降权
+
+## 输出格式
+\`\`\`
+🔪 第一层·杀号
+排除(N个)：XX(原因), XX(原因), ...
+候选池(N个)：XX, XX, ...
+\`\`\`
+
+---
+
+# 📈 第二层：趋势打分
+
+## 目标：~50→~35
+
+**打分（满分100）：**
+- 近10期频率（30分）：注意开20个号，频率基准不同。1-3次=30分，0次=8分，5次+=15分
+- 近50期稳定性（25分）：按频率排名
+- 遗漏回补信号（25分）：遗漏/最大遗漏<0.5且遗漏>3期→满分
+- 趋势拐点（20分）：近10期频率>近30期频率/3→上升趋势
+
+## 输出格式
+\`\`\`
+📈 第二层·趋势打分
+Top35：XX(XX分·📈/➡️/📉), ...
+淘汰：XX(XX分), ...
+晋级(N个)：XX, XX, ...
+\`\`\`
+
+---
+
+# 🏗️ 第三层：结构框架
+
+## 目标：~35→~25
+
+**锁定本期结构（选十10码的框架，不是开奖20码的框架）：**
+| 维度 | 方法 |
+|------|------|
+| 奇偶比 | 近50期开奖20码奇偶比通常是8:12到12:8，10码自选锁定4:6到6:4 |
+| 大小比 | 同理，10码自选锁定4:6到6:4 |
+| 和值范围 | 近50期20码和值均值±1.5标准差，10码和值约为其一半 |
+| 段覆盖 | 8个十码段至少覆盖5段 |
+
+## 输出格式
+\`\`\`
+🏗️ 第三层·结构框架
+锁定：奇偶≈X:X | 大小≈X:X | 段覆盖≥5段
+框架淘汰：XX(原因), ...
+晋级(N个)：XX, ...
+\`\`\`
+
+---
+
+# 🔍 第四层：形态打磨
+
+## 目标：~25→~18
+
+**逐项检查：**
+1. **同尾约束**：10码中同尾号不超过3组（如02,12,22,32同时出现概率极低）
+2. **段平衡**：每个十码段候选不超过4个，确保最终能覆盖≥5段
+3. **质数约束**：10码中通常2-4个质数
+4. **跨度合理**：最小号≤15，最大号≥65（选十通常覆盖全区间）
+5. **间隔均匀**：避免3个以上号集中在5以内的小区间
+
+## 输出格式
+\`\`\`
+🔍 第四层·形态打磨
+同尾淘汰：XX(尾数冲突), ...
+段平衡淘汰：XX(段过密), ...
+晋级(N个)：XX, ...
+\`\`\`
+
+---
+
+# 🎯 第五层：精选输出
+
+## 步骤1：定胆码（2-3个）
+前四层高分+段分布合理→定胆码
+
+## 步骤2：选十10码
+从候选池中按以下优先级挑选：
+- 优先选胆码
+- 确保≥5个十码段有号
+- 奇偶比4:6到6:4之间
+- 大小比4:6到6:4之间
+
+## 步骤3：博弈微调
+- 避开"全是中段号"（都在21-60之间太保守）→换入小号和大号
+- 检查是否有4个以上"大众热号"→换1个反共识冷号
+
+## 步骤4：终检
+- ✅ 10码升序
+- ✅ 段覆盖≥5段
+- ✅ 奇偶比不极端
+
+## 输出格式
+\`\`\`
+🎯 第五层·精选结果
+
+【选十10码推荐】
+XX XX XX XX XX XX XX XX XX XX（升序）
+
+胆码：XX(理由), XX(理由)
+
+【校验】
+段覆盖：覆盖X个十码段 ✅
+奇偶比：X:X ✅
+大小比：X:X
+
+【推荐理由】
+1-2句话总结。
+
+## ⚠️ 使用说明
+以上为五层漏斗分析结果。快乐八为独立随机游戏，历史统计不构成开奖保证。理性购彩，娱乐为主。
+\`\`\`
+
+---
+## ⚠️ 铁律
+- 每层必须输出，不能跳过
+- 每层标注淘汰理由
+- 号码两位数字格式
+- 最终10码升序`,
+  { label: '五层漏斗选号', phase: '五层漏斗' }
 );
-picks = picks.filter(Boolean);
-log(`提名完成：${picks.length}/4 人`);
 
-// ══ Phase 3: 对抗验证循环 ══
-phase('对抗验证');
-let round = 0, converged = false;
-const allDebates = [];
+log('✅ 五层漏斗选号完成');
 
-while (round < MAX_ROUNDS && !converged) {
-  round++;
-  log(`━━━ 第 ${round} 轮 ━━━`);
-
-  const reviewMeta = [], reviewTasks = [];
-  for (let i = 0; i < N; i++) {
-    for (let j = 0; j < N; j++) {
-      if (i === j) continue;
-      const reviewer = ROLES[i], target = ROLES[j];
-      reviewMeta.push({ reviewerIdx: i, targetIdx: j, reviewerName: reviewer.name, targetName: target.name });
-      reviewTasks.push(() =>
-        agent(
-          `你是${reviewer.name}，提名：${picks[i].numbers.join(' ')}
-
-🔥 严厉审核 ${target.name}：${picks[j].numbers.join(' ')}
-
-别客气！用你的专业视角怼：
-1. 同意≥2个 —— 数据说话
-2. 反对≥1个 —— 狠狠批！他哪里选错了？数据哪里不支持？
-3. 建议替换 —— 别光说不练
-
-⚠️ 拿数据砸！不准说"我觉得"。
-🎭 保持人设性格！
-📢 中文口语，像真实会议吵架。`,
-          { label: `${reviewer.name}→${target.name}`, phase: '对抗验证', agentType: reviewer.agentType, schema: REVIEW_ONE_SCHEMA }
-        )
-      );
-    }
-  }
-  const allReviewResults = await parallel(reviewTasks);
-
-  const reviewsAboutEach = ROLES.map(() => []);
-  for (let k = 0; k < reviewMeta.length; k++) {
-    const rev = allReviewResults[k];
-    if (rev) { const { targetName, reviewerName } = reviewMeta[k]; const idx = ROLES.findIndex(r => r.name === targetName); reviewsAboutEach[idx].push({ from: reviewerName, ...rev }); }
-  }
-  const defenseTasks = ROLES.map((role, i) => {
-    const aboutMe = reviewsAboutEach[i];
-    const reviewsText = aboutMe.map(r => `【${r.from}】同意:${r.agree_numbers.join(',')} | 反对:${r.disagree_numbers.join(',')} | ${r.critique}`).join('\n');
-    return () => agent(
-      `你是${role.name}。当前提名：${picks[i].numbers.join(' ')}
-
-⚔️ 有人对你开火！
-${reviewsText}
-
-反击：
-1. 每个被反对的号，用数据狠狠怼回去。有道理就认，胡说就拍
-2. 多人同怼一个号？认真想。坚信自己就死保
-3. 输出最终号码
-
-🎭 保持人设！中文口语像吵架。`,
-      { label: `${role.name}自证`, phase: '对抗验证', agentType: role.agentType, schema: DEFENSE_SCHEMA }
-    );
-  });
-  const allDefenses = await parallel(defenseTasks);
-  const newPicks = [];
-  for (let i = 0; i < N; i++) {
-    const defense = allDefenses[i];
-    if (defense?.new_pick?.numbers) {
-      allDebates.push({ round, role: ROLES[i].name, defense: defense.defense, concessions: defense.concessions, adjustments: defense.adjustments_made });
-      newPicks.push({ numbers: defense.new_pick.numbers, reasoning: picks[i].reasoning });
-    } else { newPicks.push(picks[i]); }
-  }
-  picks = newPicks;
-
-  const allNums = picks.flatMap(p => p.numbers);
-  const counts = {}; for (const n of allNums) counts[n] = (counts[n] || 0) + 1;
-  const consensus = Object.entries(counts).filter(([, c]) => c >= 3).map(([r]) => r);
-  log(`收敛: ${consensus.length}个共识号(≥3票)`);
-  if (consensus.length >= CONVERGE_THRESHOLD) { converged = true; log(`✅ 第${round}轮收敛！`); }
-}
-
-// ══ Phase 4 ══
-phase('首席裁定');
-const finalRuling = await agent(
-  `你是快乐八选号委员会首席裁判。${round}轮后${converged ? '已收敛' : '未完全收敛'}。
-最终方案：${picks.map((p, i) => `${ROLES[i].name}: ${p.numbers.join(' ')}`).join(' | ')}
-裁定最终选十10码，标注来源+贡献统计。`,
-  { label: '首席裁定', phase: '首席裁定', model: 'opus', effort: 'high' }
-);
-
-return { ruling: finalRuling, round, converged, finalPicks: picks.map((p, i) => ({ role: ROLES[i].name, numbers: p.numbers })), debates: allDebates };
+return { funnelResult: result, phases: ['杀号', '趋势', '结构', '形态', '精选'] };
