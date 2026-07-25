@@ -20,32 +20,32 @@
 
 ## 选号方式
 
-全部 5 个彩种通过 **Dynamic Workflow 委员会对抗验证** 选号：
+全部 5 个彩种通过 **漏斗 + 对抗验证** 选号：
 
-| Skill | 彩种 | 委员会 | 入口 |
-|-------|------|--------|------|
-| `daletou-picker` | 大乐透 | 五人（trend-hunter, gap-judge, struct-master, pattern-spy, game-theorist） | `Workflow({scriptPath: ".claude/skills/daletou-picker/scripts/workflow.js"})` |
-| `shuangseqiu-picker` | 双色球 | 五人（同上） | `Workflow({scriptPath: ".claude/skills/shuangseqiu-picker/scripts/workflow.js"})` |
-| `kuaileba-picker` | 快乐八 | 四人（无 pattern-spy） | `Workflow({scriptPath: ".claude/skills/kuaileba-picker/scripts/workflow.js"})` |
-| `pailie5-picker` | 排列5 | 四人（无 pattern-spy） | `Workflow({scriptPath: ".claude/skills/pailie5-picker/scripts/workflow.js"})` |
-| `qixingcai-picker` | 七星彩 | 四人（无 pattern-spy） | `Workflow({scriptPath: ".claude/skills/qixingcai-picker/scripts/workflow.js"})` |
+| Skill | 彩种 | 漏斗层数 | 审查员 | 入口 |
+|-------|------|:--:|:--:|------|
+| `shuangseqiu-picker` | 双色球 | 四层（预筛选→结构→形态→精选） | 5 人 | `Workflow({scriptPath: ".claude/skills/shuangseqiu-picker/scripts/workflow.js"})` |
+| `daletou-picker` | 大乐透 | 三层（结构→形态→精选，深冻/热冷无效） | 5 人 | `Workflow({scriptPath: ".claude/skills/daletou-picker/scripts/workflow.js"})` |
+| `kuaileba-picker` | 快乐八 | 四层（预筛选→结构→形态→精选） | 4 人 | `Workflow({scriptPath: ".claude/skills/kuaileba-picker/scripts/workflow.js"})` |
+| `pailie5-picker` | 排列5 | 三层（按位结构→跨位形态→精选） | 4 人 | `Workflow({scriptPath: ".claude/skills/pailie5-picker/scripts/workflow.js"})` |
+| `qixingcai-picker` | 七星彩 | 四层（预筛选→按位结构→跨位形态→精选） | 4 人 | `Workflow({scriptPath: ".claude/skills/qixingcai-picker/scripts/workflow.js"})` |
 
 ### Workflow 流程
 
-1. **数据准备** — 单 Agent 读取对应 CSV，提取全历史 + 近 50 期统计
-2. **独立提名** — 各委员并行分析，各自提名一注
-3. **对抗验证** — 最多 5 轮：互审 → 自证 → 收敛检查
-4. **首席裁定** — Opus 综合辩论记录输出最终一注
+1. **数据准备** — Haiku Agent 读取对应 CSV，提取全历史 + 近 50 期统计
+2. **漏斗选号** — 单 Agent 按彩种专属漏斗逐层过滤，产出复式 + 单式推荐
+3. **对抗验证** — 审查员并行审查漏斗产出，各自从专业视角挑刺给改进建议
+4. **首席裁定** — Sonnet 综合漏斗产出 + 审查意见，输出最终号码
 
-### 自定义 Agent
+### 自定义 Agent（对抗审查员）
 
-| Agent | 视角 | 适用范围 |
-|-------|------|----------|
-| `trend-hunter` | 四窗口频率曲线判定趋势方向 | 全部彩种 |
-| `gap-judge` | 遗漏和历史极值，超跌回补 | 全部彩种 |
-| `struct-master` | 奇偶/大小/和值框架选号 | 全部彩种 |
-| `pattern-spy` | 连号/重号/区间形态 | 仅大乐透、双色球 |
-| `game-theorist` | 反共识选号，回避过热号 | 全部彩种 |
+| Agent | 审查视角 | 适用范围 |
+|-------|----------|----------|
+| `trend-hunter` | 四窗口频率曲线：审查号码趋势方向是否正确 | 全部彩种 |
+| `gap-judge` | 遗漏状态：标记深冻/过热/超跌，给替换建议 | 全部彩种 |
+| `struct-master` | 结构合规：检查奇偶/大小/和值/012路是否在历史高频区间 | 全部彩种 |
+| `pattern-spy` | 形态细节：检查连号/重号/区间/跨度/同尾 | 仅双色球、大乐透 |
+| `game-theorist` | 反共识度：检查是否过热、太大众化，给反共识替换建议 | 全部彩种 |
 
 ## 目录结构
 

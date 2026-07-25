@@ -1,0 +1,28 @@
+{
+  "fetched_at": "2026-07-25T10:19:19.041166+08:00",
+  "source": "https://www.zhcw.com/kjxx/xqxc/",
+  "draws": [
+    {
+      "lottery_type": "qxc",
+      "period_id": "26083",
+      "d1": "5",
+      "d2": "2",
+      "d3": "1",
+      "d4": "9",
+      "d5": "6",
+      "d6": "3",
+      "special": "12"
+    },
+    {
+      "lottery_type": "qxc",
+      "period_id": "26084",
+      "d1": "6",
+      "d2": "3",
+      "d3": "8",
+      "d4": "4",
+      "d5": "4",
+      "d6": "0",
+      "special": "7"
+    }
+  ]
+}

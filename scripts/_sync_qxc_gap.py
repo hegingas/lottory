@@ -122,7 +122,7 @@ for block in manifest.get("outputs", []):
         block["period_id_max"] = int(all_rows[-1]["period_id"])
         if "supplement" not in block:
             block["supplement"] = {}
-        block["supplement"]["zhcw_sync_20260711"] = {
+        block["supplement"][f"zhcw_sync_{datetime.now(BJT).strftime('%Y%m%d')}"] = {
             "rows_added": len(new_draws),
             "period_ids": [d["period_id"] for d in new_draws],
             "source_note": f"zhcw.com 中彩网新版七星彩页面抓取 {datetime.now(BJT).strftime('%Y-%m-%d')}",

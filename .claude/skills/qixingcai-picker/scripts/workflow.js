@@ -1,9 +1,9 @@
-// 七星彩四层漏斗 · 769期全量回测验证
-// 🔪预筛选(深冻0.97) → 🏗️按位结构 → 🔍跨位形态 → 🎯精选
+// 七星彩四层漏斗 + 对抗验证 · 769期全量回测验证
+// 🔪预筛选(深冻0.97) → 🏗️按位结构 → 🔍跨位形态 → 🎯精选 → ⚔️4人审查 → 🗣️漏斗自辩 → 👑终裁
 export const meta = {
   name: 'qxc-funnel-pick',
-  description: '七星彩四层漏斗：预筛选→按位结构→跨位形态→精选，769期回测验证，按位独立',
-  phases: [{title:'数据准备'},{title:'四层漏斗'}],
+  description: '七星彩四层漏斗+对抗验证+自辩：预筛选→按位结构→跨位形态→精选→4人审查→漏斗自辩→终裁',
+  phases: [{title:'数据准备'},{title:'四层漏斗'},{title:'对抗验证'},{title:'漏斗自辩'},{title:'终裁'}],
 };
 
 phase('数据准备');
@@ -19,7 +19,7 @@ const data = await agent(
 log('统计就绪');
 
 phase('四层漏斗');
-const result = await agent(
+const pick = await agent(
   `你是七星彩选号专家。按四层漏斗过滤。**每位独立：d1只跟d1比，special只跟special比。**
 
 前区d1-d6每位0-9(允许重复)，后区special 0-14。大小：前区0-4小/5-9大，后区0-7小/8-14大。
@@ -92,6 +92,78 @@ d2-d6：(同样) | special锁定：奇/偶=X 大小=X 012路=X → 晋级X X X X
 \`\`\``,
   {label:'四层漏斗选号',phase:'四层漏斗'}
 );
+log('漏斗产出就绪');
+
+// ⚔️ 对抗验证：4人并行审查（无 pattern-spy）
+phase('对抗验证');
+const AGENTS = ['trend-hunter','gap-judge','struct-master','game-theorist'];
+const reviews = await parallel(
+  AGENTS.map(a => () =>
+    agent(
+      `你是选号审查委员会的**${a}**。审查以下七星彩漏斗产出的号码。
+
+CSV路径: data/processed/qxc_draws.csv（如需具体数据请自行读取）
+
+漏斗产出：
+${pick}
+
+请从你的专业视角审查，按你的审查方法输出：哪些号有问题？为什么？建议怎么改？`,
+      {agentType: a, label: `${a}审查`, phase: '对抗验证'}
+    )
+  )
+);
+const validReviews = reviews.filter(Boolean);
+log(`${validReviews.length}/${AGENTS.length} 位审查员完成审查`);
+
+// 🗣️ 漏斗自辩：面对审查意见，逐条反驳或认栽
+phase('漏斗自辩');
+const rebuttal = await agent(
+  `你是七星彩漏斗选号专家。审查员对你的产出提出了质疑，请逐条自辩：
+
+你的原始产出：
+${pick}
+
+审查意见：
+${validReviews.map((r, i) => `【${AGENTS[i]}】\n${r}`).join('\n\n')}
+
+规则：
+- 有道理的批评 → 大方认栽，给出具体调整
+- 不合理的批评 → 用回测数据和统计规律据理反驳
+- 调整号码 → 说明"因为XX审查员指出XX，我决定把dX从A改成B"
+- 维持原判 → 说明"XX审查员的质疑不成立，因为..."
+- 最终输出修正版号码（格式同漏斗层）
+
+输出：逐条回应 + 修正后号码 + 一句话总结`,
+  {label:'漏斗自辩',phase:'漏斗自辩'}
+);
+log('漏斗已自辩');
+
+// 👑 终裁：综合漏斗+审查+自辩三方意见
+phase('终裁');
+const final = await agent(
+  `你是首席裁判。综合三方意见——漏斗产出、审查员挑刺、漏斗自辩——输出最终推荐号码。
+
+─── 漏斗产出 ───
+${pick}
+
+─── 审查意见 ───
+${validReviews.map((r, i) => `【${AGENTS[i]}】\n${r}`).join('\n\n')}
+
+─── 漏斗自辩 ───
+${rebuttal}
+
+─── 裁决规则 ──
+1. 漏斗有理有据反驳的 → 驳回审查意见，采信漏斗
+2. 漏斗认栽的 → 采纳审查建议，用修正版
+3. 审查意见 + 漏斗认栽都不足以推翻的 → 维持原判
+4. 结构/形态硬伤 → 必须修正
+5. 维持原漏斗格式输出
+
+输出最终号码，并简要说明裁决依据（谁说服了谁）。
+
+⚠️ 七星彩为独立随机游戏，历史统计不构成开奖保证。理性购彩。`,
+  {label:'首席裁定',phase:'终裁',model:'sonnet'}
+);
 
 log('✅ 完成');
-return {funnelResult:result,phases:['预筛选','按位结构','跨位形态','精选']};
+return {funnelResult:pick, reviews:validReviews, rebuttal, final, phases:['预筛选','按位结构','跨位形态','精选','对抗验证','漏斗自辩','终裁']};
