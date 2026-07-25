@@ -1,0 +1,112 @@
+{
+  "_meta": {
+    "version": "1.0.0",
+    "updated": "2026-07-25T18:30:00+08:00",
+    "description": "五层漏斗共享参数，由 backtest_all.py 全量回测验证，同步脚本和 Workflow 共享此配置",
+    "auto_tune": false,
+    "last_backtest": "2026-07-25T18:30:00+08:00"
+  },
+  "ssq": {
+    "deep_freeze": { "threshold": 0.99, "false_kill_rate": 0.003, "enabled": true },
+    "hot_cold": {
+      "hot_threshold": 4, "cold_gap": 18,
+      "hot_hit_rate": 0.183, "cold_hit_rate": 0.013, "diff": 0.170,
+      "enabled": true
+    },
+    "structure": {
+      "parity_top2": ["3:3", "4:2"], "parity_coverage": 0.61,
+      "size_top2": ["3:3", "2:4"], "size_coverage": 0.60,
+      "sum_mean": 99, "sum_std": 22, "sum_range": [78, 119], "sum_coverage": 0.66,
+      "road_012": "每路≥1单路≤3",
+      "prime_range": [1, 3], "prime_coverage": 0.80,
+      "ac_range": [6, 10]
+    },
+    "morphology": {
+      "consecutive_rate": 0.61, "consecutive_dist": {"0": 0.39, "1": 0.38, "2": 0.18, "3": 0.05},
+      "repeat_rate_1_2": 0.74, "repeat_dist": {"0": 0.19, "1": 0.48, "2": 0.26},
+      "same_tail_max": 2,
+      "span_window": 5,
+      "zone_min": 2
+    },
+    "blue_ball": {
+      "exclude_prev": true, "repeat_rate": 0.06,
+      "cooling_window": 2
+    }
+  },
+  "dlt": {
+    "deep_freeze": { "threshold": 0.99, "false_kill_rate": 0.138, "enabled": false, "reason": "误杀率13.8%不可用" },
+    "hot_cold": {
+      "hot_threshold": 3, "cold_gap": 10,
+      "hot_hit_rate": 0.148, "cold_hit_rate": 0.136, "diff": 0.012,
+      "enabled": false, "reason": "区分度仅1.2%无意义"
+    },
+    "structure": {
+      "parity_top2": ["3:2", "2:3"], "parity_coverage": 0.68,
+      "size_top2": ["3:2", "2:3"], "size_coverage": 0.68,
+      "sum_mean": 87, "sum_std": 22, "sum_range": [65, 109], "sum_coverage": 0.69,
+      "road_012": "每路≥1单路≤3",
+      "prime_range": [1, 3],
+      "back_parity_mode": "1奇1偶",
+      "back_size_mode": "1小1大"
+    },
+    "morphology": {
+      "consecutive_rate": 0.50, "consecutive_dist": {"0": 0.50, "1": 0.38, "2": 0.10, "3": 0.03},
+      "repeat_rate_1_2": 0.52, "repeat_dist": {"0": 0.46, "1": 0.36, "2": 0.16},
+      "same_tail_max": 2,
+      "span_window": 5,
+      "zone_min": 2,
+      "back_overlap_max": 1
+    }
+  },
+  "kl8": {
+    "deep_freeze": { "threshold": 0.97, "false_kill_rate": 0.019, "enabled": true },
+    "hot_cold": {
+      "hot_threshold": 4, "cold_gap": 22,
+      "hot_hit_rate": 0.247, "cold_hit_rate": 0.003, "diff": 0.244,
+      "enabled": true, "note": "全彩种最强区分度24.4%"
+    },
+    "structure": {
+      "parity_range": [4, 6],
+      "size_range": [4, 6],
+      "sum_range": [380, 420],
+      "segment_min": 5, "segment_per": 2.5,
+      "segments": {"1": 2.5, "2": 2.6, "3": 2.5, "4": 2.6, "5": 2.4, "6": 2.4, "7": 2.5, "8": 2.5}
+    },
+    "morphology": {
+      "same_tail_max": 3,
+      "prime_range": [2, 4],
+      "dragon_head_max": 15,
+      "phoenix_tail_min": 65,
+      "segment_cap": 4,
+      "gap_min": 5
+    }
+  },
+  "pl5": {
+    "deep_freeze": { "threshold": 0.99, "false_kill_rate": 0.0, "enabled": true },
+    "hot_cold": { "enabled": false, "reason": "按位独立样本不足" },
+    "structure": {
+      "parity_global": "≠0:5/5:0",
+      "size_global": "≠0:5/5:0"
+    },
+    "morphology": {
+      "consecutive_max": 3,
+      "span_range": [3, 8],
+      "road_012": "不能某路全缺",
+      "history_dedup": 10
+    }
+  },
+  "qxc": {
+    "deep_freeze": { "threshold": 0.97, "false_kill_rate": 0.001, "enabled": true },
+    "hot_cold": { "enabled": false, "reason": "按位独立样本不足" },
+    "structure": {
+      "front_parity_global": "≠0:6/6:0",
+      "front_size_global": "≠0:6/6:0"
+    },
+    "morphology": {
+      "consecutive_max": 3,
+      "front_span_range": [4, 9],
+      "road_012": "不能某路全缺",
+      "special_follow_d6": true
+    }
+  }
+}
