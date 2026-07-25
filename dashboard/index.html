@@ -3,274 +3,493 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>彩票数据分析面板</title>
+<title>彩票数据面板 · 霓虹大厅</title>
 <script src="https://cdn.jsdelivr.net/npm/echarts@5.6.0/dist/echarts.min.js"></script>
 <style>
-/* ═══════════════════════════════════
-   彩票 Dashboard 暗色主题
-   ═══════════════════════════════════ */
+/* ═══════════════════════════════════════════
+   霓虹彩票大厅 — Neon Lottery Hall
+   港式投注站 × 磨砂玻璃 × 3D球号 × 霓虹光效
+   ═══════════════════════════════════════════ */
+
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700;900&family=Space+Mono:wght@400;700&display=swap');
 
 :root {
-  --bg-primary: #1a1a2e;
-  --bg-card: #16213e;
-  --bg-hover: #0f3460;
-  --text-primary: #e0e0e0;
-  --text-secondary: #9e9e9e;
-  --border: #2a2a4a;
-  --accent-ssq: #E53935;
-  --accent-dlt: #FB8C00;
-  --accent-kl8: #8E24AA;
-  --accent-pl5: #1E88E5;
-  --accent-qxc: #00897B;
+  --bg-deep: #08080C;
+  --bg-card: rgba(20, 20, 30, 0.85);
+  --bg-card-hover: rgba(28, 28, 42, 0.92);
+  --glass-border: rgba(255,255,255,0.06);
+  --glass-border-hover: rgba(255,255,255,0.14);
+  --text-main: #E8E4DD;
+  --text-dim: #807C78;
+  --text-muted: #4A4642;
+  --gold: #F5A623;
+  --gold-glow: rgba(245,166,35,0.3);
+  --jade: #00D2A0;
+  --red-lucky: #FF2D55;
+  --radius-sm: 10px;
+  --radius-md: 16px;
+  --radius-lg: 24px;
+  --shadow-card: 0 4px 32px rgba(0,0,0,0.5), 0 0 0 1px var(--glass-border);
+  --shadow-glow: 0 0 40px var(--gold-glow);
+  --font-display: 'Noto Sans SC', system-ui, sans-serif;
+  --font-mono: 'Space Mono', 'Courier New', monospace;
+  --ease-out-expo: cubic-bezier(0.19, 1, 0.22, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
+html { scroll-behavior: smooth; }
+
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Microsoft YaHei', sans-serif;
-  background: var(--bg-primary);
-  color: var(--text-primary);
+  font-family: var(--font-display);
+  background: var(--bg-deep);
+  color: var(--text-main);
   min-height: 100vh;
   line-height: 1.6;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
 }
+
+/* ─── 背景粒子 ─── */
+.bg-particles {
+  position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden;
+}
+.bg-particle {
+  position: absolute; border-radius: 50%;
+  animation: floatUp linear infinite;
+  opacity: 0;
+}
+@keyframes floatUp {
+  0%   { transform: translateY(100vh) scale(0); opacity: 0; }
+  10%  { opacity: 0.6; }
+  90%  { opacity: 0.2; }
+  100% { transform: translateY(-10vh) scale(1.5); opacity: 0; }
+}
+
+/* ─── 主容器 ─── */
+.app-shell { position: relative; z-index: 1; }
 
 /* ─── 导航栏 ─── */
 .navbar {
   position: sticky; top: 0; z-index: 100;
-  background: var(--bg-card);
-  border-bottom: 1px solid var(--border);
+  background: rgba(8,8,12,0.82); backdrop-filter: blur(24px) saturate(180%);
+  border-bottom: 1px solid var(--glass-border);
   display: flex; align-items: center; justify-content: space-between;
-  padding: 0 24px; height: 56px;
-  backdrop-filter: blur(12px);
+  padding: 0 32px; height: 64px;
 }
 .nav-brand {
-  font-size: 18px; font-weight: 700;
-  display: flex; align-items: center; gap: 8px;
+  font-size: 20px; font-weight: 900; letter-spacing: 0.04em;
+  display: flex; align-items: center; gap: 10px;
+  color: var(--text-main);
 }
-.nav-brand .icon { font-size: 24px; }
-.nav-links { display: flex; gap: 4px; align-items: center; }
+.nav-brand-dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: var(--red-lucky); box-shadow: 0 0 12px var(--red-lucky);
+  animation: pulse 2s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(1.8); }
+}
+.nav-links { display: flex; gap: 2px; align-items: center; }
 .nav-link {
-  color: var(--text-secondary); text-decoration: none;
-  padding: 6px 14px; border-radius: 6px; font-size: 14px;
-  transition: all .2s;
+  color: var(--text-dim); text-decoration: none;
+  padding: 8px 16px; border-radius: 8px; font-size: 14px; font-weight: 500;
+  transition: all 0.25s var(--ease-out-expo); position: relative;
 }
-.nav-link:hover { color: var(--text-primary); background: var(--bg-hover); }
-.nav-link.active { color: #fff; font-weight: 600; }
+.nav-link::after {
+  content: ''; position: absolute; bottom: 2px; left: 50%; transform: translateX(-50%);
+  width: 0; height: 2px; border-radius: 2px;
+  background: var(--link-color, var(--gold));
+  transition: width 0.3s var(--ease-out-expo);
+}
+.nav-link:hover { color: #fff; }
+.nav-link:hover::after { width: 60%; }
+.nav-link.active { color: #fff; font-weight: 700; }
+.nav-link.active::after { width: 60%; background: var(--link-color, var(--gold)); }
 
 .nav-toggle { display: none; background: none; border: none; color: #fff; font-size: 24px; cursor: pointer; }
 
 /* ─── 视图容器 ─── */
-.view { display: none; }
+.view { display: none; animation: fadeSlideIn 0.45s var(--ease-out-expo); }
 .view.active { display: block; }
-.view-container { max-width: 1400px; margin: 0 auto; padding: 24px; }
+@keyframes fadeSlideIn {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.view-container { max-width: 1440px; margin: 0 auto; padding: 32px 24px; }
 
-/* ─── 主页 ─── */
-.home-header { text-align: center; padding: 40px 0 32px; }
-.home-header h1 { font-size: 32px; margin-bottom: 8px; }
-.home-header p { color: var(--text-secondary); font-size: 14px; }
+/* ─── 首页 Hero ─── */
+.hero {
+  text-align: center; padding: 56px 0 40px; position: relative;
+}
+.hero-badge {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 6px 18px; border-radius: 20px; font-size: 13px; font-weight: 600;
+  background: rgba(255,45,85,0.12); color: var(--red-lucky);
+  border: 1px solid rgba(255,45,85,0.22); margin-bottom: 20px;
+}
+.hero-badge-dot {
+  width: 7px; height: 7px; border-radius: 50%; background: var(--red-lucky);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+.hero h1 {
+  font-size: clamp(32px, 5vw, 52px); font-weight: 900; letter-spacing: -0.02em;
+  line-height: 1.2; margin-bottom: 12px;
+}
+.hero h1 .accent { color: var(--gold); }
+.hero p {
+  font-size: 16px; color: var(--text-dim); max-width: 500px; margin: 0 auto;
+}
 
-.home-cards {
+/* ─── 首页彩种卡片 ─── */
+.lottery-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 20px;
+  padding-bottom: 40px;
 }
-.home-card {
-  display: block; text-decoration: none;
-  background: var(--bg-card); border-radius: 12px;
-  padding: 20px; border: 2px solid transparent;
-  transition: all .25s; position: relative; overflow: hidden;
+.lottery-card {
+  display: block; text-decoration: none; color: inherit;
+  background: var(--bg-card); border-radius: var(--radius-md);
+  padding: 28px 24px;
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(12px);
+  transition: all 0.35s var(--ease-out-expo);
+  position: relative; overflow: hidden;
+  cursor: pointer;
 }
-.home-card::before {
+.lottery-card::before {
   content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
-  background: var(--card-accent);
+  background: linear-gradient(90deg, var(--card-color), var(--card-color2, var(--card-color)));
+  opacity: 0; transition: opacity 0.35s;
 }
-.home-card:hover { border-color: var(--card-accent); transform: translateY(-2px); }
-.home-card-header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
-.home-card-icon { font-size: 28px; }
-.home-card-name { font-size: 18px; font-weight: 700; color: var(--text-primary); }
-.home-card-badge {
-  margin-left: auto; font-size: 12px; padding: 2px 10px;
-  border-radius: 10px; font-weight: 600;
+.lottery-card::after {
+  content: ''; position: absolute; inset: -1px; border-radius: var(--radius-md);
+  background: radial-gradient(600px circle at var(--mouse-x, 50%) var(--mouse-y, 50%), var(--card-glow, transparent), transparent 60%);
+  opacity: 0; transition: opacity 0.4s; pointer-events: none;
 }
-.home-card-period { font-size: 14px; color: var(--text-secondary); margin-bottom: 8px; }
-.home-card-balls { font-size: 16px; margin-bottom: 6px; }
-.home-card-range { font-size: 12px; color: var(--text-secondary); }
+.lottery-card:hover {
+  transform: translateY(-4px);
+  border-color: var(--card-color);
+  box-shadow: 0 8px 40px rgba(0,0,0,0.6), 0 0 24px var(--card-glow, transparent);
+}
+.lottery-card:hover::before { opacity: 1; }
+.lottery-card:hover::after { opacity: 0.6; }
+.card-header {
+  display: flex; align-items: center; gap: 12px; margin-bottom: 14px;
+}
+.card-icon {
+  width: 48px; height: 48px; border-radius: 14px;
+  background: var(--card-bg, rgba(255,255,255,0.06));
+  display: flex; align-items: center; justify-content: center;
+  font-size: 24px;
+}
+.card-name { font-size: 20px; font-weight: 800; letter-spacing: 0.02em; }
+.card-badge {
+  margin-left: auto; font-size: 11px; font-weight: 700; padding: 4px 12px;
+  border-radius: 10px; background: var(--card-badge-bg); color: var(--card-color);
+}
+.card-period { font-size: 14px; color: var(--text-dim); margin-bottom: 12px; font-family: var(--font-mono); }
+.card-numbers { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.card-footer {
+  margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--glass-border);
+  font-size: 12px; color: var(--text-muted); display: flex; justify-content: space-between;
+}
 
+/* ─── 3D 球号 ─── */
+.ball {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 36px; height: 36px; border-radius: 50%;
+  font-size: 14px; font-weight: 800; font-family: var(--font-mono);
+  color: #fff; position: relative;
+  background: radial-gradient(circle at 35% 30%, rgba(255,255,255,0.45) 0%, transparent 70%),
+              radial-gradient(circle at 50% 50%, var(--ball-color) 0%, var(--ball-dark) 100%);
+  box-shadow: 0 3px 8px rgba(0,0,0,0.5), inset 0 2px 3px rgba(255,255,255,0.2),
+              0 0 12px var(--ball-glow, transparent);
+  transition: transform 0.2s var(--ease-spring);
+}
+.ball:hover { transform: scale(1.18); z-index: 2; }
 .ball-sm {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 26px; height: 26px; border-radius: 50%;
-  font-size: 12px; font-weight: 700; color: #fff; margin: 0 1px;
+  width: 28px; height: 28px; font-size: 11px;
 }
-.ball-sm-sub {
-  background: #1565C0 !important;
+.ball-sub {
+  background: radial-gradient(circle at 35% 30%, rgba(255,255,255,0.4) 0%, transparent 70%),
+              radial-gradient(circle at 50% 50%, #1A56DB 0%, #0E3386 100%) !important;
+  box-shadow: 0 3px 8px rgba(0,0,0,0.5), inset 0 2px 3px rgba(255,255,255,0.15),
+              0 0 10px rgba(26,86,219,0.4) !important;
 }
-.ball-plus { color: var(--text-secondary); margin: 0 4px; }
+.ball-plus { color: var(--text-dim); margin: 0 6px; font-size: 16px; }
 
-.home-footer { text-align: center; padding: 32px 0; color: var(--text-secondary); font-size: 12px; }
-.home-footer span { margin: 0 12px; }
-
-/* ─── 详情页（公共） ─── */
-.detail-header { display: flex; align-items: center; gap: 16px; margin-bottom: 16px; flex-wrap: wrap; }
+/* ─── 详情页 ─── */
+.detail-topbar {
+  display: flex; align-items: center; gap: 16px; margin-bottom: 24px; flex-wrap: wrap;
+}
 .back-btn {
-  color: var(--text-secondary); text-decoration: none;
-  font-size: 14px; padding: 6px 14px; border-radius: 6px;
-  background: var(--bg-card); transition: all .2s;
+  color: var(--text-dim); text-decoration: none; font-size: 14px; font-weight: 600;
+  padding: 10px 18px; border-radius: 10px;
+  background: var(--bg-card); border: 1px solid var(--glass-border);
+  transition: all 0.25s; display: flex; align-items: center; gap: 6px;
 }
-.back-btn:hover { color: #fff; background: var(--bg-hover); }
-.detail-title { font-size: 22px; font-weight: 700; }
-.detail-period-range { margin-left: auto; font-size: 13px; color: var(--text-secondary); }
-
-.latest-draw {
-  background: var(--bg-card); border-radius: 10px;
-  padding: 14px 20px; margin-bottom: 16px;
-  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+.back-btn:hover { color: #fff; border-color: rgba(255,255,255,0.2); background: var(--bg-card-hover); }
+.detail-title {
+  font-size: 24px; font-weight: 900; display: flex; align-items: center; gap: 10px;
 }
-.latest-label { font-size: 14px; color: var(--text-secondary); }
-.latest-balls { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
-.ball-md {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 34px; height: 34px; border-radius: 50%;
-  font-size: 14px; font-weight: 700; color: #fff;
-  box-shadow: 0 2px 6px rgba(0,0,0,.3);
+.detail-period-tag {
+  margin-left: auto; font-size: 13px; color: var(--text-dim);
+  font-family: var(--font-mono); font-weight: 500;
 }
-.ball-plus-md { margin: 0 6px; color: var(--text-secondary); font-size: 18px; }
 
-/* ─── 统计卡片 ─── */
-.stat-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; margin-bottom: 16px; }
-.stat-card { background: var(--bg-card); border-radius: 8px; padding: 14px; text-align: center; }
-.stat-label { font-size: 12px; color: var(--text-secondary); margin-bottom: 4px; }
-.stat-value { font-size: 22px; font-weight: 700; }
-.stat-value.hot { color: var(--accent-ssq); }
-.stat-value.cold { color: #78909C; }
+/* 最新开奖栏 */
+.latest-bar {
+  background: var(--bg-card); border-radius: var(--radius-md);
+  border: 1px solid var(--glass-border);
+  padding: 18px 24px; margin-bottom: 20px;
+  display: flex; align-items: center; gap: 20px; flex-wrap: wrap;
+  backdrop-filter: blur(12px);
+}
+.latest-label { font-size: 13px; color: var(--text-dim); font-weight: 600; white-space: nowrap; }
+.latest-balls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.latest-meta { margin-left: auto; font-size: 12px; color: var(--text-muted); text-align: right; }
 
-/* ─── 图表标签 ─── */
-.chart-tabs { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 12px; }
+/* 统计卡片组 */
+.stat-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 12px; margin-bottom: 20px;
+}
+.stat-card {
+  background: var(--bg-card); border-radius: var(--radius-sm);
+  border: 1px solid var(--glass-border);
+  padding: 16px; text-align: center; backdrop-filter: blur(8px);
+  transition: all 0.3s;
+}
+.stat-card:hover { border-color: rgba(255,255,255,0.15); transform: translateY(-2px); }
+.stat-label { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; }
+.stat-value { font-size: 26px; font-weight: 900; font-family: var(--font-mono); }
+.stat-sub { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+
+/* 图表标签 */
+.chart-tabs {
+  display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px;
+}
 .chart-tab {
-  background: var(--bg-card); border: 1px solid var(--border);
-  color: var(--text-secondary); padding: 6px 14px;
-  border-radius: 6px; font-size: 13px; cursor: pointer;
-  transition: all .2s;
+  background: var(--bg-card); border: 1px solid var(--glass-border);
+  color: var(--text-dim); padding: 8px 18px; border-radius: 8px;
+  font-size: 13px; cursor: pointer; font-weight: 500;
+  transition: all 0.25s;
 }
-.chart-tab:hover { color: #fff; border-color: #fff3; }
-.chart-tab.active { color: #fff; font-weight: 600; }
+.chart-tab:hover { color: #fff; border-color: rgba(255,255,255,0.25); }
+.chart-tab.active {
+  color: #fff; font-weight: 700; border-color: var(--tab-color, var(--gold));
+  background: var(--tab-bg, rgba(245,166,35,0.1));
+  box-shadow: 0 0 20px var(--tab-glow, transparent);
+}
 
-/* ─── 图表区 ─── */
+/* 图表区 */
 .chart-area {
-  background: var(--bg-card); border-radius: 10px;
-  padding: 12px; margin-bottom: 16px; min-height: 420px;
+  background: var(--bg-card); border-radius: var(--radius-md);
+  border: 1px solid var(--glass-border);
+  padding: 16px; margin-bottom: 16px; min-height: 440px;
+  backdrop-filter: blur(12px);
 }
 
-/* ─── 号码网格 ─── */
-.number-grid-section { margin-bottom: 20px; }
-.grid-header { font-size: 16px; font-weight: 700; margin-bottom: 10px; }
-.grid-scroll { overflow-x: auto; border-radius: 8px; }
-.num-grid { border-collapse: collapse; font-size: 12px; white-space: nowrap; }
-.num-grid th, .num-grid td { padding: 3px 5px; text-align: center; border: 1px solid var(--border); }
-.num-grid th { background: var(--bg-card); color: var(--text-secondary); font-weight: 600; position: sticky; top: 0; }
-.grid-period-th, .grid-period { min-width: 55px; font-weight: 600; }
-.grid-num-th { min-width: 24px; font-size: 10px; }
-.grid-sub-th { color: #1565C0; }
-.grid-gap { border: none !important; width: 10px; background: transparent !important; }
-.grid-cell { font-size: 11px; font-weight: 600; min-width: 24px; }
-.grid-hit { color: #fff; font-weight: 700; border-radius: 2px; }
-.grid-omit-cold { color: #81C784; }
-.grid-omit-warm { color: #FFB74D; }
-.grid-omit-hot { color: #E57373; }
+/* 网格工具栏 */
+.grid-toolbar {
+  display: flex; align-items: center; gap: 12px; margin-bottom: 14px;
+  flex-wrap: wrap; justify-content: space-between;
+}
+.grid-toolbar-left { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.grid-toolbar-right { display: flex; align-items: center; gap: 8px; }
 
-/* ─── 数据表格 ─── */
-.data-table-section { margin-top: 20px; }
-.table-header { font-size: 16px; font-weight: 700; margin-bottom: 10px; }
-.table-pagination { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; font-size: 14px; }
+/* 期数选择器 */
+.period-selector { display: flex; gap: 0; border-radius: 8px; overflow: hidden; border: 1px solid var(--glass-border); }
+.period-opt {
+  background: var(--bg-card); border: none; color: var(--text-dim);
+  padding: 6px 14px; font-size: 12px; font-weight: 600; cursor: pointer;
+  transition: all 0.2s; border-right: 1px solid var(--glass-border);
+}
+.period-opt:last-child { border-right: none; }
+.period-opt:hover { color: #fff; background: rgba(255,255,255,0.05); }
+.period-opt.active { color: #fff; background: var(--grid-accent, rgba(245,166,35,0.15)); }
+
+/* 标注开关 */
+.annotation-toggles { display: flex; gap: 6px; }
+.anno-toggle {
+  display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--text-dim);
+  cursor: pointer; user-select: none; padding: 4px 10px; border-radius: 6px;
+  border: 1px solid var(--glass-border); background: var(--bg-card);
+  transition: all 0.2s;
+}
+.anno-toggle:hover { border-color: rgba(255,255,255,0.2); }
+.anno-toggle.active { color: #fff; border-color: var(--grid-accent, var(--gold)); background: var(--grid-accent-bg, rgba(245,166,35,0.1)); }
+.anno-toggle input { display: none; }
+
+/* 号码网格 */
+.grid-section { margin-bottom: 24px; }
+.grid-section h3 { font-size: 16px; font-weight: 700; margin-bottom: 12px; }
+.grid-scroll { overflow-x: auto; border-radius: 10px; }
+.grid-period-th, .grid-period { min-width: 72px; font-weight: 600; font-family: var(--font-mono); font-size: 11px; }
+.num-grid { border-collapse: collapse; font-size: 11px; white-space: nowrap; width: 100%; }
+.num-grid th, .num-grid td { padding: 4px 6px; text-align: center; border: 1px solid rgba(255,255,255,0.04); }
+.num-grid thead th {
+  background: rgba(20,20,30,0.95); color: var(--text-dim);
+  font-weight: 600; position: sticky; top: 0; z-index: 2;
+}
+.num-grid tbody tr { transition: background 0.15s; }
+.num-grid tbody tr:hover { background: rgba(255,255,255,0.03); }
+.grid-hit { color: #fff; font-weight: 700; border-radius: 3px; padding: 1px 0; }
+.grid-cold { color: #4FC3F7; }
+.grid-warm { color: #FFB74D; }
+.grid-hot  { color: #FF5252; }
+/* 新浪式标注：只改球色，不改单元格 */
+.grid-anno-neighbor { position: relative; }
+.grid-anno-neighbor::after {
+  content: ''; position: absolute; bottom: 2px; right: 2px;
+  width: 6px; height: 6px; border-radius: 50%; background: #FFD700;
+  box-shadow: 0 0 4px #FFD700;
+}
+
+/* 数据表 */
+.table-section h3 { font-size: 16px; font-weight: 700; margin-bottom: 12px; }
+.table-pagination { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; font-size: 14px; }
 .page-btn {
-  background: var(--bg-card); border: 1px solid var(--border);
-  color: var(--text-primary); padding: 4px 14px; border-radius: 6px;
-  cursor: pointer; font-size: 13px; transition: all .2s;
+  background: var(--bg-card); border: 1px solid var(--glass-border);
+  color: var(--text-main); padding: 6px 16px; border-radius: 8px;
+  cursor: pointer; font-size: 13px; font-weight: 600; transition: all 0.25s;
 }
-.page-btn:hover:not([disabled]) { background: var(--bg-hover); }
-.page-btn[disabled] { opacity: 0.4; cursor: default; }
-.table-scroll { overflow-x: auto; border-radius: 8px; }
+.page-btn:hover:not([disabled]) { background: var(--bg-card-hover); border-color: rgba(255,255,255,0.2); }
+.page-btn[disabled] { opacity: 0.3; cursor: default; }
+.table-scroll { overflow-x: auto; border-radius: 10px; }
 .data-table { border-collapse: collapse; font-size: 13px; width: 100%; }
-.data-table th, .data-table td { padding: 6px 10px; text-align: center; border: 1px solid var(--border); }
-.data-table th { background: var(--bg-card); color: var(--text-secondary); font-weight: 600; position: sticky; top: 0; }
-.data-table tr:hover td { background: var(--bg-hover); }
-.table-sub-header { color: #1565C0; }
-.table-sub-cell { color: #42A5F5; font-weight: 600; }
+.data-table th, .data-table td { padding: 8px 12px; text-align: center; border: 1px solid rgba(255,255,255,0.04); }
+.data-table thead th {
+  background: rgba(20,20,30,0.95); color: var(--text-dim);
+  font-weight: 600; position: sticky; top: 0; z-index: 2;
+}
+.data-table tbody tr { transition: background 0.15s; }
+.data-table tbody tr:hover { background: rgba(255,255,255,0.03); }
 
-/* ─── 错误页 ─── */
-.error-view { text-align: center; padding: 80px 24px; }
-.error-view h2 { font-size: 48px; margin-bottom: 16px; }
-.error-view p { color: var(--text-secondary); }
+/* 页脚 */
+.site-footer {
+  text-align: center; padding: 40px 0; color: var(--text-muted); font-size: 12px;
+  border-top: 1px solid var(--glass-border); margin-top: 20px;
+}
+.site-footer span { margin: 0 16px; }
 
-/* ─── 移动端适配 ─── */
+/* 错误页 */
+.error-view { text-align: center; padding: 100px 24px; }
+.error-view h2 { font-size: 56px; margin-bottom: 16px; }
+.error-view p { color: var(--text-dim); }
+
+/* ─── 响应式 ─── */
 @media (max-width: 768px) {
-  .nav-links { display: none; flex-direction: column; position: absolute; top: 56px; left: 0; right: 0;
-    background: var(--bg-card); border-bottom: 1px solid var(--border); padding: 8px; }
+  .navbar { padding: 0 16px; }
+  .nav-links { display: none; flex-direction: column; position: absolute; top: 64px; left: 0; right: 0;
+    background: rgba(8,8,12,0.96); border-bottom: 1px solid var(--glass-border); padding: 12px; }
   .nav-links.open { display: flex; }
   .nav-toggle { display: block; }
-  .home-cards { grid-template-columns: 1fr; }
-  .stat-cards { grid-template-columns: repeat(2, 1fr); }
-  .detail-header { flex-direction: column; align-items: flex-start; }
-  .detail-period-range { margin-left: 0; }
-  .chart-tabs { gap: 2px; }
-  .chart-tab { padding: 4px 8px; font-size: 11px; }
+  .lottery-grid { grid-template-columns: 1fr; }
+  .stat-row { grid-template-columns: repeat(2, 1fr); }
+  .hero { padding: 32px 0 24px; }
+  .latest-bar { flex-direction: column; align-items: flex-start; }
+  .latest-meta { margin-left: 0; }
 }
 </style>
 </head>
 <body>
 
-<!-- ═══════════ 导航栏 ═══════════ -->
-<nav class="navbar">
-  <div class="nav-brand">
-    <span class="icon">🎰</span>
-    <span>彩票数据面板</span>
-  </div>
-  <button class="nav-toggle" id="nav-toggle" aria-label="菜单">☰</button>
-  <div class="nav-links" id="nav-links">
-    <a href="#/home" class="nav-link active">🏠 首页</a>
-    <a href="#/ssq" class="nav-link" style="--nav-color:var(--accent-ssq)">🔴 双色球</a>
-    <a href="#/dlt" class="nav-link">🟠 大乐透</a>
-    <a href="#/kl8" class="nav-link">🟣 快乐八</a>
-    <a href="#/pl5" class="nav-link">🔵 排列5</a>
-    <a href="#/qxc" class="nav-link">🟢 七星彩</a>
-  </div>
-</nav>
+<!-- 背景粒子 -->
+<div class="bg-particles" id="bg-particles"></div>
 
-<!-- ═══════════ 视图容器 ═══════════ -->
-<div class="view-container">
+<div class="app-shell">
 
-  <!-- 主页 -->
-  <div id="view-home" class="view active">
-    <div class="home-header">
-      <h1>🎯 彩票数据分析面板</h1>
-      <p>5 彩种走势图 · 遗漏分析 · 频率统计 · 号码网格</p>
+  <!-- 导航栏 -->
+  <nav class="navbar">
+    <div class="nav-brand">
+      <div class="nav-brand-dot"></div>
+      <span>彩票数据面板</span>
     </div>
-    <div class="home-cards" id="home-cards"></div>
-    <div class="home-footer">
-      <span>⚠️ 数据仅供参考，彩票为随机游戏</span>
-      <span>数据更新: <span id="update-time">--</span></span>
+    <button class="nav-toggle" id="nav-toggle" aria-label="菜单">☰</button>
+    <div class="nav-links" id="nav-links">
+      <a href="#/home" class="nav-link active" style="--link-color:#F5A623">🏮 首页</a>
+      <a href="#/ssq" class="nav-link" style="--link-color:#FF2D55">🔴 双色球</a>
+      <a href="#/dlt" class="nav-link" style="--link-color:#FF9500">🟠 大乐透</a>
+      <a href="#/kl8" class="nav-link" style="--link-color:#AF52DE">🟣 快乐八</a>
+      <a href="#/pl5" class="nav-link" style="--link-color:#007AFF">🔵 排列5</a>
+      <a href="#/qxc" class="nav-link" style="--link-color:#00D2A0">🟢 七星彩</a>
     </div>
-  </div>
+  </nav>
 
-  <!-- 详情页 -->
-  <div id="view-detail" class="view"></div>
+  <!-- 视图 -->
+  <div class="view-container">
+    <div id="view-home" class="view active">
+      <div class="hero">
+        <div class="hero-badge"><div class="hero-badge-dot"></div>数据已同步至最新</div>
+        <h1>霓虹<span class="accent">彩票</span>大厅</h1>
+        <p>5大彩种 · 走势图 · 遗漏分析 · 频率统计 · 号码网格</p>
+      </div>
+      <div class="lottery-grid" id="home-cards"></div>
+      <div class="site-footer">
+        <span>⚠️ 数据仅供参考，彩票为独立随机游戏</span>
+        <span>更新于 <span id="update-time">--</span></span>
+      </div>
+    </div>
 
-  <!-- 错误页 -->
-  <div id="view-error" class="view">
-    <div class="error-view">
-      <h2>😵</h2>
-      <p>页面加载失败，请检查数据文件是否完整</p>
-      <a href="#/home" class="back-btn" style="margin-top:16px;display:inline-block;">← 返回首页</a>
+    <div id="view-detail" class="view"></div>
+    <div id="view-error" class="view">
+      <div class="error-view">
+        <h2>🎰</h2>
+        <p>数据加载失败，请确认已运行 preprocess.py 生成数据文件</p>
+        <a href="#/home" class="back-btn" style="margin-top:20px;display:inline-flex;">← 返回首页</a>
+      </div>
     </div>
   </div>
 
 </div>
 
-<!-- ═══════════ JS ═══════════ -->
 <script src="data/data.js"></script>
 <script src="js/utils.js"></script>
 <script src="js/charts.js"></script>
 <script src="js/app.js"></script>
 <script src="js/renderers.js"></script>
+
+<!-- 背景粒子生成 -->
+<script>
+(function() {
+  const container = document.getElementById('bg-particles');
+  const colors = ['#FF2D55','#FF9500','#AF52DE','#007AFF','#00D2A0','#F5A623'];
+  for (let i = 0; i < 30; i++) {
+    const p = document.createElement('div');
+    p.className = 'bg-particle';
+    const size = 2 + Math.random() * 4;
+    p.style.width = size + 'px';
+    p.style.height = size + 'px';
+    p.style.left = Math.random() * 100 + '%';
+    p.style.background = colors[Math.floor(Math.random() * colors.length)];
+    p.style.animationDuration = (8 + Math.random() * 18) + 's';
+    p.style.animationDelay = Math.random() * 15 + 's';
+    p.style.boxShadow = '0 0 ' + (size * 3) + 'px ' + p.style.background;
+    container.appendChild(p);
+  }
+})();
+</script>
+
+<!-- 卡片鼠标追踪光效 -->
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.lottery-card').forEach(card => {
+    card.addEventListener('mousemove', e => {
+      const rect = card.getBoundingClientRect();
+      const x = ((e.clientX - rect.left) / rect.width) * 100;
+      const y = ((e.clientY - rect.top) / rect.height) * 100;
+      card.style.setProperty('--mouse-x', x + '%');
+      card.style.setProperty('--mouse-y', y + '%');
+    });
+  });
+});
+</script>
 
 </body>
 </html>

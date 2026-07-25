@@ -1,27 +1,20 @@
 /**
- * 彩票 Dashboard SPA — 路由、导航、数据加载
+ * 彩票 Dashboard SPA — 霓虹主题版
+ * 路由、导航、数据加载
  */
 
 const App = {
-  // 缓存已加载的彩种数据
   dataCache: {},
-
-  // 当前激活的彩种类型
   currentType: null,
-
-  // 当前选中的图表模式
   currentChartMode: 'comprehensive',
 
-  /** 初始化 */
   async init() {
     this.bindNav();
     this.bindHashChange();
 
-    // 优先从内嵌数据加载（支持 file://），fallback 到 fetch（HTTP 服务器模式）
     if (window.__LOTTERY_DATA__) {
       this.summary = window.__LOTTERY_DATA__.summary;
       this.dataCache = window.__LOTTERY_DATA__.detail || {};
-      console.log('✅ 使用内嵌数据（offline 模式）');
     } else {
       try {
         const resp = await fetch('data/summary.json');
@@ -33,44 +26,35 @@ const App = {
     this.route();
   },
 
-  /** 绑定导航点击 */
   bindNav() {
     document.querySelectorAll('.nav-link').forEach(link => {
       link.addEventListener('click', (e) => {
         e.preventDefault();
-        const hash = link.getAttribute('href');
-        location.hash = hash;
+        location.hash = link.getAttribute('href');
+        // 移动端关闭菜单
+        document.getElementById('nav-links')?.classList.remove('open');
       });
     });
 
-    // 移动端汉堡菜单
     const toggle = document.getElementById('nav-toggle');
     const nav = document.getElementById('nav-links');
     if (toggle && nav) {
-      toggle.addEventListener('click', () => {
-        nav.classList.toggle('open');
-      });
+      toggle.addEventListener('click', () => nav.classList.toggle('open'));
     }
   },
 
-  /** 监听 hash 变化 */
-  bindHashChange() {
-    window.addEventListener('hashchange', () => this.route());
-  },
+  bindHashChange() { window.addEventListener('hashchange', () => this.route()); },
 
-  /** 路由分发 */
   async route() {
     const hash = location.hash.slice(1) || '/home';
     const parts = hash.split('/');
     const view = parts[1] || 'home';
     const sub = parts[2] || null;
 
-    // 高亮导航
     document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
     const activeLink = document.querySelector(`.nav-link[href="#/${view}"]`);
     if (activeLink) activeLink.classList.add('active');
 
-    // 隐藏所有视图
     document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
 
     try {
@@ -87,69 +71,88 @@ const App = {
     }
   },
 
-  /** 渲染主页 */
+  /** 彩种卡片配色 */
+  cardTheme(type) {
+    const themes = {
+      ssq: { color: '#FF2D55', color2: '#FF6B81', bg: 'rgba(255,45,85,0.12)', glow: 'rgba(255,45,85,0.15)', badgeBg: 'rgba(255,45,85,0.15)' },
+      dlt: { color: '#FF9500', color2: '#FFB84D', bg: 'rgba(255,149,0,0.12)',  glow: 'rgba(255,149,0,0.15)',  badgeBg: 'rgba(255,149,0,0.15)' },
+      kl8: { color: '#AF52DE', color2: '#D290F2', bg: 'rgba(175,82,222,0.12)', glow: 'rgba(175,82,222,0.15)', badgeBg: 'rgba(175,82,222,0.15)' },
+      pl5: { color: '#007AFF', color2: '#66B0FF', bg: 'rgba(0,122,255,0.12)',  glow: 'rgba(0,122,255,0.15)',  badgeBg: 'rgba(0,122,255,0.15)' },
+      qxc: { color: '#00D2A0', color2: '#5CE6C6', bg: 'rgba(0,210,160,0.12)', glow: 'rgba(0,210,160,0.15)', badgeBg: 'rgba(0,210,160,0.15)' },
+    };
+    return themes[type] || themes.ssq;
+  },
+
   renderHome() {
     document.getElementById('view-home').classList.add('active');
-    document.title = '彩票数据分析面板';
+    document.title = '彩票数据面板 · 霓虹大厅';
 
     const cards = document.getElementById('home-cards');
     if (!cards || !this.summary) return;
 
     const typeOrder = ['ssq', 'dlt', 'kl8', 'pl5', 'qxc'];
+    const ballColors = {
+      ssq: { main: [255,45,85], glow: 'rgba(255,45,85,0.45)' },
+      dlt: { main: [255,149,0], glow: 'rgba(255,149,0,0.45)' },
+      kl8: { main: [175,82,222], glow: 'rgba(175,82,222,0.45)' },
+      pl5: { main: [0,122,255], glow: 'rgba(0,122,255,0.45)' },
+      qxc: { main: [0,210,160], glow: 'rgba(0,210,160,0.45)' },
+    };
 
     cards.innerHTML = typeOrder.map(t => {
       const info = this.summary.types[t];
       if (!info) return '';
-      const color = Charts.colors[t].main;
+      const theme = this.cardTheme(t);
+      const bc = ballColors[t];
       const ld = info.latestDraw;
-      const balls = ld.main.map(n => `<span class="ball-sm" style="background:${color}">${Utils.fmtNum(n)}</span>`).join(' ');
+
+      const mainBalls = ld.main.map(n =>
+        `<span class="ball ball-sm" style="--ball-color:rgb(${bc.main.join(',')});--ball-dark:rgb(${Math.round(bc.main[0]*0.4)},${Math.round(bc.main[1]*0.4)},${Math.round(bc.main[2]*0.4)});--ball-glow:${bc.glow}">${String(n).padStart(2,'0')}</span>`
+      ).join('');
+
       const subBalls = ld.sub && ld.sub.length
-        ? ld.sub.map(n => `<span class="ball-sm ball-sm-sub">${Utils.fmtNum(n)}</span>`).join(' ')
+        ? ' <span class="ball-plus">+</span> ' + ld.sub.map(n => `<span class="ball ball-sm ball-sub">${String(n).padStart(2,'0')}</span>`).join(' ')
         : '';
 
       return `
-        <a href="#/${t}" class="home-card" style="--card-accent:${color}">
-          <div class="home-card-header">
-            <span class="home-card-icon">${this.getIcon(t)}</span>
-            <span class="home-card-name">${info.name}</span>
-            <span class="home-card-badge" style="background:${color}20;color:${color}">${info.totalDraws}期</span>
+        <a href="#/${t}" class="lottery-card" style="--card-color:${theme.color};--card-color2:${theme.color2};--card-bg:${theme.bg};--card-glow:${theme.glow};--card-badge-bg:${theme.badgeBg}">
+          <div class="card-header">
+            <div class="card-icon" style="background:${theme.bg}">${this.getIcon(t)}</div>
+            <span class="card-name">${info.name}</span>
+            <span class="card-badge">${info.totalDraws} 期</span>
           </div>
-          <div class="home-card-period">最新 ${info.latestPeriod}</div>
-          <div class="home-card-balls">${balls}${subBalls ? ' <span class="ball-plus">+</span> ' + subBalls : ''}</div>
-          <div class="home-card-range">${info.periodRange[0]} ~ ${info.periodRange[1]}</div>
+          <div class="card-period">#${info.latestPeriod}</div>
+          <div class="card-numbers">${mainBalls}${subBalls}</div>
+          <div class="card-footer">
+            <span>${info.periodRange[0]} ~ ${info.periodRange[1]}</span>
+            <span>→</span>
+          </div>
         </a>
       `;
     }).join('');
 
-    // 更新页脚时间
     const timeEl = document.getElementById('update-time');
     if (timeEl && this.summary.generatedAt) {
       timeEl.textContent = this.summary.generatedAt.slice(0, 19).replace('T', ' ');
     }
   },
 
-  /** 渲染彩种详情页 */
   async renderDetail(type, chartMode) {
     document.getElementById('view-detail').classList.add('active');
     document.title = `${LOTTERY_META[type].name}走势图 · 彩票面板`;
     this.currentType = type;
-
     if (chartMode) this.currentChartMode = chartMode;
 
-    // 加载数据
     const data = await this.loadData(type);
     if (!data) return;
 
-    // 渲染
     if (typeof Renderers.renderDetail === 'function') {
       Renderers.renderDetail(type, data, this.currentChartMode);
     }
   },
 
-  /** 按需加载 JSON 数据（优先从内嵌缓存） */
   async loadData(type) {
     if (this.dataCache[type]) return this.dataCache[type];
-    // fallback: HTTP 服务器模式下 fetch
     try {
       const resp = await fetch(`data/${type}.json`);
       const json = await resp.json();
@@ -161,20 +164,17 @@ const App = {
     }
   },
 
-  /** 切换图表模式（renderers 调用） */
   switchChartMode(type, mode) {
     this.currentChartMode = mode;
     location.replace(`#/${type}/${mode}`);
   },
 
-  /** 图标映射 */
   getIcon(type) {
     const map = { ssq: '🔴', dlt: '🟠', kl8: '🟣', pl5: '🔵', qxc: '🟢' };
     return map[type] || '🎱';
   },
 };
 
-/** 彩种元数据（避免重复 fetch） */
 const LOTTERY_META = {
   ssq: { name: '双色球', mainRange: [1, 33], mainCount: 6, subRange: [1, 16], subCount: 1,
     chartModes: ['综合图', '奇偶', '大小', '质合', '012路', 'AC值', '连号', '重号', '区间', '遗漏', '频率'],
@@ -193,5 +193,4 @@ const LOTTERY_META = {
     zones: null, mid: null, prime: false, positional: true },
 };
 
-// DOM ready 后启动
 document.addEventListener('DOMContentLoaded', () => App.init());

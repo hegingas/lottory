@@ -1,163 +1,232 @@
 /**
- * ECharts 图表工厂
- * 统一管理实例创建、主题、resize
+ * ECharts 图表工厂 — 霓虹主题
+ * 统一实例创建、暗色主题、resize
  */
 
 const Charts = {
-  // 当前活跃的 chart 实例
   instances: [],
 
-  // 彩种强调色映射
   colors: {
-    ssq: { main: '#E53935', sub: '#1565C0', light: '#EF9A9A' },
-    dlt: { main: '#FB8C00', sub: '#1E88E5', light: '#FFCC80' },
-    kl8: { main: '#8E24AA', sub: '#8E24AA', light: '#CE93D8' },
-    pl5: { main: '#1E88E5', sub: '#1E88E5', light: '#90CAF9' },
-    qxc: { main: '#00897B', sub: '#00897B', light: '#80CBC4' },
+    ssq: { main: '#FF2D55', sub: '#1565C0', light: '#FF6B81', glow: 'rgba(255,45,85,0.35)' },
+    dlt: { main: '#FF9500', sub: '#1E88E5', light: '#FFB84D', glow: 'rgba(255,149,0,0.35)' },
+    kl8: { main: '#AF52DE', sub: '#AF52DE', light: '#D290F2', glow: 'rgba(175,82,222,0.35)' },
+    pl5: { main: '#007AFF', sub: '#007AFF', light: '#66B0FF', glow: 'rgba(0,122,255,0.35)' },
+    qxc: { main: '#00D2A0', sub: '#00D2A0', light: '#5CE6C6', glow: 'rgba(0,210,160,0.35)' },
   },
 
-  /** 初始化 ECharts 实例 */
+  /** 主题色常量（全局 ECharts 默认） */
+  themeColors: {
+    text: '#B0ACA6',
+    textLight: '#E8E4DD',
+    axis: '#3A3632',
+    split: 'rgba(255,255,255,0.04)',
+    bg: '#08080C',
+  },
+
   init(domId) {
-    this.dispose(domId); // 先销毁同 ID 旧实例
+    this.dispose(domId);
     const dom = document.getElementById(domId);
     if (!dom) return null;
-    const chart = echarts.init(dom, 'dark', {
-      backgroundColor: '#1a1a2e',
+    const chart = echarts.init(dom, null, {
+      backgroundColor: 'transparent',
     });
     this.instances.push(chart);
     return chart;
   },
 
-  /** 销毁指定实例 */
   dispose(domId) {
     const dom = document.getElementById(domId);
     if (!dom) return;
     const idx = this.instances.findIndex(c => c.getDom() === dom);
-    if (idx >= 0) {
-      this.instances[idx].dispose();
-      this.instances.splice(idx, 1);
-    }
+    if (idx >= 0) { this.instances[idx].dispose(); this.instances.splice(idx, 1); }
   },
 
-  /** 销毁全部实例 */
-  disposeAll() {
-    this.instances.forEach(c => c.dispose());
-    this.instances = [];
+  disposeAll() { this.instances.forEach(c => c.dispose()); this.instances = []; },
+  resizeAll() { this.instances.forEach(c => c.resize()); },
+
+  getColors(type) { return this.colors[type] || this.colors.ssq; },
+
+  /** 共享 grid */
+  sharedGrid(extra = {}) {
+    return { left: 52, right: 24, top: 55, bottom: extra.bottom || 65, ...extra };
   },
 
-  /** 全局 resize */
-  resizeAll() {
-    this.instances.forEach(c => c.resize());
+  /** 共享 tooltip */
+  sharedTooltip() {
+    return {
+      trigger: 'axis',
+      backgroundColor: 'rgba(20,20,30,0.96)',
+      borderColor: 'rgba(255,255,255,0.1)',
+      textStyle: { color: '#E8E4DD', fontSize: 12 },
+    };
   },
 
-  /** 获取彩种色板 */
-  getColors(type) {
-    return this.colors[type] || this.colors.ssq;
-  },
-
-  // ─── 共享图表 options ───
-
-  /** 折线图：和值/跨度/AC值 走势 */
+  /** 折线图 */
   lineOption(title, data, periods, color, opts = {}) {
     return {
-      title: { text: title, left: 'center', textStyle: { color: '#e0e0e0', fontSize: 14 } },
-      tooltip: { trigger: 'axis' },
-      grid: { left: 50, right: 30, top: 50, bottom: 60 },
+      title: { text: title, left: 'center', top: 6, textStyle: { color: this.themeColors.textLight, fontSize: 14, fontWeight: 700 } },
+      tooltip: this.sharedTooltip(),
+      grid: this.sharedGrid(),
       xAxis: {
-        type: 'category',
-        data: periods,
-        axisLabel: { rotate: 45, fontSize: 10, color: '#999',
-          formatter: v => v.slice(-3) },
+        type: 'category', data: periods,
+        axisLine: { lineStyle: { color: this.themeColors.axis } },
+        axisTick: { show: false },
+        axisLabel: { rotate: 45, fontSize: 10, color: this.themeColors.text, formatter: v => v.slice(-3) },
       },
-      yAxis: { type: 'value', name: opts.yName || '' },
-      dataZoom: [{ type: 'slider', start: 0, end: 100, height: 20, bottom: 10 }],
+      yAxis: {
+        type: 'value', name: opts.yName || '',
+        nameTextStyle: { color: this.themeColors.text, fontSize: 11 },
+        splitLine: { lineStyle: { color: this.themeColors.split } },
+        axisLabel: { color: this.themeColors.text, fontSize: 10 },
+      },
+      dataZoom: opts.noZoom ? undefined : [{
+        type: 'slider', start: 0, end: 100, height: 18, bottom: 10,
+        backgroundColor: 'rgba(20,20,30,0.8)',
+        dataBackground: { lineStyle: { color: color }, areaStyle: { color: color + '20' } },
+        selectedDataBackground: { lineStyle: { color: '#fff' }, areaStyle: { color: color + '40' } },
+        textStyle: { color: this.themeColors.text },
+      }],
       series: [{
         name: title, type: 'line', data,
-        lineStyle: { color, width: 2 },
+        lineStyle: { color, width: 2.5, shadowBlur: 10, shadowColor: color + '60' },
         itemStyle: { color },
+        symbol: 'circle', symbolSize: 4,
         areaStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-          { offset: 0, color: color + '40' },
-          { offset: 1, color: color + '05' },
+          { offset: 0, color: color + '50' }, { offset: 1, color: color + '02' },
         ])},
-        markLine: opts.markLine ? { data: [{ type: 'average', name: '平均' }] } : undefined,
+        markLine: opts.markLine ? {
+          silent: true, symbol: 'none',
+          lineStyle: { color: '#F5A623', type: 'dashed', width: 1.5 },
+          label: { color: '#F5A623', fontSize: 11 },
+          data: [{ type: 'average', name: '均值' }],
+        } : undefined,
         ...(opts.seriesExtra || {}),
       }],
     };
   },
 
-  /** 柱状图：频率/遗漏/冷热 */
+  /** 柱状图 */
   barOption(title, labels, values, color, opts = {}) {
     return {
-      title: { text: title, left: 'center', textStyle: { color: '#e0e0e0', fontSize: 14 } },
-      tooltip: { trigger: 'axis' },
-      grid: { left: 40, right: 20, top: 50, bottom: 40 },
+      title: { text: title, left: 'center', top: 6, textStyle: { color: this.themeColors.textLight, fontSize: 14, fontWeight: 700 } },
+      tooltip: this.sharedTooltip(),
+      grid: this.sharedGrid({ bottom: 45 }),
       xAxis: {
         type: 'category', data: labels,
-        axisLabel: { fontSize: opts.fontSize || 10, color: '#999', rotate: opts.rotate || 0 },
+        axisLabel: { fontSize: opts.fontSize || 10, color: this.themeColors.text, rotate: opts.rotate || 0 },
+        axisTick: { show: false },
+        axisLine: { lineStyle: { color: this.themeColors.axis } },
       },
-      yAxis: { type: 'value', name: opts.yName || '次' },
+      yAxis: {
+        type: 'value', name: opts.yName || '次',
+        nameTextStyle: { color: this.themeColors.text, fontSize: 11 },
+        splitLine: { lineStyle: { color: this.themeColors.split } },
+        axisLabel: { color: this.themeColors.text, fontSize: 10 },
+      },
       series: [{
         name: title, type: 'bar', data: values,
         itemStyle: {
+          borderRadius: [6, 6, 0, 0],
           color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-            { offset: 0, color },
-            { offset: 1, color: color + '80' },
+            { offset: 0, color }, { offset: 1, color: color + '88' },
           ]),
-          borderRadius: [4, 4, 0, 0],
         },
+        emphasis: { itemStyle: { color, shadowBlur: 16, shadowColor: color + '80' } },
         ...(opts.seriesExtra || {}),
       }],
     };
   },
 
-  /** 堆叠柱状图：区间/奇偶/大小/012路分布 */
+  /** 堆叠柱状图 */
   stackedBarOption(title, categories, seriesData, colors, opts = {}) {
     return {
-      title: { text: title, left: 'center', textStyle: { color: '#e0e0e0', fontSize: 14 } },
-      tooltip: { trigger: 'axis' },
-      legend: { bottom: 0, textStyle: { color: '#999' } },
-      grid: { left: 40, right: 20, top: 50, bottom: 50 },
+      title: { text: title, left: 'center', top: 6, textStyle: { color: this.themeColors.textLight, fontSize: 14, fontWeight: 700 } },
+      tooltip: this.sharedTooltip(),
+      legend: { bottom: 0, textStyle: { color: this.themeColors.text, fontSize: 11 } },
+      grid: this.sharedGrid({ bottom: 55 }),
       xAxis: {
         type: 'category', data: categories,
-        axisLabel: { rotate: 45, fontSize: 10, color: '#999', formatter: v => v.slice(-3) },
+        axisLabel: { rotate: 45, fontSize: 10, color: this.themeColors.text, formatter: v => v.slice(-3) },
+        axisTick: { show: false }, axisLine: { lineStyle: { color: this.themeColors.axis } },
       },
-      yAxis: { type: 'value' },
-      dataZoom: [{ type: 'slider', start: 0, end: 100, height: 20, bottom: 35 }],
+      yAxis: {
+        type: 'value',
+        splitLine: { lineStyle: { color: this.themeColors.split } },
+        axisLabel: { color: this.themeColors.text, fontSize: 10 },
+      },
+      dataZoom: [{
+        type: 'slider', start: 0, end: 100, height: 18, bottom: 35,
+        backgroundColor: 'rgba(20,20,30,0.8)',
+        textStyle: { color: this.themeColors.text },
+      }],
       series: seriesData.map((s, i) => ({
         name: s.name, type: 'bar', stack: 'total', data: s.data,
-        itemStyle: { color: colors[i % colors.length] },
+        itemStyle: { color: colors[i % colors.length], borderRadius: i === seriesData.length - 1 ? [6,6,0,0] : 0 },
         emphasis: { focus: 'series' },
       })),
     };
   },
 
   /** 热力图 */
-  heatmapOption(title, data, xLabels, yLabels, colors) {
+  heatmapOption(title, data, xLabels, yLabels, rangeColors) {
+    const palette = rangeColors || ['#08080C', '#FF9500', '#FF2D55'];
     return {
-      title: { text: title, left: 'center', textStyle: { color: '#e0e0e0', fontSize: 14 } },
+      title: { text: title, left: 'center', top: 6, textStyle: { color: this.themeColors.textLight, fontSize: 14, fontWeight: 700 } },
       tooltip: { position: 'top' },
-      grid: { left: 60, right: 20, top: 50, bottom: 60 },
+      grid: { left: 60, right: 24, top: 50, bottom: 70 },
       xAxis: {
         type: 'category', data: xLabels, splitArea: { show: true },
-        axisLabel: { fontSize: 9, color: '#999' },
+        axisLabel: { fontSize: 9, color: this.themeColors.text },
       },
       yAxis: {
         type: 'category', data: yLabels, splitArea: { show: true },
-        axisLabel: { fontSize: 10, color: '#999' },
+        axisLabel: { fontSize: 10, color: this.themeColors.text },
       },
       visualMap: {
-        min: 0, max: Math.max(...data.map(d => d[2])),
+        min: 0, max: Math.max(...data.map(d => d[2]), 1),
         calculable: true, orient: 'horizontal', left: 'center', bottom: 0,
-        inRange: { color: colors || ['#1a1a2e', '#4fc3f7', '#E53935'] },
+        inRange: { color: palette },
+        textStyle: { color: this.themeColors.text },
       },
       series: [{
         name: title, type: 'heatmap', data,
-        label: { show: true, fontSize: 8 },
-        emphasis: { itemStyle: { shadowBlur: 10, shadowColor: 'rgba(0,0,0,0.5)' } },
+        label: { show: true, fontSize: 7, color: '#E8E4DD' },
+        emphasis: { itemStyle: { shadowBlur: 10, shadowColor: 'rgba(0,0,0,0.6)' } },
       }],
+    };
+  },
+
+  /** 综合图（多条折线） */
+  multiLineOption(title, seriesList, periods, opts = {}) {
+    return {
+      title: { text: title, left: 'center', top: 6, textStyle: { color: this.themeColors.textLight, fontSize: 14, fontWeight: 700 } },
+      tooltip: this.sharedTooltip(),
+      legend: { bottom: 0, textStyle: { color: this.themeColors.text, fontSize: 11 } },
+      grid: this.sharedGrid({ bottom: 55 }),
+      xAxis: {
+        type: 'category', data: periods,
+        axisLabel: { rotate: 45, fontSize: 10, color: this.themeColors.text, formatter: v => v.slice(-3) },
+        axisTick: { show: false }, axisLine: { lineStyle: { color: this.themeColors.axis } },
+      },
+      yAxis: {
+        type: 'value',
+        splitLine: { lineStyle: { color: this.themeColors.split } },
+        axisLabel: { color: this.themeColors.text, fontSize: 10 },
+      },
+      dataZoom: [{
+        type: 'slider', start: 0, end: 100, height: 18, bottom: 35,
+        backgroundColor: 'rgba(20,20,30,0.8)',
+        textStyle: { color: this.themeColors.text },
+      }],
+      series: seriesList.map(s => ({
+        name: s.name, type: 'line', data: s.data,
+        lineStyle: { color: s.color, width: 2 },
+        itemStyle: { color: s.color },
+        symbol: 'circle', symbolSize: 3,
+        ...(s.extra || {}),
+      })),
     };
   },
 };
 
-// 全局 resize 监听
-window.addEventListener('resize', Utils.debounce(() => Charts.resizeAll(), 200));
+window.addEventListener('resize', () => Charts.resizeAll());

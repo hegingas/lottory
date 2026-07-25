@@ -86,9 +86,11 @@ def read_csv(csv_path, config):
             period = row["period_id"].strip()
             main = [int(row[c]) for c in config["main_cols"]]
             sub = [int(row[c]) for c in config["sub_cols"]] if config["sub_cols"] else []
-            draws.append({"period": period, "main": sorted(main), "sub": sorted(sub)})
-    # 按期号排序
-    draws.sort(key=lambda d: d["period"])
+            # 按位彩种不排序 main(保留位置信息), 非按位彩种排序
+            is_pos = config.get("positional", False)
+            draws.append({"period": period, "main": main if is_pos else sorted(main), "sub": sorted(sub) if sub else []})
+    # 按期号数值排序(字符串排序会把"9358"排在"2026195"后面)
+    draws.sort(key=lambda d: int(d["period"]))
     return draws
 
 
