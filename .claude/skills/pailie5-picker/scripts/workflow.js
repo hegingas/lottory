@@ -83,76 +83,63 @@ d2-d5：(同样格式)
 );
 log('漏斗产出就绪');
 
-// ⚔️ 对抗验证：4人并行审查（无 pattern-spy）
-phase('对抗验证');
+// ⚔️ 对抗验证 · 收敛循环（最多3轮 review+rebuttal）
 const AGENTS = ['trend-hunter','gap-judge','struct-master','game-theorist'];
-const reviews = await parallel(
-  AGENTS.map(a => () =>
-    agent(
-      `你是选号审查委员会的**${a}**。审查以下排列5漏斗产出的号码。
+const MAX_ROUNDS = 3;
+let allReviews = [];
+let currentPick = pick;
+let converged = false;
 
+for (let round = 1; round <= MAX_ROUNDS && !converged; round++) {
+  phase(`对抗验证-R${round}`);
+  const roundReviews = await parallel(
+    AGENTS.map(a => () => agent(
+      `你是选号审查委员会的**${a}**。审查以下排列5漏斗产出${round>1?'（第'+round+'轮，聚焦未解决争议）':''}。
 CSV路径: data/processed/pl5_draws.csv（如需具体数据请自行读取）
+${round>1?'⚠️ 聚焦上一轮未解决的核心争议。':''}
+漏斗当前产出：${currentPick}
+${round>1?'\n历史辩论摘要：\n'+allReviews.slice(-3).map(r=>`[R${r.round}${r.type}] ${r.content.slice(0,400)}`).join('\n'):''}
+请从你的专业视角审查，指出问题并给改进建议。${round>1?'只关注未充分回应的核心争议。':''}`,
+      {agentType: a, label: `${a}审查-R${round}`, phase: `对抗验证-R${round}`}
+    ))
+  );
+  const validR = roundReviews.filter(Boolean);
+  validR.forEach(r => allReviews.push({round, type:'审查', content: r}));
+  log(`R${round}: ${validR.length}/${AGENTS.length} 审查完成`);
 
-漏斗产出：
-${pick}
+  phase(`漏斗自辩-R${round}`);
+  const rebuttalR = await agent(
+    `你是排列5漏斗选号专家。第${round}轮审查意见如下，请逐条自辩：
+当前产出：${currentPick}
+审查意见（R${round}）：${validR.map((r,i)=>`【${AGENTS[i]}】\n${r}`).join('\n\n')}
+${round>1?'\n历史辩论：\n'+allReviews.filter(r=>r.round<round).map(r=>r.content.slice(0,300)).join('\n...\n'):''}
+规则：有道理→认栽调整, 不合理→用数据反驳, 调整→输出修正版, 争议全部解决→开头写【CONVERGED】`,
+    {label:`漏斗自辩-R${round}`, phase:`漏斗自辩-R${round}`}
+  );
+  allReviews.push({round, type:'自辩', content: rebuttalR});
+  currentPick = rebuttalR;
+  log(`R${round}: 漏斗已自辩`);
 
-请从你的专业视角审查，按你的审查方法输出：哪些号有问题？为什么？建议怎么改？`,
-      {agentType: a, label: `${a}审查`, phase: '对抗验证'}
-    )
-  )
-);
-const validReviews = reviews.filter(Boolean);
-log(`${validReviews.length}/${AGENTS.length} 位审查员完成审查`);
+  if (round < MAX_ROUNDS) {
+    const check = await agent(
+      `检查第${round}轮是否已收敛。只输出：CONVERGED 或 NEED_NEXT_ROUND`,
+      {label:`收敛检查-R${round}`, phase:'收敛检查', model:'haiku'}
+    );
+    if (check.toUpperCase().includes('CONVERGED') && !check.toUpperCase().includes('NEED_NEXT_ROUND')) {
+      converged = true; log(`✅ R${round} 已收敛`);
+    } else { log(`🔄 R${round} 未收敛，进入R${round+1}`); }
+  }
+}
 
-// 🗣️ 漏斗自辩：面对审查意见，逐条反驳或认栽
-phase('漏斗自辩');
-const rebuttal = await agent(
-  `你是排列5漏斗选号专家。审查员对你的产出提出了质疑，请逐条自辩：
-
-你的原始产出：
-${pick}
-
-审查意见：
-${validReviews.map((r, i) => `【${AGENTS[i]}】\n${r}`).join('\n\n')}
-
-规则：
-- 有道理的批评 → 大方认栽，给出具体调整
-- 不合理的批评 → 用回测数据和统计规律据理反驳
-- 调整号码 → 说明"因为XX审查员指出XX，我决定把dX从A改成B"
-- 维持原判 → 说明"XX审查员的质疑不成立，因为..."
-- 最终输出修正版号码（格式同漏斗层）
-
-输出：逐条回应 + 修正后号码 + 一句话总结`,
-  {label:'漏斗自辩',phase:'漏斗自辩'}
-);
-log('漏斗已自辩');
-
-// 👑 终裁：综合漏斗+审查+自辩三方意见
 phase('终裁');
 const final = await agent(
-  `你是首席裁判。综合三方意见——漏斗产出、审查员挑刺、漏斗自辩——输出最终推荐号码。
-
-─── 漏斗产出 ───
-${pick}
-
-─── 审查意见 ───
-${validReviews.map((r, i) => `【${AGENTS[i]}】\n${r}`).join('\n\n')}
-
-─── 漏斗自辩 ───
-${rebuttal}
-
-─── 裁决规则 ──
-1. 漏斗有理有据反驳的 → 驳回审查意见，采信漏斗
-2. 漏斗认栽的 → 采纳审查建议，用修正版
-3. 审查意见 + 漏斗认栽都不足以推翻的 → 维持原判
-4. 结构/形态硬伤 → 必须修正
-5. 维持原漏斗格式输出
-
-输出最终号码，并简要说明裁决依据（谁说服了谁）。
-
-⚠️ 排列5为独立随机游戏，历史统计不构成开奖保证。理性购彩。`,
+  `你是首席裁判。综合${allReviews.filter(r=>r.type==='审查').length}轮辩论，输出最终推荐号码。
+─── 漏斗原始产出 ─── ${pick}
+─── 全部辩论 ─── ${allReviews.map(r=>`[${r.type}-R${r.round}] ${r.content.slice(0,600)}`).join('\n---\n')}
+裁决规则：1.漏斗最后认栽→采纳修正版 2.有理反驳未被再追击→驳回审查 3.结构硬伤→必须修正 4.维持原格式
+输出最终号码+裁决依据。⚠️ 排列5为独立随机游戏，理性购彩。`,
   {label:'首席裁定',phase:'终裁',model:'sonnet'}
 );
 
 log('✅ 完成');
-return {funnelResult:pick, reviews:validReviews, rebuttal, final, phases:['按位结构','跨位形态','精选','对抗验证','漏斗自辩','终裁']};
+return {funnelResult:pick, allReviews, final, phases:['按位结构','跨位形态','精选','对抗验证-收敛循环','终裁']};
