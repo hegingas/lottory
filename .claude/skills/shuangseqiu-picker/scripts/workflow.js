@@ -131,7 +131,7 @@ ${round > 1 ? '⚠️ 上一轮自辩未能完全说服审查员，本轮聚焦�
 
 漏斗当前产出：
 ${currentPick}
-${round > 1 ? '\n历史辩论：\n' + allReviews.map(r => `[R${r.round} ${r.type}] ${r.content.slice(0,500)}`).join('\n\n') : ''}
+${round > 1 ? '\n历史辩论：\n' + allReviews.map(r => `[R${r.round} ${r.type}] ${r.content.slice(0,2000)}`).join('\n\n') : ''}
 
 请从你的专业视角审查，指出问题并给改进建议。${round > 1 ? '只关注上一轮自辩未充分回应的核心争议。' : ''}`,
         {agentType: a, label: `${a}审查-R${round}`, phase: `对抗验证-R${round}`}
@@ -152,7 +152,7 @@ ${currentPick}
 
 审查意见（第${round}轮）：
 ${validR.map((r, i) => `【${AGENTS[i]}】\n${r}`).join('\n\n')}
-${round > 1 ? '\n历史辩论摘要：\n' + allReviews.filter(r => r.type==='审查' && r.round < round).map(r => r.content.slice(0,300)).join('\n...\n') : ''}
+${round > 1 ? '\n历史辩论摘要：\n' + allReviews.filter(r => r.type==='审查' && r.round < round).map(r => r.content.slice(0,3000)).join('\n...\n') : ''}
 
 规则：
 - 有道理的批评 → 大方认栽，给出调整
@@ -174,7 +174,7 @@ ${round > 1 ? '\n历史辩论摘要：\n' + allReviews.filter(r => r.type==='审
       `检查第${round}轮辩论是否已收敛。看自辩是否标注了【CONVERGED】，以及审查意见的核心反对（结构硬伤/遗漏超限/趋势严重恶化）是否已被充分回应或调整。
 
 辩论记录：
-${allReviews.slice(-3).map(r => `[${r.type}-R${r.round}] ${r.content.slice(0,600)}`).join('\n\n---\n')}
+${allReviews.slice(-3).map(r => `[${r.type}-R${r.round}] ${r.content.slice(0,3000)}`).join('\n\n---\n')}
 
 只输出一个词：CONVERGED 或 NEED_NEXT_ROUND`,
       {label:`收敛检查-R${round}`, phase:`收敛检查`, model:'haiku'}
@@ -197,7 +197,7 @@ const final = await agent(
 ${pick}
 
 ─── 全部辩论记录 ───
-${allReviews.map(r => `【${r.type}-R${r.round}】\n${r.content.slice(0,800)}`).join('\n\n---\n')}
+${allReviews.map(r => `【${r.type}-R${r.round}】\n${r.content.slice(0,4000)}`).join('\n\n---\n')}
 
 ─── 裁决规则 ──
 1. 漏斗在最后一轮自辩中认栽的 → 采纳修正版
@@ -211,5 +211,18 @@ ${allReviews.map(r => `【${r.type}-R${r.round}】\n${r.content.slice(0,800)}`).
   {label:'首席裁定',phase:'终裁',model:'sonnet'}
 );
 
+phase('存档');
+await agent(
+  `用 Bash 完成：
+1. 读 data/processed/ssq_draws.csv 最后一行拿最新期号，算下一期(+1)
+2. 从终裁输出提取：复式红球/蓝球、3注单式红球+蓝球、胆码、核心逻辑
+3. 调用 python scripts/_archive_prediction.py ssq '{"period_id":"...","compound_red":"...","compound_blue":"...","s1_red":"...","s1_blue":"...","s2_red":"...","s2_blue":"...","s3_red":"...","s3_blue":"...","dan_ma":"...","notes":"..."}' 归档
+
+终裁输出：
+${final}
+
+号码空格分隔，notes保留核心逻辑(≤100字)。只输出归档结果。`,
+  {label:'预测存档',phase:'存档',model:'haiku'}
+);
 log('✅ 完成');
-return {funnelResult:pick, allReviews, final, phases:['预筛选','结构','形态','精选','对抗验证-收敛循环','终裁']};
+return {funnelResult:pick, allReviews, final, phases:['预筛选','结构','形态','精选','对抗验证-收敛循环','终裁','存档']};

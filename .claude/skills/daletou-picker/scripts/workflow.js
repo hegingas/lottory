@@ -105,7 +105,7 @@ for (let round = 1; round <= MAX_ROUNDS && !converged; round++) {
 CSV路径: data/processed/dlt_draws.csv（如需具体数据请自行读取）
 ${round>1?'⚠️ 聚焦上一轮未解决的核心争议。':''}
 漏斗当前产出：${currentPick}
-${round>1?'\n历史辩论摘要：\n'+allReviews.slice(-3).map(r=>`[R${r.round}${r.type}] ${r.content.slice(0,400)}`).join('\n'):''}
+${round>1?'\n历史辩论摘要：\n'+allReviews.slice(-3).map(r=>`[R${r.round}${r.type}] ${r.content.slice(0,2000)}`).join('\n'):''}
 请从你的专业视角审查，指出问题并给改进建议。${round>1?'只关注未充分回应的核心争议。':''}`,
       {agentType: a, label: `${a}审查-R${round}`, phase: `对抗验证-R${round}`}
     ))
@@ -119,7 +119,7 @@ ${round>1?'\n历史辩论摘要：\n'+allReviews.slice(-3).map(r=>`[R${r.round}$
     `你是大乐透漏斗选号专家。第${round}轮审查意见如下，请逐条自辩：
 当前产出：${currentPick}
 审查意见（R${round}）：${validR.map((r,i)=>`【${AGENTS[i]}】\n${r}`).join('\n\n')}
-${round>1?'\n历史辩论：\n'+allReviews.filter(r=>r.round<round).map(r=>r.content.slice(0,300)).join('\n...\n'):''}
+${round>1?'\n历史辩论：\n'+allReviews.filter(r=>r.round<round).map(r=>r.content.slice(0,3000)).join('\n...\n'):''}
 规则：有道理→认栽调整, 不合理→用数据反驳, 调整→输出修正版, 争议全部解决→开头写【CONVERGED】`,
     {label:`漏斗自辩-R${round}`, phase:`漏斗自辩-R${round}`}
   );
@@ -130,7 +130,7 @@ ${round>1?'\n历史辩论：\n'+allReviews.filter(r=>r.round<round).map(r=>r.con
   if (round < MAX_ROUNDS) {
     const check = await agent(
       `检查第${round}轮是否已收敛。看自辩是否标注【CONVERGED】，核心反对是否已被充分回应。
-辩论记录：${allReviews.slice(-3).map(r=>`[${r.type}-R${r.round}] ${r.content.slice(0,500)}`).join('\n---\n')}
+辩论记录：${allReviews.slice(-3).map(r=>`[${r.type}-R${r.round}] ${r.content.slice(0,3000)}`).join('\n---\n')}
 只输出：CONVERGED 或 NEED_NEXT_ROUND`,
       {label:`收敛检查-R${round}`, phase:'收敛检查', model:'haiku'}
     );
@@ -144,11 +144,24 @@ phase('终裁');
 const final = await agent(
   `你是首席裁判。综合${allReviews.filter(r=>r.type==='审查').length}轮辩论，输出最终推荐号码。
 ─── 漏斗原始产出 ─── ${pick}
-─── 全部辩论 ─── ${allReviews.map(r=>`[${r.type}-R${r.round}] ${r.content.slice(0,600)}`).join('\n---\n')}
+─── 全部辩论 ─── ${allReviews.map(r=>`[${r.type}-R${r.round}] ${r.content.slice(0,4000)}`).join('\n---\n')}
 裁决规则：1.漏斗最后认栽→采纳修正版 2.有理反驳未被再追击→驳回审查 3.结构硬伤→必须修正 4.维持原格式
 输出最终号码+裁决依据。⚠️ 大乐透为独立随机游戏，理性购彩。`,
   {label:'首席裁定',phase:'终裁',model:'sonnet'}
 );
 
+phase('存档');
+await agent(
+  `用 Bash 完成：
+1. 读 data/processed/dlt_draws.csv 最后一行拿最新期号，算下一期(+1)
+2. 从终裁输出提取：复式前区/后区、3注单式前区+后区、胆码、核心逻辑
+3. 调用 python scripts/_archive_prediction.py dlt '{"period_id":"...","compound_front":"...","compound_back":"...","s1_front":"...","s1_back":"...","s2_front":"...","s2_back":"...","s3_front":"...","s3_back":"...","dan_ma":"...","notes":"..."}' 归档
+
+终裁输出：
+${final}
+
+号码空格分隔，notes保留核心逻辑(≤100字)。只输出归档结果。`,
+  {label:'预测存档',phase:'存档',model:'haiku'}
+);
 log('✅ 完成');
-return {funnelResult:pick, allReviews, final, phases:['结构','形态','精选','对抗验证-收敛循环','终裁']};
+return {funnelResult:pick, allReviews, final, phases:['结构','形态','精选','对抗验证-收敛循环','终裁','存档']};
