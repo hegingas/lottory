@@ -50,7 +50,7 @@ def append_prediction(lottery_type: str, data: dict):
             existing.append(row)
 
     if any(r['period_id'] == str(data['period_id']) for r in existing):
-        print(f'⏭️  {lottery_type} 期号 {data["period_id"]} 已存在，跳过')
+        print(f'[SKIP] {lottery_type} period {data["period_id"]} already exists')
         return
 
     with open(csv_path, 'w', newline='', encoding='utf-8') as f:
@@ -78,7 +78,7 @@ def append_prediction(lottery_type: str, data: dict):
     with open(MANIFEST_PATH, 'w', encoding='utf-8') as f:
         json.dump(manifest, f, ensure_ascii=False, indent=2)
 
-    print(f'✅ {lottery_type} 期号 {data["period_id"]} 已归档 → data/predictions/{lottery_type}_predictions.csv')
+    print(f'[OK] {lottery_type} period {data["period_id"]} archived to data/predictions/{lottery_type}_predictions.csv')
 
 
 if __name__ == '__main__':

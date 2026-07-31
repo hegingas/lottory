@@ -1,0 +1,17 @@
+{
+  "fetched_at": "2026-07-31T23:11:57.821001+08:00",
+  "source": "https://www.zhcw.com/kjxx/dlt/",
+  "draws": [
+    {
+      "lottery_type": "dlt",
+      "period_id": "2026085",
+      "front_1": "03",
+      "front_2": "04",
+      "front_3": "14",
+      "front_4": "28",
+      "front_5": "31",
+      "back_1": "05",
+      "back_2": "07"
+    }
+  ]
+}
