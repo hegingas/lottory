@@ -151,8 +151,8 @@ ${round > 1 ? '\n历史辩论：\n' + allReviews.map(r => `[R${r.round} ${r.type
 ${currentPick}
 
 审查意见（第${round}轮）：
-${validR.map((r, i) => `【${AGENTS[i]}】\n${r}`).join('\n\n')}
-${round > 1 ? '\n历史辩论摘要：\n' + allReviews.filter(r => r.type==='审查' && r.round < round).map(r => r.content.slice(0,3000)).join('\n...\n') : ''}
+${validR.map((r, i) => `【${AGENTS[i]}】\n${r.slice(0,2000)}`).join('\n\n')}
+${round > 1 ? '\n历史辩论摘要：\n' + allReviews.filter(r => r.type==='审查' && r.round < round).map(r => r.content.slice(0,1200)).join('\n...\n') : ''}
 
 规则：
 - 有道理的批评 → 大方认栽，给出调整
@@ -161,11 +161,16 @@ ${round > 1 ? '\n历史辩论摘要：\n' + allReviews.filter(r => r.type==='审
 - 维持原判 → 说明理由
 - 如果所有争议已解决→开头写【CONVERGED】
 
-输出：逐条回应 + 修正后号码${round < MAX_ROUNDS ? ' + 如果已无实质性分歧请标注【CONVERGED】' : ''}`,
+输出：逐条回应 + 修正后号码。⚠️ 回应务必精简，全文控制在 2500 字以内（这是硬性要求）${round < MAX_ROUNDS ? ' + 如果已无实质性分歧请标注【CONVERGED】' : ''}`,
     {label:`漏斗自辩-R${round}`, phase:`漏斗自辩-R${round}`}
   );
-  allReviews.push({round, type:'自辩', content: rebuttalR});
-  currentPick = rebuttalR; // 修正版作为下一轮的输入
+  if (rebuttalR) {
+    allReviews.push({round, type:'自辩', content: rebuttalR});
+    currentPick = rebuttalR; // 修正版作为下一轮的输入
+  } else {
+    allReviews.push({round, type:'自辩', content: '（自辩 agent 失败，沿用上一版产出）'});
+    log(`⚠️ R${round} 自辩失败，沿用上版产出`);
+  }
   log(`R${round}: 漏斗已自辩`);
 
   // ── 收敛检查 ──
@@ -197,7 +202,7 @@ const final = await agent(
 ${pick}
 
 ─── 全部辩论记录 ───
-${allReviews.map(r => `【${r.type}-R${r.round}】\n${r.content.slice(0,4000)}`).join('\n\n---\n')}
+${allReviews.map(r => `【${r.type}-R${r.round}】\n${(r.content || '').slice(0,4000)}`).join('\n\n---\n')}
 
 ─── 裁决规则 ──
 1. 漏斗在最后一轮自辩中认栽的 → 采纳修正版

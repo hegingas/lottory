@@ -75,17 +75,49 @@ def load_params():
     with open(path, encoding="utf-8") as f:
         return json.load(f)
 
+# 各彩种预测 CSV 的列映射：(主区列, 副区列)，None 表示该彩种无此列
+PRED_CSV_COLS = {
+    "dlt": [("compound_front", "compound_back"), ("s1_front", "s1_back"),
+            ("s2_front", "s2_back"), ("s3_front", "s3_back")],
+    "ssq": [("compound_red", "compound_blue"), ("s1_red", "s1_blue"),
+            ("s2_red", "s2_blue"), ("s3_red", "s3_blue")],
+    "kl8": [("compound", None), ("s1", None), ("s2", None), ("s3", None)],
+    "pl5": [(None, None), ("s1", None), ("s2", None), ("s3", None)],
+    "qxc": [("compound_front", "compound_back"), ("s1_front", "s1_back"),
+            ("s2_front", "s2_back"), ("s3_front", "s3_back")],
+}
+
 def load_predictions(cfg_id, period):
-    """尝试加载对应的预测记录"""
+    """尝试加载对应的预测记录（优先 JSON 存档，回退到 CSV 存档）"""
     pred_dir = os.path.join(BASE, "data/predictions")
     if not os.path.isdir(pred_dir):
         return None
+    # 1) 每期 JSON 存档
     for fname in sorted(os.listdir(pred_dir), reverse=True):
         if fname.startswith(f"{cfg_id}_") and fname.endswith(".json"):
             with open(os.path.join(pred_dir, fname), encoding="utf-8") as f:
                 pred = json.load(f)
             if pred.get("period") == period:
                 return pred
+    # 2) CSV 存档（Workflow 当前写盘格式）
+    csv_path = os.path.join(pred_dir, f"{cfg_id}_predictions.csv")
+    if os.path.isfile(csv_path):
+        with open(csv_path, encoding="utf-8") as f:
+            for row in csv.DictReader(f):
+                if row.get("period_id") != period:
+                    continue
+                bets = []
+                for main_col, sub_col in PRED_CSV_COLS.get(cfg_id, []):
+                    main_val = (row.get(main_col) or "").strip() if main_col else ""
+                    if not main_val:
+                        continue
+                    sub_val = (row.get(sub_col) or "").strip() if sub_col else ""
+                    bets.append({"main": main_val.split(),
+                                 "sub": sub_val.split() if sub_val else []})
+                if bets:
+                    return {"lottery_type": cfg_id, "period": period,
+                            "predicted_at": row.get("pred_time", ""),
+                            "bets": bets, "notes": row.get("notes", "")}
     return None
 
 # ── 结构分析 ────────────────────────────

@@ -26,7 +26,7 @@
 |-------|------|:--:|:--:|------|
 | `shuangseqiu-picker` | 双色球 | 四层（预筛选→结构→形态→精选） | 5 人 | `Workflow({scriptPath: ".claude/skills/shuangseqiu-picker/scripts/workflow.js"})` |
 | `daletou-picker` | 大乐透 | 三层（结构→形态→精选，深冻/热冷无效） | 5 人 | `Workflow({scriptPath: ".claude/skills/daletou-picker/scripts/workflow.js"})` |
-| `kuaileba-picker` | 快乐八 | 四层（预筛选→结构→形态→精选） | 4 人 | `Workflow({scriptPath: ".claude/skills/kuaileba-picker/scripts/workflow.js"})` |
+| `kuaileba-picker` | 快乐八 | 两段式（结构合规→共识分散） | 2 人 | `Workflow({scriptPath: ".claude/skills/kuaileba-picker/scripts/workflow.js"})` |
 | `pailie5-picker` | 排列5 | 三层（按位结构→跨位形态→精选） | 4 人 | `Workflow({scriptPath: ".claude/skills/pailie5-picker/scripts/workflow.js"})` |
 | `qixingcai-picker` | 七星彩 | 四层（预筛选→按位结构→跨位形态→精选） | 4 人 | `Workflow({scriptPath: ".claude/skills/qixingcai-picker/scripts/workflow.js"})` |
 

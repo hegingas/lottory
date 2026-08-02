@@ -59,11 +59,11 @@
     }
   },
   "kl8": {
-    "deep_freeze": { "threshold": 0.97, "false_kill_rate": 0.019, "enabled": true },
+    "deep_freeze": { "threshold": 0.97, "false_kill_rate": 0.019, "enabled": false },
     "hot_cold": {
       "hot_threshold": 4, "cold_gap": 22,
-      "hot_hit_rate": 0.247, "cold_hit_rate": 0.003, "diff": 0.244,
-      "enabled": true, "note": "全彩种最强区分度24.4%"
+      "hot_hit_rate": 0.0, "cold_hit_rate": 0.0, "diff": 0.0,
+      "enabled": false, "note": "2026-08-02 对抗验证复核：热冷/遗漏无区分度(24.87~25.25%≈随机25%)，已废弃"
     },
     "structure": {
       "parity_range": [4, 6],
