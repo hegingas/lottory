@@ -1,19 +1,19 @@
 {
-  "generatedAt": "2026-07-25T22:06:07.728485+08:00",
+  "generatedAt": "2026-08-03T21:06:42.838026+08:00",
   "types": {
     "ssq": {
       "name": "双色球",
-      "totalDraws": 3481,
-      "latestPeriod": "2026084",
+      "totalDraws": 3485,
+      "latestPeriod": "2026088",
       "latestDraw": {
-        "period": "2026084",
+        "period": "2026088",
         "main": [
-          1,
-          5,
           6,
-          10,
-          12,
-          16
+          7,
+          11,
+          18,
+          22,
+          33
         ],
         "sub": [
           5
@@ -21,108 +21,108 @@
       },
       "periodRange": [
         "2003001",
-        "2026084"
+        "2026088"
       ]
     },
     "dlt": {
       "name": "大乐透",
-      "totalDraws": 2901,
-      "latestPeriod": "2026083",
+      "totalDraws": 2904,
+      "latestPeriod": "2026086",
       "latestDraw": {
-        "period": "2026083",
+        "period": "2026086",
         "main": [
-          14,
-          15,
-          16,
-          23,
-          26
+          10,
+          11,
+          18,
+          22,
+          35
         ],
         "sub": [
-          7,
-          9
+          6,
+          12
         ]
       },
       "periodRange": [
         "2007001",
-        "2026083"
+        "2026086"
       ]
     },
     "kl8": {
       "name": "快乐八",
-      "totalDraws": 2006,
-      "latestPeriod": "2026196",
+      "totalDraws": 2014,
+      "latestPeriod": "2026204",
       "latestDraw": {
-        "period": "2026196",
+        "period": "2026204",
         "main": [
-          4,
-          6,
-          14,
-          29,
-          32,
-          36,
-          39,
-          40,
-          42,
-          43,
-          44,
-          53,
+          3,
+          10,
+          13,
+          21,
+          22,
+          24,
+          28,
+          37,
+          38,
+          46,
+          51,
+          52,
+          54,
           56,
-          61,
-          67,
-          68,
-          69,
+          59,
+          60,
+          65,
+          66,
           70,
-          73,
-          79
+          73
         ],
         "sub": []
       },
       "periodRange": [
         "2020012",
-        "2026196"
+        "2026204"
       ]
     },
     "pl5": {
       "name": "排列5",
-      "totalDraws": 7665,
-      "latestPeriod": "2026196",
+      "totalDraws": 7673,
+      "latestPeriod": "2026204",
       "latestDraw": {
-        "period": "2026196",
+        "period": "2026204",
         "main": [
-          7,
-          2,
           6,
-          3,
-          2
+          7,
+          4,
+          0,
+          7
         ],
         "sub": []
       },
       "periodRange": [
         "4001",
-        "2026196"
+        "2026204"
       ]
     },
     "qxc": {
       "name": "七星彩",
-      "totalDraws": 872,
-      "latestPeriod": "26084",
+      "totalDraws": 876,
+      "latestPeriod": "26088",
       "latestDraw": {
-        "period": "26084",
+        "period": "26088",
         "main": [
-          6,
-          3,
-          8,
-          4,
-          4,
-          0
+          9,
+          5,
+          1,
+          9,
+          5,
+          9
         ],
         "sub": [
-          7
+          2
         ]
       },
       "periodRange": [
         "20100",
-        "26084"
+        "26088"
       ]
     }
   }
