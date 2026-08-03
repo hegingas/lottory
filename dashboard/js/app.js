@@ -107,7 +107,7 @@ const App = {
       const ld = info.latestDraw;
 
       const mainBalls = ld.main.map(n =>
-        `<span class="ball ball-sm" style="--ball-color:rgb(${bc.main.join(',')});--ball-dark:rgb(${Math.round(bc.main[0]*0.4)},${Math.round(bc.main[1]*0.4)},${Math.round(bc.main[2]*0.4)});--ball-glow:${bc.glow}">${String(n).padStart(2,'0')}</span>`
+        `<span class="ball ${t === 'kl8' ? 'ball-xs' : 'ball-sm'}" style="--ball-color:rgb(${bc.main.join(',')});--ball-dark:rgb(${Math.round(bc.main[0]*0.4)},${Math.round(bc.main[1]*0.4)},${Math.round(bc.main[2]*0.4)});--ball-glow:${bc.glow}">${String(n).padStart(2,'0')}</span>`
       ).join('');
 
       const subBalls = ld.sub && ld.sub.length
@@ -125,11 +125,15 @@ const App = {
           <div class="card-numbers">${mainBalls}${subBalls}</div>
           <div class="card-footer">
             <span>${info.periodRange[0]} ~ ${info.periodRange[1]}</span>
-            <span>→</span>
+            <span class="countdown" data-type="${t}"></span>
           </div>
         </a>
       `;
     }).join('');
+
+    cards.querySelectorAll('.lottery-card').forEach((c, i) => {
+      c.style.setProperty('--stagger', (i * 70) + 'ms');
+    });
 
     const timeEl = document.getElementById('update-time');
     if (timeEl && this.summary.generatedAt) {
@@ -177,20 +181,23 @@ const App = {
 
 const LOTTERY_META = {
   ssq: { name: '双色球', mainRange: [1, 33], mainCount: 6, subRange: [1, 16], subCount: 1,
-    chartModes: ['综合图', '奇偶', '大小', '质合', '012路', 'AC值', '连号', '重号', '区间', '遗漏', '频率'],
+    chartModes: ['综合图', '奇偶', '大小', '质合', '012路', 'AC值', '连号', '重号', '区间', '遗漏', '遗漏榜', '频率'],
     zones: [[1, 11], [12, 22], [23, 33]], mid: 16, prime: true, positional: false },
   dlt: { name: '大乐透', mainRange: [1, 35], mainCount: 5, subRange: [1, 12], subCount: 2,
-    chartModes: ['综合图', '奇偶', '大小', '质合', '012路', 'AC值', '连号', '重号', '区间', '遗漏', '频率'],
+    chartModes: ['综合图', '奇偶', '大小', '质合', '012路', 'AC值', '连号', '重号', '区间', '遗漏', '遗漏榜', '频率'],
     zones: [[1, 12], [13, 24], [25, 35]], mid: 17, prime: true, positional: false },
   kl8: { name: '快乐八', mainRange: [1, 80], mainCount: 20, subRange: null, subCount: 0,
-    chartModes: ['综合图', '奇偶', '大小', '和值', '跨度', '区间', '遗漏', '频率'],
+    chartModes: ['综合图', '奇偶', '大小', '和值', '跨度', '区间', '遗漏', '遗漏榜', '频率'],
     zones: [[1, 20], [21, 40], [41, 60], [61, 80]], mid: 40, prime: false, positional: false },
   pl5: { name: '排列5', mainRange: [0, 9], mainCount: 5, subRange: null, subCount: 0,
-    chartModes: ['综合图', '位频', '和值', '奇偶', '跨度', '遗漏', '频率'],
+    chartModes: ['综合图', '位频', '和值', '奇偶', '跨度', '遗漏', '遗漏榜', '频率'],
     zones: null, mid: null, prime: false, positional: true },
   qxc: { name: '七星彩', mainRange: [0, 9], mainCount: 6, subRange: [0, 14], subCount: 1,
-    chartModes: ['综合图', '位频', '和值', '奇偶', '跨度', '后区', '遗漏', '频率'],
+    chartModes: ['综合图', '位频', '和值', '奇偶', '跨度', '后区', '遗漏', '遗漏榜', '频率'],
     zones: null, mid: null, prime: false, positional: true },
 };
 
-document.addEventListener('DOMContentLoaded', () => App.init());
+document.addEventListener('DOMContentLoaded', () => {
+  App.init();
+  Utils.startCountdown();
+});

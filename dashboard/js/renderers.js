@@ -35,10 +35,12 @@ const Renderers = {
             ? `<span class="ball-plus">+</span>${data.latest.sub.map(n => `<span class="ball ball-sub">${Utils.fmtNum(n)}</span>`).join('')}`
             : ''}
         </span>
-        <span class="latest-meta">和值: ${data.latest.main.reduce((a,b)=>a+parseInt(b),0)}</span>
+        <span class="latest-meta">和值: ${data.latest.main.reduce((a,b)=>a+parseInt(b),0)}<br><span class="countdown" data-type="${type}"></span></span>
       </div>
 
       <div class="stat-row" id="stat-cards"></div>
+
+      <div class="hotcold-section" id="hotcold-section"></div>
 
       <div class="chart-tabs" id="chart-tabs"></div>
       <div class="chart-area" id="chart-area"></div>
@@ -49,6 +51,7 @@ const Renderers = {
     `;
 
     this.renderStatCards(type, data, color);
+    this.renderHotCold(type, data, meta, color);
     this.renderChartTabs(type, meta, color);
     this.renderChart(type, data, chartMode || '综合图', meta, color);
     this.renderNumberGrid(type, data, meta, color);
@@ -75,9 +78,99 @@ const Renderers = {
     el.innerHTML = cards.map(c => `
       <div class="stat-card">
         <div class="stat-label">${c.label}</div>
-        <div class="stat-value ${c.cls || ''}" style="color:${c.cls === 'hot' ? color.main : c.cls === 'cold' ? '#78909C' : '#e0e0e0'}">${c.value}</div>
+        <div class="stat-value ${c.cls || ''}" style="color:${c.cls === 'hot' ? color.main : c.cls === 'cold' ? '#78909C' : 'var(--text-main)'}">${c.value}</div>
       </div>
     `).join('');
+  },
+
+  // ─── 冷热榜明细（可排序频率榜） ───
+  renderHotCold(type, data, meta, color) {
+    const el = document.getElementById('hotcold-section');
+    if (!el) return;
+    const [lo, hi] = meta.mainRange;
+    const freq = data.stats.frequency.main;
+    const grid = data.stats.grid50;
+    const lastIdx = grid.periods.length - 1;
+    let sortMode = 'freq';
+
+    const build = (mode) => {
+      const rows = [];
+      for (let n = lo; n <= hi; n++) {
+        const key = String(n);
+        const cell = grid.main[key] ? grid.main[key][lastIdx] : null;
+        rows.push({
+          n,
+          freq: freq[String(n)] || 0,
+          omit: cell && cell.hit ? 0 : (cell ? cell.omit : 0),
+        });
+      }
+      rows.sort((a, b) => mode === 'freq' ? b.freq - a.freq : b.omit - a.omit);
+      return rows;
+    };
+
+    const ballHtml = (r, i) => {
+      const f = r.freq;
+      const avg = Utils.avg(build('freq').map(x => x.freq));
+      const heat = f > avg * 1.15 ? 1 : f < avg * 0.85 ? -1 : 0;  // 1热 -1冷 0中
+      const base = heat === 1 ? '255,45,85' : heat === -1 ? '110,140,180' : '120,110,95';
+      const dark = heat === 1 ? '150,20,45' : heat === -1 ? '60,80,110' : '70,65,55';
+      const glow = heat === 1 ? 'rgba(255,45,85,0.45)' : heat === -1 ? 'rgba(110,140,180,0.35)' : 'rgba(120,110,95,0.25)';
+      const badge = heat === 1 ? '🔥' : heat === -1 ? '❄️' : '';
+      return `<span class="hc-ball" title="${Utils.fmtNum(r.n)} 出现${r.freq}次 · 当前遗漏${r.omit}期" style="--ball-color:rgb(${base});--ball-dark:rgb(${dark});--ball-glow:${glow}">${Utils.fmtNum(r.n)}<i>${r.freq}</i></span>`;
+    };
+
+    const render = () => {
+      const rows = build(sortMode);
+      const hot = rows.slice(0, 10);
+      const cold = rows.slice(-10).reverse();
+      const label = sortMode === 'freq' ? '频率榜' : '遗漏榜';
+
+      let html = `
+        <div class="hc-header">
+          <span class="hc-title">📊 ${label} · 前区 ${lo}-${hi}</span>
+          <div class="hc-toggle">
+            <button class="chart-tab${sortMode === 'freq' ? ' active' : ''}" data-sort="freq">🔥 按频率</button>
+            <button class="chart-tab${sortMode === 'omit' ? ' active' : ''}" data-sort="omit">⏳ 按遗漏</button>
+          </div>
+        </div>
+        <div class="hc-row">
+          <span class="hc-label">🔥 热号 TOP10</span>
+          <div class="hc-balls">${hot.map(ballHtml).join('')}</div>
+        </div>
+        <div class="hc-row">
+          <span class="hc-label">❄️ 冷号 TOP10</span>
+          <div class="hc-balls">${cold.map(ballHtml).join('')}</div>
+        </div>
+      `;
+
+      if (meta.subRange && data.stats.frequency.sub) {
+        const sFreq = data.stats.frequency.sub;
+        const sRows = [];
+        for (let n = meta.subRange[0]; n <= meta.subRange[1]; n++) {
+          sRows.push({ n, freq: sFreq[String(n)] || 0, omit: 0 });
+        }
+        sRows.sort((a, b) => b.freq - a.freq);
+        const sAvg = Utils.avg(sRows.map(x => x.freq));
+        const subBalls = sRows.map(r => {
+          const heat = r.freq > sAvg * 1.15 ? 1 : r.freq < sAvg * 0.85 ? -1 : 0;
+          const base = heat === 1 ? '255,45,85' : heat === -1 ? '110,140,180' : '120,110,95';
+          const dark = heat === 1 ? '150,20,45' : heat === -1 ? '60,80,110' : '70,65,55';
+          const glow = heat === 1 ? 'rgba(255,45,85,0.45)' : heat === -1 ? 'rgba(110,140,180,0.35)' : 'rgba(120,110,95,0.25)';
+          return `<span class="hc-ball" title="${Utils.fmtNum(r.n)} 出现${r.freq}次" style="--ball-color:rgb(${base});--ball-dark:rgb(${dark});--ball-glow:${glow}">${Utils.fmtNum(r.n)}<i>${r.freq}</i></span>`;
+        }).join('');
+        html += `<div class="hc-row"><span class="hc-label">🎯 后区</span><div class="hc-balls">${subBalls}</div></div>`;
+      }
+
+      el.innerHTML = html;
+      el.querySelectorAll('[data-sort]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          sortMode = btn.dataset.sort;
+          render();
+        });
+      });
+    };
+
+    render();
   },
 
   // ─── 图表模式标签 ───
@@ -143,6 +236,9 @@ const Renderers = {
       case '遗漏':
         option = this._omissionHeatmap(data, meta, color);
         break;
+      case '遗漏榜':
+        option = this._omissionRankChart(data, meta, color);
+        break;
       case '频率':
         option = this._frequencyChart(data, meta, color);
         break;
@@ -171,27 +267,30 @@ const Renderers = {
     // 综合图：和值 + 跨度 + 区间比 三联图
     const stats = data.stats;
     const periods = stats.last50.periods;
+    const t = Charts.themeColors;
+    const axis = { axisLine: { lineStyle: { color: t.axis } }, axisTick: { show: false } };
     return {
-      title: { text: '综合走势 · 近50期', left: 'center', textStyle: { color: '#e0e0e0', fontSize: 14 } },
+      title: { text: '综合走势 · 近50期', left: 'center', textStyle: { color: t.textLight, fontSize: 14 } },
+      tooltip: Charts.sharedTooltip(),
       grid: [
         { left: 50, right: 30, top: 50, height: 100 },
         { left: 50, right: 30, top: '50%', height: 100 },
         { left: 50, right: 30, top: '70%', height: 100, bottom: 30 },
       ],
       xAxis: [
-        { type: 'category', data: periods, gridIndex: 0, axisLabel: { show: false } },
-        { type: 'category', data: periods, gridIndex: 1, axisLabel: { show: false } },
-        { type: 'category', data: periods, gridIndex: 2, axisLabel: { rotate: 45, fontSize: 9, color: '#999', formatter: v => v.slice(-3) } },
+        { type: 'category', data: periods, gridIndex: 0, axisLabel: { show: false }, ...axis },
+        { type: 'category', data: periods, gridIndex: 1, axisLabel: { show: false }, ...axis },
+        { type: 'category', data: periods, gridIndex: 2, axisLabel: { rotate: 45, fontSize: 9, color: t.text, formatter: v => v.slice(-3) }, ...axis },
       ],
       yAxis: [
-        { type: 'value', gridIndex: 0, name: '和值' },
-        { type: 'value', gridIndex: 1, name: '跨度' },
-        { type: 'value', gridIndex: 2, name: '连号' },
+        { type: 'value', gridIndex: 0, name: '和值', splitLine: { lineStyle: { color: t.split } }, axisLabel: { color: t.text, fontSize: 10 }, nameTextStyle: { color: t.text, fontSize: 11 } },
+        { type: 'value', gridIndex: 1, name: '跨度', splitLine: { lineStyle: { color: t.split } }, axisLabel: { color: t.text, fontSize: 10 }, nameTextStyle: { color: t.text, fontSize: 11 } },
+        { type: 'value', gridIndex: 2, name: '连号', splitLine: { lineStyle: { color: t.split } }, axisLabel: { color: t.text, fontSize: 10 }, nameTextStyle: { color: t.text, fontSize: 11 } },
       ],
       series: [
-        { name: '和值', type: 'line', data: stats.last50.sum, xAxisIndex: 0, yAxisIndex: 0, lineStyle: { color: color.main, width: 2 }, itemStyle: { color: color.main } },
-        { name: '跨度', type: 'line', data: stats.last50.span, xAxisIndex: 1, yAxisIndex: 1, lineStyle: { color: color.sub, width: 2 }, itemStyle: { color: color.sub } },
-        { name: '连号', type: 'bar', data: stats.last50.consecutive, xAxisIndex: 2, yAxisIndex: 2, itemStyle: { color: color.light } },
+        { name: '和值', type: 'line', data: stats.last50.sum, xAxisIndex: 0, yAxisIndex: 0, lineStyle: { color: color.main, width: 2, shadowBlur: 8, shadowColor: color.main + '60' }, itemStyle: { color: color.main }, symbol: 'circle', symbolSize: 4 },
+        { name: '跨度', type: 'line', data: stats.last50.span, xAxisIndex: 1, yAxisIndex: 1, lineStyle: { color: color.sub, width: 2, shadowBlur: 8, shadowColor: color.sub + '60' }, itemStyle: { color: color.sub }, symbol: 'circle', symbolSize: 4 },
+        { name: '连号', type: 'bar', data: stats.last50.consecutive, xAxisIndex: 2, yAxisIndex: 2, itemStyle: { color: color.light, borderRadius: [4, 4, 0, 0] } },
       ],
     };
   },
@@ -343,8 +442,11 @@ const Renderers = {
     }
 
     return {
-      title: { text: '遗漏热力图 (最近30期)', left: 'center', textStyle: { color: '#e0e0e0', fontSize: 14 } },
+      title: { text: '遗漏热力图 (最近30期)', left: 'center', textStyle: { color: Charts.themeColors.textLight, fontSize: 14 } },
       tooltip: {
+        backgroundColor: 'rgba(20,20,30,0.96)',
+        borderColor: 'rgba(255,255,255,0.1)',
+        textStyle: { color: '#E8E4DD', fontSize: 12 },
         formatter: params => {
           const n = params.data[1] + lo;
           const v = params.data[2];
@@ -352,8 +454,8 @@ const Renderers = {
         },
       },
       grid: { left: 50, right: 30, top: 50, bottom: 60 },
-      xAxis: { type: 'category', data: xLabels, axisLabel: { fontSize: 9, color: '#999' } },
-      yAxis: { type: 'category', data: yLabels, axisLabel: { fontSize: 10, color: '#999' } },
+      xAxis: { type: 'category', data: xLabels, splitArea: { show: true, areaStyle: { color: ['rgba(255,255,255,0.01)', 'rgba(255,255,255,0.02)'] } }, axisLabel: { fontSize: 9, color: Charts.themeColors.text } },
+      yAxis: { type: 'category', data: yLabels, splitArea: { show: true, areaStyle: { color: ['rgba(255,255,255,0.01)', 'rgba(255,255,255,0.02)'] } }, axisLabel: { fontSize: 10, color: Charts.themeColors.text } },
       visualMap: {
         pieces: [
           { value: -1, color: color.main, label: '开出' },
@@ -365,6 +467,48 @@ const Renderers = {
         orient: 'horizontal', left: 'center', bottom: 0,
       },
       series: [{ type: 'heatmap', data: heatData, label: { show: false }, emphasis: { itemStyle: { shadowBlur: 10, shadowColor: 'rgba(0,0,0,0.5)' } } }],
+    };
+  },
+
+  // 当前遗漏榜：深冻红标，超均值橙标
+  _omissionRankChart(data, meta, color) {
+    const [lo, hi] = meta.mainRange;
+    const grid = data.stats.grid50;
+    const lastIdx = grid.periods.length - 1;
+    const labels = [];
+    const values = [];
+    for (let n = lo; n <= hi; n++) {
+      const key = String(n);
+      const cell = grid.main[key] ? grid.main[key][lastIdx] : null;
+      labels.push(Utils.fmtNum(n));
+      values.push(cell && cell.hit ? 0 : (cell ? cell.omit : 0));
+    }
+    const pos = values.filter(v => v > 0);
+    const avg = pos.length ? Utils.avg(pos) : 10;
+    const deep = avg * 1.5;
+    return {
+      ...Charts.barOption('当前遗漏榜 (最新一期)', labels, values, color.main, { yName: '遗漏期数' }),
+      tooltip: Charts.sharedTooltip(),
+      series: [{
+        name: '遗漏', type: 'bar', data: values,
+        itemStyle: {
+          borderRadius: [4, 4, 0, 0],
+          color: p => p.value > deep ? '#E53935' : p.value > avg ? '#FF9800' : color.main,
+        },
+        markLine: {
+          silent: true, symbol: 'none',
+          data: [
+            { yAxis: avg, name: '均值', lineStyle: { color: '#FFD54F', type: 'dashed' }, label: { formatter: `均值 ${avg.toFixed(0)}` } },
+            { yAxis: deep, name: '深冻', lineStyle: { color: '#E53935', type: 'dashed' }, label: { formatter: `深冻 ${deep.toFixed(0)}` } },
+          ],
+        },
+        markPoint: {
+          symbol: 'pin', symbolSize: 36,
+          itemStyle: { color: '#E53935' },
+          label: { color: '#fff', fontSize: 9 },
+          data: [{ type: 'max', name: '深冻王' }],
+        },
+      }],
     };
   },
 
@@ -671,6 +815,7 @@ const Renderers = {
       html += `<tr style="background:rgba(245,166,35,0.03)"><td colspan="${(hi-lo+1)+(meta.subRange?meta.subRange[1]-meta.subRange[0]+1+1:0)+5}" style="padding:4px 8px;font-size:10px">
         <span style="color:var(--gold);cursor:pointer;margin-right:12px" class="presel-action" data-action="add">➕ 添加</span>
         <span style="color:var(--text-dim);cursor:pointer;margin-right:12px" class="presel-action" data-action="copy">📋 复制</span>
+        <span style="color:var(--jade);cursor:pointer;margin-right:12px" class="presel-action" data-action="export">💾 导出推荐</span>
         <span style="color:#E53935;cursor:pointer" class="presel-action" data-action="clear">🗑️ 清除</span>
       </td></tr>`;
     }
@@ -880,6 +1025,7 @@ const Renderers = {
     html += `<tr style="background:rgba(245,166,35,0.03)"><td colspan="${posCount*10+(posCount-1)+(hasSpecial?16:0)+4}" style="padding:4px 8px;font-size:10px">
       <span style="color:var(--gold);cursor:pointer;margin-right:12px" class="presel-action" data-action="add">➕ 添加</span>
       <span style="color:var(--text-dim);cursor:pointer;margin-right:12px" class="presel-action" data-action="copy">📋 复制</span>
+      <span style="color:var(--jade);cursor:pointer;margin-right:12px" class="presel-action" data-action="export">💾 导出推荐</span>
       <span style="color:#E53935;cursor:pointer" class="presel-action" data-action="clear">🗑️ 清除</span>
     </td></tr>`;
 
@@ -972,6 +1118,9 @@ const Renderers = {
           }
         } else if (action === 'clear') {
           self._preSelectionRows = [new Set(), new Set(), new Set()];
+        } else if (action === 'export') {
+          self._exportSelection(type);
+          return;
         }
         this.renderNumberGrid(type, data, meta, color, this._currentPeriodSize || 50, this._currentAnnotations || {});
       });
@@ -995,6 +1144,39 @@ const Renderers = {
     this._currentPeriodSize = this._currentPeriodSize || 50;
   },
 
+  /** 导出预选号码为推荐文本（支持普通网格与按位网格） */
+  _exportSelection(type) {
+    const lines = [];
+    this._preSelectionRows.forEach((row, i) => {
+      if (!row || !row.size) return;
+      const keys = [...row];
+      if (keys.every(k => /^\d+_\d+$/.test(k))) {
+        const byPos = {};
+        keys.forEach(k => {
+          const [p, d] = k.split('_').map(Number);
+          (byPos[p] = byPos[p] || []).push(d);
+        });
+        lines.push(`预选${i+1}: ` + Object.keys(byPos).sort((a, b) => a - b)
+          .map(p => `第${Number(p)+1}位 ${byPos[p].sort((a,b)=>a-b).join(' ')}`).join(' | '));
+      } else {
+        const mains = keys.filter(k => !k.startsWith('s')).map(Number).sort((a, b) => a - b)
+          .map(n => Utils.fmtNum(n)).join(' ');
+        const subs = keys.filter(k => k.startsWith('s')).map(k => Number(k.slice(1))).sort((a, b) => a - b)
+          .map(n => Utils.fmtNum(n)).join(' ');
+        lines.push(`预选${i+1}: ${mains}${subs ? ' + ' + subs : ''}`);
+      }
+    });
+    if (!lines.length) {
+      Utils.toast('请先在网格中点选号码', 'warn');
+      return;
+    }
+    const meta = LOTTERY_META[type];
+    const text = `【${meta.name}】推荐选号\n${lines.join('\n')}\n(娱乐参考 · 概率游戏)`;
+    Utils.copyText(text)
+      .then(() => Utils.toast(`已复制 ${lines.length} 注推荐 ✓`))
+      .catch(() => Utils.toast('复制失败,请手动选择'));
+  },
+
   // ─── 历史数据表格 ───
   renderDataTable(type, data, color) {
     const el = document.getElementById('data-table-section');
@@ -1015,6 +1197,7 @@ const Renderers = {
 
       let html = '<div class="table-header">📊 历史开奖数据</div>';
       html += `<div class="table-pagination">
+        <input class="period-search" placeholder="🔍 输入期号跳转…" inputmode="numeric">
         <button class="page-btn" ${page === 0 ? 'disabled' : ''} data-page="${page - 1}">上一页</button>
         <span>第 ${page + 1} / ${totalPages} 页 (共 ${draws.length} 期)</span>
         <button class="page-btn" ${page >= totalPages - 1 ? 'disabled' : ''} data-page="${page + 1}">下一页</button>
@@ -1052,6 +1235,23 @@ const Renderers = {
           render(parseInt(btn.dataset.page));
         });
       });
+
+      // 期号搜索跳转
+      const search = el.querySelector('.period-search');
+      if (search) {
+        search.addEventListener('keydown', e => {
+          if (e.key !== 'Enter') return;
+          const q = search.value.trim();
+          if (!q) return;
+          const idx = draws.findIndex(d => String(d.period) === q);
+          if (idx < 0) {
+            Utils.toast('未找到期号 ' + q, 'warn');
+            return;
+          }
+          render(Math.floor((draws.length - 1 - idx) / pageSize));
+          Utils.toast('已跳转至 ' + q + ' 期 ✓');
+        });
+      }
     };
 
     render(currentPage);

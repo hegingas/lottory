@@ -128,4 +128,81 @@ const Utils = {
       timer = setTimeout(() => fn(...args), ms);
     };
   },
+
+  // ─── 开奖时间与倒计时 ───
+  /** 各彩种开奖日与时间（JS getDay(): 0=周日） */
+  drawSchedule: {
+    ssq: { days: [2, 4, 0], time: '21:15' },   // 周二四日
+    dlt: { days: [1, 3, 6], time: '21:25' },   // 周一三六
+    kl8: { days: [0,1,2,3,4,5,6], time: '21:30' },
+    pl5: { days: [0,1,2,3,4,5,6], time: '20:30' },
+    qxc: { days: [2, 5, 0], time: '20:25' },   // 周二五日
+  },
+
+  /** 距下次开奖毫秒数 */
+  nextDrawIn(type) {
+    const s = this.drawSchedule[type];
+    if (!s) return 0;
+    const now = new Date();
+    for (let i = 0; i < 8; i++) {
+      const d = new Date(now.getTime() + i * 86400000);
+      if (!s.days.includes(d.getDay())) continue;
+      const [h, m] = s.time.split(':').map(Number);
+      const target = new Date(d.getFullYear(), d.getMonth(), d.getDate(), h, m, 0);
+      if (target > now) return target - now;
+    }
+    return 0;
+  },
+
+  /** 倒计时格式化 */
+  fmtCountdown(ms) {
+    const h = Math.floor(ms / 3600000);
+    const m = Math.floor(ms % 3600000 / 60000);
+    const sec = Math.floor(ms % 60000 / 1000);
+    if (h > 99) return `${h}时${String(m).padStart(2, '0')}分`;
+    return `${h}时${String(m).padStart(2, '0')}分${String(sec).padStart(2, '0')}秒`;
+  },
+
+  /** 启动全局倒计时刷新（.countdown[data-type]） */
+  startCountdown() {
+    const tick = () => {
+      document.querySelectorAll('.countdown[data-type]').forEach(el => {
+        const ms = Utils.nextDrawIn(el.dataset.type);
+        el.textContent = ms > 0 ? `距开奖 ${Utils.fmtCountdown(ms)}` : '开奖中';
+      });
+    };
+    tick();
+    setInterval(tick, 1000);
+  },
+
+  /** 复制文本到剪贴板（带降级） */
+  copyText(text) {
+    if (navigator.clipboard && window.isSecureContext) {
+      return navigator.clipboard.writeText(text);
+    }
+    return new Promise((resolve, reject) => {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.cssText = 'position:fixed;opacity:0;top:0;left:0';
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand('copy'); resolve(); }
+      catch (e) { reject(e); }
+      document.body.removeChild(ta);
+    });
+  },
+
+  /** 轻提示 */
+  toast(msg, type = 'ok') {
+    let box = document.getElementById('dash-toast');
+    if (!box) {
+      box = document.createElement('div');
+      box.id = 'dash-toast';
+      document.body.appendChild(box);
+    }
+    box.textContent = msg;
+    box.className = 'toast show' + (type === 'warn' ? ' toast-warn' : '');
+    clearTimeout(box._t);
+    box._t = setTimeout(() => box.classList.remove('show'), 2200);
+  },
 };

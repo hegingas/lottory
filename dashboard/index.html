@@ -21,7 +21,7 @@
   --glass-border-hover: rgba(255,255,255,0.14);
   --text-main: #E8E4DD;
   --text-dim: #807C78;
-  --text-muted: #4A4642;
+  --text-muted: #6B6762;
   --gold: #F5A623;
   --gold-glow: rgba(245,166,35,0.3);
   --jade: #00D2A0;
@@ -30,11 +30,47 @@
   --radius-md: 16px;
   --radius-lg: 24px;
   --shadow-card: 0 4px 32px rgba(0,0,0,0.5), 0 0 0 1px var(--glass-border);
+  --shadow-card-hover: 0 8px 40px rgba(0,0,0,0.6), 0 0 24px var(--card-glow, transparent);
   --shadow-glow: 0 0 40px var(--gold-glow);
+  --nav-bg: rgba(8,8,12,0.82);
+  --nav-bg-solid: rgba(8,8,12,0.96);
+  --thead-bg: rgba(20,20,30,0.95);
+  --cell-border: rgba(255,255,255,0.04);
+  --row-hover: rgba(255,255,255,0.03);
+  --axis-color: #3A3632;
+  --split-line: rgba(255,255,255,0.04);
+  --zoom-bg: rgba(20,20,30,0.8);
+  --particle-opacity: 1;
   --font-display: 'Noto Sans SC', system-ui, sans-serif;
   --font-mono: 'Space Mono', 'Courier New', monospace;
   --ease-out-expo: cubic-bezier(0.19, 1, 0.22, 1);
   --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* ─── 明净主题（浅色） ─── */
+html[data-theme="light"] {
+  --bg-deep: #F4F1EB;
+  --bg-card: rgba(255,255,255,0.85);
+  --bg-card-hover: rgba(255,255,255,0.97);
+  --glass-border: rgba(25,18,8,0.08);
+  --glass-border-hover: rgba(25,18,8,0.18);
+  --text-main: #23201B;
+  --text-dim: #6B6660;
+  --text-muted: #9C958C;
+  --gold: #B8730A;
+  --gold-glow: rgba(184,115,10,0.18);
+  --red-lucky: #D92D4E;
+  --shadow-card: 0 4px 24px rgba(60,45,10,0.10), 0 0 0 1px var(--glass-border);
+  --shadow-card-hover: 0 10px 36px rgba(60,45,10,0.16), 0 0 24px var(--card-glow, transparent);
+  --nav-bg: rgba(244,241,235,0.85);
+  --nav-bg-solid: rgba(244,241,235,0.97);
+  --thead-bg: rgba(240,236,228,0.95);
+  --cell-border: rgba(25,18,8,0.07);
+  --row-hover: rgba(25,18,8,0.04);
+  --axis-color: #C9C0B4;
+  --split-line: rgba(25,18,8,0.08);
+  --zoom-bg: rgba(255,255,255,0.72);
+  --particle-opacity: 0.35;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -54,6 +90,7 @@ body {
 /* ─── 背景粒子 ─── */
 .bg-particles {
   position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden;
+  opacity: var(--particle-opacity);
 }
 .bg-particle {
   position: absolute; border-radius: 50%;
@@ -73,7 +110,7 @@ body {
 /* ─── 导航栏 ─── */
 .navbar {
   position: sticky; top: 0; z-index: 100;
-  background: rgba(8,8,12,0.82); backdrop-filter: blur(24px) saturate(180%);
+  background: var(--nav-bg); backdrop-filter: blur(24px) saturate(180%);
   border-bottom: 1px solid var(--glass-border);
   display: flex; align-items: center; justify-content: space-between;
   padding: 0 32px; height: 64px;
@@ -92,7 +129,7 @@ body {
   0%, 100% { opacity: 1; transform: scale(1); }
   50% { opacity: 0.4; transform: scale(1.8); }
 }
-.nav-links { display: flex; gap: 2px; align-items: center; }
+.nav-links { display: flex; gap: 2px; align-items: center; margin-left: auto; }
 .nav-link {
   color: var(--text-dim); text-decoration: none;
   padding: 8px 16px; border-radius: 8px; font-size: 14px; font-weight: 500;
@@ -104,12 +141,27 @@ body {
   background: var(--link-color, var(--gold));
   transition: width 0.3s var(--ease-out-expo);
 }
-.nav-link:hover { color: #fff; }
+.nav-link:hover { color: var(--text-main); }
 .nav-link:hover::after { width: 60%; }
-.nav-link.active { color: #fff; font-weight: 700; }
+.nav-link.active { color: var(--text-main); font-weight: 700; }
 .nav-link.active::after { width: 60%; background: var(--link-color, var(--gold)); }
 
-.nav-toggle { display: none; background: none; border: none; color: #fff; font-size: 24px; cursor: pointer; }
+.nav-toggle { display: none; background: none; border: none; color: var(--text-main); font-size: 24px; cursor: pointer; }
+
+/* 主题切换按钮 */
+.theme-toggle {
+  margin-left: 14px; flex-shrink: 0;
+  width: 36px; height: 36px; border-radius: 50%;
+  background: var(--bg-card); border: 1px solid var(--glass-border);
+  color: var(--text-main); font-size: 16px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.3s var(--ease-out-expo);
+}
+.theme-toggle:hover {
+  border-color: var(--gold); color: var(--gold);
+  box-shadow: 0 0 18px var(--gold-glow);
+  transform: rotate(20deg) scale(1.05);
+}
 
 /* ─── 视图容器 ─── */
 .view { display: none; animation: fadeSlideIn 0.45s var(--ease-out-expo); }
@@ -159,7 +211,10 @@ body {
   transition: all 0.35s var(--ease-out-expo);
   position: relative; overflow: hidden;
   cursor: pointer;
+  animation: cardFadeIn 0.55s var(--ease-out-expo) both;
+  animation-delay: var(--stagger, 0ms);
 }
+@keyframes cardFadeIn { from { opacity: 0; } to { opacity: 1; } }
 .lottery-card::before {
   content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
   background: linear-gradient(90deg, var(--card-color), var(--card-color2, var(--card-color)));
@@ -173,7 +228,7 @@ body {
 .lottery-card:hover {
   transform: translateY(-4px);
   border-color: var(--card-color);
-  box-shadow: 0 8px 40px rgba(0,0,0,0.6), 0 0 24px var(--card-glow, transparent);
+  box-shadow: var(--shadow-card-hover);
 }
 .lottery-card:hover::before { opacity: 1; }
 .lottery-card:hover::after { opacity: 0.6; }
@@ -185,6 +240,12 @@ body {
   background: var(--card-bg, rgba(255,255,255,0.06));
   display: flex; align-items: center; justify-content: center;
   font-size: 24px;
+  animation: iconPop 0.6s var(--ease-spring) both;
+  animation-delay: calc(var(--stagger, 0ms) + 150ms);
+}
+@keyframes iconPop {
+  from { transform: scale(0.3); opacity: 0; }
+  to   { transform: scale(1); opacity: 1; }
 }
 .card-name { font-size: 20px; font-weight: 800; letter-spacing: 0.02em; }
 .card-badge {
@@ -208,11 +269,47 @@ body {
               radial-gradient(circle at 50% 50%, var(--ball-color) 0%, var(--ball-dark) 100%);
   box-shadow: 0 3px 8px rgba(0,0,0,0.5), inset 0 2px 3px rgba(255,255,255,0.2),
               0 0 12px var(--ball-glow, transparent);
-  transition: transform 0.2s var(--ease-spring);
+  transition: transform 0.2s var(--ease-spring), box-shadow 0.3s var(--ease-out-expo);
+  will-change: transform;
 }
-.ball:hover { transform: scale(1.18); z-index: 2; }
+.ball:hover {
+  transform: scale(1.18); z-index: 2;
+  box-shadow: 0 3px 8px rgba(0,0,0,0.5), inset 0 2px 3px rgba(255,255,255,0.25),
+              0 0 26px var(--ball-glow, transparent);
+}
+/* 首页卡片球：缓慢浮动，3D 微旋 */
+@keyframes ballFloat {
+  0%, 100% { transform: translateY(0) rotateX(0deg) rotateY(0deg); }
+  50%      { transform: translateY(-3px) rotateX(10deg) rotateY(8deg); }
+}
+.card-numbers .ball {
+  animation: ballFloat 6s ease-in-out infinite;
+}
+.card-numbers .ball:nth-child(2n)  { animation-delay: 1.2s; animation-duration: 7s; }
+.card-numbers .ball:nth-child(3n)  { animation-delay: 2.4s; animation-duration: 5.5s; }
+.card-numbers .ball:hover { animation: none; }
+
+/* 最新开奖球：依次弹入 */
+@keyframes ballPop {
+  0%   { transform: scale(0); opacity: 0; }
+  70%  { transform: scale(1.15); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+.latest-balls .ball { animation: ballPop 0.45s var(--ease-spring) both; }
+.latest-balls .ball:nth-child(1) { animation-delay: 0.00s; }
+.latest-balls .ball:nth-child(2) { animation-delay: 0.06s; }
+.latest-balls .ball:nth-child(3) { animation-delay: 0.12s; }
+.latest-balls .ball:nth-child(4) { animation-delay: 0.18s; }
+.latest-balls .ball:nth-child(5) { animation-delay: 0.24s; }
+.latest-balls .ball:nth-child(6) { animation-delay: 0.30s; }
+.latest-balls .ball:nth-child(7) { animation-delay: 0.36s; }
+.latest-balls .ball:nth-child(8) { animation-delay: 0.42s; }
+
 .ball-sm {
   width: 28px; height: 28px; font-size: 11px;
+}
+.ball-xs {
+  width: 22px; height: 22px; font-size: 9px;
 }
 .ball-sub {
   background: radial-gradient(circle at 35% 30%, rgba(255,255,255,0.4) 0%, transparent 70%),
@@ -232,7 +329,7 @@ body {
   background: var(--bg-card); border: 1px solid var(--glass-border);
   transition: all 0.25s; display: flex; align-items: center; gap: 6px;
 }
-.back-btn:hover { color: #fff; border-color: rgba(255,255,255,0.2); background: var(--bg-card-hover); }
+.back-btn:hover { color: var(--text-main); border-color: rgba(255,255,255,0.2); background: var(--bg-card-hover); }
 .detail-title {
   font-size: 24px; font-weight: 900; display: flex; align-items: center; gap: 10px;
 }
@@ -264,7 +361,13 @@ body {
   border: 1px solid var(--glass-border);
   padding: 16px; text-align: center; backdrop-filter: blur(8px);
   transition: all 0.3s;
+  animation: cardFadeIn 0.5s var(--ease-out-expo) both;
 }
+.stat-card:nth-child(1) { animation-delay: 0.05s; }
+.stat-card:nth-child(2) { animation-delay: 0.12s; }
+.stat-card:nth-child(3) { animation-delay: 0.19s; }
+.stat-card:nth-child(4) { animation-delay: 0.26s; }
+.stat-card:nth-child(5) { animation-delay: 0.33s; }
 .stat-card:hover { border-color: rgba(255,255,255,0.15); transform: translateY(-2px); }
 .stat-label { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; }
 .stat-value { font-size: 26px; font-weight: 900; font-family: var(--font-mono); }
@@ -280,12 +383,73 @@ body {
   font-size: 13px; cursor: pointer; font-weight: 500;
   transition: all 0.25s;
 }
-.chart-tab:hover { color: #fff; border-color: rgba(255,255,255,0.25); }
+.chart-tab:hover { color: var(--text-main); border-color: rgba(255,255,255,0.25); }
 .chart-tab.active {
-  color: #fff; font-weight: 700; border-color: var(--tab-color, var(--gold));
+  color: var(--text-main); font-weight: 700; border-color: var(--tab-color, var(--gold));
   background: var(--tab-bg, rgba(245,166,35,0.1));
   box-shadow: 0 0 20px var(--tab-glow, transparent);
 }
+
+/* 冷热榜明细 */
+.hotcold-section {
+  background: var(--bg-card); border-radius: var(--radius-md);
+  border: 1px solid var(--glass-border);
+  padding: 18px 24px; margin-bottom: 20px;
+  backdrop-filter: blur(12px);
+  animation: cardFadeIn 0.5s var(--ease-out-expo) both;
+  animation-delay: 0.3s;
+}
+.hc-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; flex-wrap: wrap; gap: 8px; }
+.hc-title { font-size: 15px; font-weight: 800; }
+.hc-toggle { display: flex; gap: 6px; }
+.hc-row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; flex-wrap: wrap; }
+.hc-label { font-size: 12px; color: var(--text-dim); font-weight: 700; white-space: nowrap; width: 92px; flex-shrink: 0; }
+.hc-balls { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.hc-ball {
+  position: relative;
+  width: 32px; height: 32px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 800; font-family: var(--font-mono);
+  color: #fff; cursor: default;
+  background: radial-gradient(circle at 35% 30%, rgba(255,255,255,0.45) 0%, transparent 70%),
+              radial-gradient(circle at 50% 50%, var(--ball-color) 0%, var(--ball-dark) 100%);
+  box-shadow: 0 3px 8px rgba(0,0,0,0.5), inset 0 2px 3px rgba(255,255,255,0.2),
+              0 0 12px var(--ball-glow, transparent);
+  transition: transform 0.2s var(--ease-spring);
+}
+.hc-ball:hover { transform: scale(1.15); }
+.hc-ball i {
+  position: absolute; bottom: -5px; right: -6px;
+  font-style: normal; font-size: 9px; font-weight: 700;
+  background: var(--bg-deep); border: 1px solid var(--glass-border);
+  color: var(--text-dim); border-radius: 6px; padding: 0 3px; line-height: 1.4;
+}
+
+/* 期号搜索框 */
+.period-search {
+  background: var(--bg-card); border: 1px solid var(--glass-border);
+  color: var(--text-main); padding: 6px 12px; border-radius: 8px;
+  font-size: 13px; font-family: var(--font-mono); width: 160px; outline: none;
+  transition: all 0.25s;
+}
+.period-search:focus { border-color: var(--gold); box-shadow: 0 0 12px var(--gold-glow); }
+.period-search::placeholder { color: var(--text-muted); }
+
+/* 倒计时 */
+.countdown { font-family: var(--font-mono); color: var(--gold); font-size: 12px; font-weight: 700; }
+.latest-meta .countdown { display: inline-block; margin-top: 4px; }
+
+/* 轻提示 */
+#dash-toast {
+  position: fixed; left: 50%; bottom: 40px; transform: translateX(-50%) translateY(20px);
+  background: rgba(20,20,30,0.95); border: 1px solid var(--gold);
+  color: var(--text-main); padding: 10px 22px; border-radius: 12px;
+  font-size: 13px; font-weight: 600; z-index: 9999; pointer-events: none;
+  opacity: 0; transition: all 0.3s var(--ease-out-expo);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5), 0 0 20px var(--gold-glow);
+}
+#dash-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+#dash-toast.toast-warn { border-color: #E53935; box-shadow: 0 8px 32px rgba(0,0,0,0.5), 0 0 20px rgba(229,57,53,0.35); }
 
 /* 图表区 */
 .chart-area {
@@ -311,8 +475,8 @@ body {
   transition: all 0.2s; border-right: 1px solid var(--glass-border);
 }
 .period-opt:last-child { border-right: none; }
-.period-opt:hover { color: #fff; background: rgba(255,255,255,0.05); }
-.period-opt.active { color: #fff; background: var(--grid-accent, rgba(245,166,35,0.15)); }
+.period-opt:hover { color: var(--text-main); background: rgba(255,255,255,0.05); }
+.period-opt.active { color: var(--text-main); background: var(--grid-accent, rgba(245,166,35,0.15)); }
 
 /* 标注开关 */
 .annotation-toggles { display: flex; gap: 6px; }
@@ -323,22 +487,36 @@ body {
   transition: all 0.2s;
 }
 .anno-toggle:hover { border-color: rgba(255,255,255,0.2); }
-.anno-toggle.active { color: #fff; border-color: var(--grid-accent, var(--gold)); background: var(--grid-accent-bg, rgba(245,166,35,0.1)); }
+.anno-toggle.active { color: var(--text-main); border-color: var(--grid-accent, var(--gold)); background: var(--grid-accent-bg, rgba(245,166,35,0.1)); }
 .anno-toggle input { display: none; }
 
 /* 号码网格 */
 .grid-section { margin-bottom: 24px; }
 .grid-section h3 { font-size: 16px; font-weight: 700; margin-bottom: 12px; }
 .grid-scroll { overflow-x: auto; border-radius: 10px; }
+.grid-scroll::-webkit-scrollbar,
+.table-scroll::-webkit-scrollbar { height: 8px; width: 8px; }
+.grid-scroll::-webkit-scrollbar-track,
+.table-scroll::-webkit-scrollbar-track { background: rgba(255,255,255,0.03); border-radius: 4px; }
+.grid-scroll::-webkit-scrollbar-thumb,
+.table-scroll::-webkit-scrollbar-thumb {
+  background: linear-gradient(90deg, #FF2D55, #FF9500, #F5A623);
+  border-radius: 4px;
+}
+.grid-scroll::-webkit-scrollbar-thumb:hover,
+.table-scroll::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(90deg, #FF6B81, #FFB84D, #FFD54F);
+}
+.scrollbar-fade { scrollbar-color: #FF9500 rgba(255,255,255,0.03); }
 .grid-period-th, .grid-period { min-width: 72px; font-weight: 600; font-family: var(--font-mono); font-size: 11px; }
 .num-grid { border-collapse: collapse; font-size: 11px; white-space: nowrap; width: 100%; }
-.num-grid th, .num-grid td { padding: 4px 6px; text-align: center; border: 1px solid rgba(255,255,255,0.04); }
+.num-grid th, .num-grid td { padding: 4px 6px; text-align: center; border: 1px solid var(--cell-border); }
 .num-grid thead th {
-  background: rgba(20,20,30,0.95); color: var(--text-dim);
+  background: var(--thead-bg); color: var(--text-dim);
   font-weight: 600; position: sticky; top: 0; z-index: 2;
 }
 .num-grid tbody tr { transition: background 0.15s; }
-.num-grid tbody tr:hover { background: rgba(255,255,255,0.03); }
+.num-grid tbody tr:hover { background: var(--row-hover); }
 .grid-hit { color: #fff; font-weight: 700; border-radius: 3px; padding: 1px 0; }
 .grid-cold { color: #4FC3F7; }
 .grid-warm { color: #FFB74D; }
@@ -363,13 +541,13 @@ body {
 .page-btn[disabled] { opacity: 0.3; cursor: default; }
 .table-scroll { overflow-x: auto; border-radius: 10px; }
 .data-table { border-collapse: collapse; font-size: 13px; width: 100%; }
-.data-table th, .data-table td { padding: 8px 12px; text-align: center; border: 1px solid rgba(255,255,255,0.04); }
+.data-table th, .data-table td { padding: 8px 12px; text-align: center; border: 1px solid var(--cell-border); }
 .data-table thead th {
-  background: rgba(20,20,30,0.95); color: var(--text-dim);
+  background: var(--thead-bg); color: var(--text-dim);
   font-weight: 600; position: sticky; top: 0; z-index: 2;
 }
 .data-table tbody tr { transition: background 0.15s; }
-.data-table tbody tr:hover { background: rgba(255,255,255,0.03); }
+.data-table tbody tr:hover { background: var(--row-hover); }
 
 /* 页脚 */
 .site-footer {
@@ -387,7 +565,7 @@ body {
 @media (max-width: 768px) {
   .navbar { padding: 0 16px; }
   .nav-links { display: none; flex-direction: column; position: absolute; top: 64px; left: 0; right: 0;
-    background: rgba(8,8,12,0.96); border-bottom: 1px solid var(--glass-border); padding: 12px; }
+    background: var(--nav-bg-solid); border-bottom: 1px solid var(--glass-border); padding: 12px; }
   .nav-links.open { display: flex; }
   .nav-toggle { display: block; }
   .lottery-grid { grid-template-columns: 1fr; }
@@ -395,6 +573,9 @@ body {
   .hero { padding: 32px 0 24px; }
   .latest-bar { flex-direction: column; align-items: flex-start; }
   .latest-meta { margin-left: 0; }
+  .chart-area { min-height: 320px; }
+  .stat-card:nth-child(2n+1) { animation-delay: 0.05s; }
+  .stat-card:nth-child(2n) { animation-delay: 0.1s; }
 }
 </style>
 </head>
@@ -420,6 +601,7 @@ body {
       <a href="#/pl5" class="nav-link" style="--link-color:#007AFF">🔵 排列5</a>
       <a href="#/qxc" class="nav-link" style="--link-color:#00D2A0">🟢 七星彩</a>
     </div>
+    <button class="theme-toggle" id="theme-toggle" aria-label="切换主题" title="切换明暗主题">🌙</button>
   </nav>
 
   <!-- 视图 -->
@@ -460,7 +642,9 @@ body {
 (function() {
   const container = document.getElementById('bg-particles');
   const colors = ['#FF2D55','#FF9500','#AF52DE','#007AFF','#00D2A0','#F5A623'];
-  for (let i = 0; i < 30; i++) {
+  const isMobile = window.matchMedia('(max-width: 768px)').matches;
+  const count = isMobile ? 12 : 30;
+  for (let i = 0; i < count; i++) {
     const p = document.createElement('div');
     p.className = 'bg-particle';
     const size = 2 + Math.random() * 4;
@@ -489,6 +673,36 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 });
+</script>
+
+<!-- 主题切换 -->
+<script>
+(function() {
+  const KEY = 'lottory-dash-theme';
+  const btn = document.getElementById('theme-toggle');
+
+  const refreshCharts = () => {
+    if (window.App && App.currentType && App.dataCache[App.currentType]) {
+      const meta = LOTTERY_META[App.currentType];
+      const color = Charts.colors[App.currentType];
+      Renderers.renderChart(App.currentType, App.dataCache[App.currentType], App.currentChartMode, meta, color);
+    }
+  };
+
+  const apply = (theme) => {
+    document.documentElement.dataset.theme = theme;
+    btn.textContent = theme === 'light' ? '☀️' : '🌙';
+    localStorage.setItem(KEY, theme);
+    refreshCharts();
+  };
+
+  btn.addEventListener('click', () => {
+    apply(document.documentElement.dataset.theme === 'light' ? 'dark' : 'light');
+  });
+
+  const saved = localStorage.getItem(KEY);
+  if (saved) apply(saved);
+})();
 </script>
 
 </body>

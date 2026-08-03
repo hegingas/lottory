@@ -14,13 +14,19 @@ const Charts = {
     qxc: { main: '#00D2A0', sub: '#00D2A0', light: '#5CE6C6', glow: 'rgba(0,210,160,0.35)' },
   },
 
-  /** 主题色常量（全局 ECharts 默认） */
+  /** 主题色（从 CSS 变量动态读取，随明暗主题切换） */
   themeColors: {
-    text: '#B0ACA6',
-    textLight: '#E8E4DD',
-    axis: '#3A3632',
-    split: 'rgba(255,255,255,0.04)',
-    bg: '#08080C',
+    get text()      { return Charts._css('--text-dim', '#B0ACA6'); },
+    get textLight() { return Charts._css('--text-main', '#E8E4DD'); },
+    get axis()      { return Charts._css('--axis-color', '#3A3632'); },
+    get split()     { return Charts._css('--split-line', 'rgba(255,255,255,0.04)'); },
+    get bg()        { return Charts._css('--bg-deep', '#08080C'); },
+    get zoomBg()    { return Charts._css('--zoom-bg', 'rgba(20,20,30,0.8)'); },
+  },
+
+  _css(name, fallback) {
+    const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    return v || fallback;
   },
 
   init(domId) {
@@ -81,7 +87,7 @@ const Charts = {
       },
       dataZoom: opts.noZoom ? undefined : [{
         type: 'slider', start: 0, end: 100, height: 18, bottom: 10,
-        backgroundColor: 'rgba(20,20,30,0.8)',
+        backgroundColor: this.themeColors.zoomBg,
         dataBackground: { lineStyle: { color: color }, areaStyle: { color: color + '20' } },
         selectedDataBackground: { lineStyle: { color: '#fff' }, areaStyle: { color: color + '40' } },
         textStyle: { color: this.themeColors.text },
@@ -156,7 +162,7 @@ const Charts = {
       },
       dataZoom: [{
         type: 'slider', start: 0, end: 100, height: 18, bottom: 35,
-        backgroundColor: 'rgba(20,20,30,0.8)',
+        backgroundColor: this.themeColors.zoomBg,
         textStyle: { color: this.themeColors.text },
       }],
       series: seriesData.map((s, i) => ({
@@ -215,7 +221,7 @@ const Charts = {
       },
       dataZoom: [{
         type: 'slider', start: 0, end: 100, height: 18, bottom: 35,
-        backgroundColor: 'rgba(20,20,30,0.8)',
+        backgroundColor: this.themeColors.zoomBg,
         textStyle: { color: this.themeColors.text },
       }],
       series: seriesList.map(s => ({
