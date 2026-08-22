@@ -1,0 +1,39 @@
+{
+  "fetched_at": "2026-08-22T18:23:33.018422+08:00",
+  "source": "sporttery.cn",
+  "draws": [
+    {
+      "lottery_type": "dlt",
+      "period_id": "2026092",
+      "front_1": "12",
+      "front_2": "16",
+      "front_3": "19",
+      "front_4": "29",
+      "front_5": "33",
+      "back_1": "07",
+      "back_2": "09"
+    },
+    {
+      "lottery_type": "dlt",
+      "period_id": "2026093",
+      "front_1": "08",
+      "front_2": "10",
+      "front_3": "22",
+      "front_4": "26",
+      "front_5": "29",
+      "back_1": "03",
+      "back_2": "10"
+    },
+    {
+      "lottery_type": "dlt",
+      "period_id": "2026094",
+      "front_1": "05",
+      "front_2": "14",
+      "front_3": "15",
+      "front_4": "17",
+      "front_5": "33",
+      "back_1": "01",
+      "back_2": "07"
+    }
+  ]
+}

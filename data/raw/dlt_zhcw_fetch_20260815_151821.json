@@ -1,0 +1,28 @@
+{
+  "fetched_at": "2026-08-15T15:18:21.391050+08:00",
+  "source": "https://www.zhcw.com/kjxx/dlt/",
+  "draws": [
+    {
+      "lottery_type": "dlt",
+      "period_id": "2026090",
+      "front_1": "09",
+      "front_2": "14",
+      "front_3": "17",
+      "front_4": "19",
+      "front_5": "24",
+      "back_1": "02",
+      "back_2": "09"
+    },
+    {
+      "lottery_type": "dlt",
+      "period_id": "2026091",
+      "front_1": "03",
+      "front_2": "04",
+      "front_3": "07",
+      "front_4": "12",
+      "front_5": "32",
+      "back_1": "01",
+      "back_2": "02"
+    }
+  ]
+}
