@@ -759,9 +759,9 @@
       "lottery_type": "pl5",
       "output": "data/processed/pl5_draws.csv",
       "source": "user_screenshots_pailie5_batch_2026-05-01",
-      "rows_out": 7712,
+      "rows_out": 7698,
       "period_id_min": 4001,
-      "period_id_max": "9358",
+      "period_id_max": 2026223,
       "generated_at": "2026-06-06T14:29:44+08:00",
       "note": "第三方页面截图录入，建议与体彩官方公告抽样核对",
       "supplement": {
@@ -948,7 +948,8 @@
           "count": 11,
           "source": "cwl.gov.cn / sporttery.cn 官方 API",
           "note": "PL5 缺失期补全(备份: pl5_draws_pre_backfill_20260809_142838.csv)"
-        }
+        },
+        "fix_period_format_20260822": "期号统一为7位YYYYDDD, 去重14期双格式重复, 7712行 -> 7698行"
       }
     },
     {
@@ -1063,9 +1064,9 @@
   ],
   "predictions": {
     "dlt": {
-      "last_period": "2026087",
-      "last_pred_time": "2026-08-02T18:26:56+08:00",
-      "total": 4,
+      "last_period": "2026095",
+      "last_pred_time": "2026-08-22T18:39:13+08:00",
+      "total": 5,
       "csv": "data/predictions/dlt_predictions.csv"
     },
     "kl8": {

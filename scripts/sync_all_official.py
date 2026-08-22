@@ -108,15 +108,35 @@ def fetch_stc_latest(game_no, page_size=100):
     return value.get("list") or []
 
 
+def normalize_pid(game, pid):
+    """期号规范化, 保证同一期只有一种写法。
+
+    PL5 历史数据曾混用 4位("4001"=2004年)/5位("26124"=2026年124期)/7位("2026124")
+    三种格式, 统一规范为 7 位 YYYYDDD。其余彩种原样返回(QXC 约定用 5 位)。
+    """
+    if game != "PL5" or not pid.isdigit():
+        return pid
+    n = len(pid)
+    if n == 7:
+        return pid
+    if n == 4:
+        return "20" + pid.zfill(5)  # "4001" -> "2004001"
+    if n == 5:
+        return "20" + pid  # "26124" -> "2026124"
+    return pid
+
+
 def load_existing(game):
-    """读取本地 CSV, 返回 {period_id: row_dict}。"""
+    """读取本地 CSV, 返回 {period_id: row_dict}(期号已规范化)。"""
     path = CSV_PATH[game]
     existing = {}
     if not os.path.exists(path):
         return existing
     with open(path, "r", encoding="utf-8") as f:
         for row in csv.DictReader(f):
-            existing[row["period_id"]] = row
+            pid = normalize_pid(game, row["period_id"])
+            row["period_id"] = pid
+            existing[pid] = row
     return existing
 
 
@@ -270,19 +290,23 @@ def sync_game(game):
 
     # 3. 读本地已有
     existing = load_existing(game)
-    print(f"  本地 CSV: {len(existing)} 期, 最新: {max(existing.keys()) if existing else 'N/A'}")
+    if existing:
+        latest = max(existing.keys(), key=lambda x: int(x) if x.isdigit() else 0)
+        print(f"  本地 CSV: {len(existing)} 期, 最新: {latest}")
 
-    # 4. 筛选新增
-    new_draws = [d for d in parsed if d["period_id"] not in existing]
+    # 4. 筛选新增(按规范化期号去重, 防止不同写法被当成不同期)
+    new_draws = [d for d in parsed if normalize_pid(game, d["period_id"]) not in existing]
     # 去重 (万一 API 返回重复)
     seen = set()
     new_draws_unique = []
     for d in new_draws:
-        if d["period_id"] not in seen:
-            seen.add(d["period_id"])
+        key = normalize_pid(game, d["period_id"])
+        if key not in seen:
+            seen.add(key)
+            d["period_id"] = key
             new_draws_unique.append(d)
     new_draws = new_draws_unique
-    new_draws.sort(key=lambda x: x["period_id"])
+    new_draws.sort(key=lambda x: int(x["period_id"]) if x["period_id"].isdigit() else 0)
 
     if not new_draws:
         print(f"  ✅ 已是最新, 无需同步")
@@ -302,9 +326,9 @@ def sync_game(game):
         }, f, ensure_ascii=False, indent=2)
     print(f"  raw 备份: {raw_file}")
 
-    # 6. 合并写入 CSV
+    # 6. 合并写入 CSV(按 int 排序, 保证数值单调递增)
     all_rows = list(existing.values()) + new_draws
-    all_rows.sort(key=lambda x: x["period_id"])
+    all_rows.sort(key=lambda x: int(x["period_id"]) if x["period_id"].isdigit() else 0)
     csv_path = CSV_PATH[game]
     fields = FIELDNAMES[game]
 
@@ -317,8 +341,8 @@ def sync_game(game):
         sha = hashlib.sha256(f.read()).hexdigest()
     print(f"  CSV 写入完成, 总行数: {len(all_rows)}, SHA256: {sha[:16]}...")
 
-    # 7. 期号单调性校验
-    pids = [r["period_id"] for r in all_rows]
+    # 7. 期号单调性校验(按 int 比较)
+    pids = [int(r["period_id"]) if r["period_id"].isdigit() else -1 for r in all_rows]
     ok = True
     for i in range(1, len(pids)):
         if pids[i] <= pids[i - 1]:
